@@ -41,6 +41,7 @@ class Employee extends Model
         'name_ar',
         'name_en',
         'national_id',
+        'national_id_expiry',
         'nationality',
         'birth_date',
         'gender',
@@ -89,6 +90,7 @@ class Employee extends Model
 
     protected $casts = [
         'birth_date' => 'date',
+        'national_id_expiry' => 'date',
         'hired_at' => 'date',
         'procedures_start_at' => 'date',
         'ended_at' => 'date',

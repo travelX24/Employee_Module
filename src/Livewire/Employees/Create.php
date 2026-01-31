@@ -23,6 +23,7 @@ class Create extends Component
     public string $name_ar = '';
     public ?string $name_en = null;
     public string $national_id = '';
+    public string $national_id_expiry = '';
     public string $nationality = '';
     public string $gender = '';
     public string $social_status = '';
@@ -102,6 +103,7 @@ class Create extends Component
             'max' => $this->txt('قيمة :attribute يجب ألا تزيد عن :max.', 'The :attribute may not be greater than :max.'),
             'image' => $this->txt('يرجى رفع صورة صالحة في :attribute.', 'The :attribute must be an image.'),
             'file' => $this->txt('يرجى رفع ملف صالح في :attribute.', 'Please upload a valid file for :attribute.'),
+            'national_id_expiry.after' => $this->txt('بطاقة الهوية منتهية الصلاحية.', 'The National ID card is expired.'),
 
             // Custom Document Messages
             'photo.required' => $this->txt('الصورة الشخصية وصورة الهوية الوطنية مطلوبة.', 'Personal Photo and National ID Photo are required.'),
@@ -129,6 +131,7 @@ class Create extends Component
             'name_ar' => tr('Arabic Name'),
             'name_en' => tr('English Name'),
             'national_id' => tr('National ID'),
+            'national_id_expiry' => tr('National ID Expiry'),
             'nationality' => tr('Nationality'),
             'gender' => tr('Gender'),
             'social_status' => tr('Social Status'),
@@ -137,7 +140,9 @@ class Create extends Component
             'children_count' => tr('Children Count'),
             
             'sector' => tr('Sector'),
-            'department_id' => tr('Department'),
+            'sector' => tr('Sector'),
+            'department_id' => tr('Main Department'),
+            'sub_department_id' => tr('Sub Department'),
             'job_title_id' => tr('Job Title'),
             'grade' => tr('Grade'),
             'manager_id' => tr('Manager'),
@@ -174,6 +179,7 @@ class Create extends Component
         return [
             'name_ar' => ['required', 'string', 'max:255'],
             'national_id' => ['required', 'string', 'max:50', 'unique:employees,national_id'],
+            'national_id_expiry' => ['required', 'date', 'after:today'],
             'nationality' => ['required', 'string', 'max:100'],
             'gender' => ['required', Rule::in(['male', 'female'])],
             'social_status' => ['required', Rule::in(['single', 'married'])],
@@ -310,6 +316,7 @@ class Create extends Component
                 'name_ar' => $this->name_ar,
                 'name_en' => $this->name_en,
                 'national_id' => $this->national_id,
+                'national_id_expiry' => $this->national_id_expiry,
                 'nationality' => $this->nationality,
                 'birth_date' => $this->birth_date,
                 'gender' => $this->gender,
@@ -410,6 +417,7 @@ class Create extends Component
 
         return Department::forCompany($this->companyId)
             ->active()
+            ->whereNull('parent_id')
             ->get()
             ->map(function($department) {
                 return [
@@ -421,8 +429,9 @@ class Create extends Component
 
     public function updatedDepartmentId($value)
     {
+        $this->sub_department_id = null;
         $this->manager_id = null;
-
+        
         if (!$value) {
             return;
         }
@@ -440,9 +449,6 @@ class Create extends Component
             return [];
         }
 
-        // Check if JobTitle has scopeForCompany or just use where
-        // Assuming JobTitle model has saas_company_id or similar scope
-        // Based on typical pattern in this project:
         return JobTitle::where('saas_company_id', $this->companyId)
             ->get()
             ->map(function($jobTitle) {
@@ -484,7 +490,24 @@ class Create extends Component
 
     public function render()
     {
-        return view('employees::livewire.employees.create')
+        $subDepartments = [];
+        
+        if ($this->department_id) {
+            $subDepartments = Department::forCompany($this->companyId)
+                ->where('parent_id', $this->department_id)
+                ->active()
+                ->get()
+                ->map(function($department) {
+                    return [
+                        'value' => $department->id,
+                        'label' => $department->name,
+                    ];
+                })->toArray();
+        }
+
+        return view('employees::livewire.employees.create', [
+                'subDepartments' => $subDepartments
+            ])
             ->layout('layouts.company-admin');
     }
 

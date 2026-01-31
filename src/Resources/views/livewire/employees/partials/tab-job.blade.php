@@ -1,24 +1,28 @@
 <div class="space-y-4 sm:space-y-5">
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-        {{-- Sector --}}
-        <x-ui.input 
-            type="text"
-            :label="tr('Sector')" 
-            wire:model="sector" 
-            value="{{ $sector }}"
-            error="sector" 
-        />
-
-        {{-- Department --}}
+        {{-- Main Department --}}
         <x-ui.select 
-            :label="tr('Department')" 
+            :label="tr('Main Department')" 
             wire:model.live="department_id" 
             error="department_id" 
             :required="true"
         >
-            <option value="">{{ tr('Select Department') }}</option>
+            <option value="">{{ tr('Select Main Department') }}</option>
             @foreach($this->departments as $department)
                 <option value="{{ $department['value'] }}" {{ $department_id == $department['value'] ? 'selected' : '' }}>{{ $department['label'] }}</option>
+            @endforeach
+        </x-ui.select>
+
+        {{-- Sub Department --}}
+        <x-ui.select 
+            :label="tr('Sub Department')" 
+            wire:model.live="sub_department_id" 
+            error="sub_department_id"
+            wire:key="sub-dept-{{ $department_id }}"
+        >
+            <option value="">{{ tr('Select Sub Department') }}</option>
+            @foreach($subDepartments as $subDepartment)
+                <option value="{{ $subDepartment['value'] }}" {{ $sub_department_id == $subDepartment['value'] ? 'selected' : '' }}>{{ $subDepartment['label'] }}</option>
             @endforeach
         </x-ui.select>
 

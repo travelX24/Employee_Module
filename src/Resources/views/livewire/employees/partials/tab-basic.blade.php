@@ -1,5 +1,5 @@
 <div class="space-y-4 sm:space-y-5">
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {{-- Arabic Name --}}
         <x-ui.input 
             :label="tr('Arabic Name')" 
@@ -23,6 +23,16 @@
             wire:model="national_id" 
             value="{{ $national_id }}"
             error="national_id" 
+            :required="true"
+        />
+
+        {{-- National ID Expiry --}}
+        <x-ui.input 
+            type="date"
+            :label="tr('National ID Expiry')" 
+            wire:model="national_id_expiry" 
+            value="{{ $national_id_expiry }}"
+            error="national_id_expiry" 
             :required="true"
         />
 
