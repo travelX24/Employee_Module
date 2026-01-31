@@ -165,15 +165,15 @@
         {{-- Content --}}
         <div class="p-3 sm:p-4 md:p-6">
             @if($tab === 1)
-                @include('employees::livewire.employees.partials.tab-basic')
+                <div wire:key="tab-1-content">@include('employees::livewire.employees.partials.tab-basic')</div>
             @elseif($tab === 2)
-                @include('employees::livewire.employees.partials.tab-job')
+                <div wire:key="tab-2-content">@include('employees::livewire.employees.partials.tab-job')</div>
             @elseif($tab === 3)
-                @include('employees::livewire.employees.partials.tab-financial')
+                <div wire:key="tab-3-content">@include('employees::livewire.employees.partials.tab-financial')</div>
             @elseif($tab === 4)
-                @include('employees::livewire.employees.partials.tab-personal')
+                <div wire:key="tab-4-content">@include('employees::livewire.employees.partials.tab-personal')</div>
             @elseif($tab === 5)
-                @include('employees::livewire.employees.partials.tab-documents')
+                <div wire:key="tab-5-content">@include('employees::livewire.employees.partials.tab-documents')</div>
             @endif
         </div>
 

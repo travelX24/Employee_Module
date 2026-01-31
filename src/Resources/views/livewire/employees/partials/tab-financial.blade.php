@@ -3,9 +3,10 @@
         {{-- Contract Type --}}
         <x-ui.select 
             :label="tr('Contract Type')" 
-            model="contract_type" 
+            wire:model.live="contract_type" 
             error="contract_type" 
             :required="true"
+            wire:key="contract-type-select"
         >
             <option value="">{{ tr('Select Contract Type') }}</option>
             <option value="permanent" {{ $contract_type == 'permanent' ? 'selected' : '' }}>{{ tr('Permanent') }}</option>

@@ -14,17 +14,19 @@
         </x-ui.select>
 
         {{-- Sub Department --}}
-        <x-ui.select 
-            :label="tr('Sub Department')" 
-            wire:model.live="sub_department_id" 
-            error="sub_department_id"
-            wire:key="sub-dept-{{ $department_id }}"
-        >
-            <option value="">{{ tr('Select Sub Department') }}</option>
-            @foreach($subDepartments as $subDepartment)
-                <option value="{{ $subDepartment['value'] }}" {{ $sub_department_id == $subDepartment['value'] ? 'selected' : '' }}>{{ $subDepartment['label'] }}</option>
-            @endforeach
-        </x-ui.select>
+        {{-- Sub Department --}}
+        <div class="col-span-1" wire:key="sub-dept-wrapper-{{ $department_id }}">
+            <x-ui.select 
+                :label="tr('Sub Department')" 
+                wire:model.live="sub_department_id" 
+                error="sub_department_id"
+            >
+                <option value="">{{ tr('Select Sub Department') }}</option>
+                @foreach($sub_departments as $subDepartment)
+                    <option value="{{ $subDepartment['value'] }}" {{ $sub_department_id == $subDepartment['value'] ? 'selected' : '' }}>{{ $subDepartment['label'] }}</option>
+                @endforeach
+            </x-ui.select>
+        </div>
 
         {{-- Job Title --}}
         <x-ui.select 

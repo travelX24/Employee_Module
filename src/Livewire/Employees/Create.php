@@ -77,6 +77,14 @@ class Create extends Component
         if (empty($this->hired_at)) {
             $this->hired_at = now()->format('Y-m-d');
         }
+
+        if ($this->department_id) {
+            $this->loadSubDepartments($this->department_id);
+            $department = Department::find($this->department_id);
+            if ($department && $department->manager_id) {
+                 // manager assignment if needed
+            }
+        }
     }
 
     private function isAr(): bool
@@ -427,20 +435,39 @@ class Create extends Component
             })->toArray();
     }
 
+    public $sub_departments = [];
+
     public function updatedDepartmentId($value)
     {
         $this->sub_department_id = null;
         $this->manager_id = null;
+        $this->sub_departments = [];
         
         if (!$value) {
             return;
         }
+
+        $this->loadSubDepartments($value);
 
         $department = Department::find($value);
 
         if ($department && $department->manager_id) {
             $this->manager_id = $department->manager_id;
         }
+    }
+
+    protected function loadSubDepartments($departmentId)
+    {
+        $this->sub_departments = Department::forCompany($this->companyId)
+            ->where('parent_id', $departmentId)
+            ->active()
+            ->get()
+            ->map(function($department) {
+                return [
+                    'value' => $department->id,
+                    'label' => $department->name,
+                ];
+            })->toArray();
     }
 
     public function getJobTitlesProperty()
@@ -490,24 +517,7 @@ class Create extends Component
 
     public function render()
     {
-        $subDepartments = [];
-        
-        if ($this->department_id) {
-            $subDepartments = Department::forCompany($this->companyId)
-                ->where('parent_id', $this->department_id)
-                ->active()
-                ->get()
-                ->map(function($department) {
-                    return [
-                        'value' => $department->id,
-                        'label' => $department->name,
-                    ];
-                })->toArray();
-        }
-
-        return view('employees::livewire.employees.create', [
-                'subDepartments' => $subDepartments
-            ])
+        return view('employees::livewire.employees.create')
             ->layout('layouts.company-admin');
     }
 
