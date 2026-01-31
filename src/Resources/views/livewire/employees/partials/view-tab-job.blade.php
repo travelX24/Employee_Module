@@ -12,23 +12,23 @@
             </div>
         </div>
 
-        {{-- Sector --}}
-        <div>
-            <label class="block text-sm font-semibold text-gray-700 mb-2">
-                {{ tr('Sector') }}
-            </label>
-            <div class="px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 text-gray-900">
-                {{ $employee->sector ?: '—' }}
-            </div>
-        </div>
-
         {{-- Department --}}
         <div>
             <label class="block text-sm font-semibold text-gray-700 mb-2">
-                {{ tr('Department') }}
+                {{ tr('Main Department') }}
             </label>
             <div class="px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 text-gray-900">
                 {{ $employee->department?->name ?: '—' }}
+            </div>
+        </div>
+
+        {{-- Sub Department --}}
+        <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-2">
+                {{ tr('Sub Department') }}
+            </label>
+            <div class="px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 text-gray-900">
+                {{ $employee->subDepartment?->name ?: '—' }}
             </div>
         </div>
 
@@ -72,16 +72,6 @@
             </div>
         </div>
 
-        {{-- Procedures Start --}}
-        <div>
-            <label class="block text-sm font-semibold text-gray-700 mb-2">
-                {{ tr('Procedures Start') }}
-            </label>
-            <div class="px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 text-gray-900">
-                {{ $employee->procedures_start_at ? $employee->procedures_start_at->format('Y-m-d') : '—' }}
-            </div>
-        </div>
-
         {{-- Status --}}
         <div>
             <label class="block text-sm font-semibold text-gray-700 mb-2">
@@ -101,7 +91,3 @@
         </div>
     </div>
 </div>
-
-
-
-

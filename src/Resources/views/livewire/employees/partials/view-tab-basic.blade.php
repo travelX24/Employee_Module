@@ -36,6 +36,16 @@
             </div>
         </div>
 
+        {{-- National ID Expiry --}}
+        <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-2">
+                {{ tr('National ID Expiry') }}
+            </label>
+            <div class="px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 text-gray-900">
+                {{ $employee->national_id_expiry ? $employee->national_id_expiry->format('Y-m-d') : '—' }}
+            </div>
+        </div>
+
         {{-- Nationality --}}
         <div>
             <label class="block text-sm font-semibold text-gray-700 mb-2">

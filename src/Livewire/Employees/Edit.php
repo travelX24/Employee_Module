@@ -22,6 +22,7 @@ class Edit extends Component
     public string $name_ar = '';
     public ?string $name_en = null;
     public string $national_id = '';
+    public string $national_id_expiry = '';
     public string $nationality = '';
     public string $gender = '';
     public string $social_status = '';
@@ -78,6 +79,7 @@ class Edit extends Component
     public $existing_certificates = [];
     public $existing_family_documents = [];
     public $existing_other_documents = [];
+    public $sub_departments = [];
 
     public function getCompanyId(): int
     {
@@ -111,6 +113,7 @@ class Edit extends Component
         $this->name_ar = $this->employee->name_ar ?? '';
         $this->name_en = $this->employee->name_en;
         $this->national_id = $this->employee->national_id ?? '';
+        $this->national_id_expiry = $this->employee->national_id_expiry ? $this->employee->national_id_expiry->format('Y-m-d') : '';
         $this->nationality = $this->employee->nationality ?? '';
         $this->gender = $this->employee->gender ?? '';
         $this->social_status = $this->employee->marital_status ?? '';
@@ -186,6 +189,11 @@ class Edit extends Component
                 'url' => asset('storage/'.$d->file_path),
                 'size' => 0
             ])->values()->toArray();
+
+        // Load Sub Departments
+        if ($this->department_id) {
+            $this->loadSubDepartments($this->department_id);
+        }
     }
 
     public function getDepartmentsProperty()
@@ -229,6 +237,10 @@ class Edit extends Component
 
     public function updatedDepartmentId($value)
     {
+        $this->sub_department_id = null;
+        $this->manager_id = null;
+        $this->sub_departments = [];
+
         if (!$value) {
             return;
         }
@@ -239,6 +251,20 @@ class Edit extends Component
         if ($department && $department->manager_id) {
             $this->manager_id = $department->manager_id;
         }
+
+        $this->loadSubDepartments($value);
+    }
+
+    protected function loadSubDepartments($departmentId)
+    {
+        $model = $this->departmentModelClass();
+        $this->sub_departments = $model::query()
+            ->where('saas_company_id', $this->companyId)
+            ->where('parent_id', $departmentId)
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn ($d) => ['value' => $d->id, 'label' => $d->name])
+            ->toArray();
     }
 
     private function isAr(): bool
@@ -282,6 +308,7 @@ class Edit extends Component
             'name_ar' => ['required', 'string', 'max:255'],
             'name_en' => ['nullable', 'string', 'max:255'],
             'national_id' => ['required', 'string', 'max:50'],
+            'national_id_expiry' => ['required', 'date'],
             'nationality' => ['required', 'string', 'max:100'],
             'gender' => ['required', Rule::in(['male', 'female'])],
             'social_status' => ['required', Rule::in(['single', 'married', 'divorced', 'widowed'])],
@@ -385,6 +412,7 @@ class Edit extends Component
             'name_ar' => $this->name_ar,
             'name_en' => $this->name_en,
             'national_id' => $this->national_id,
+            'national_id_expiry' => $this->national_id_expiry,
             'nationality' => $this->nationality,
             'gender' => $this->gender,
             'marital_status' => $this->social_status,
