@@ -174,9 +174,15 @@
                         
                             @if($hiringDateType === 'custom')
                                 <div class="flex items-center gap-2 mt-2" x-transition>
-                                    <input type="date" wire:model.live="hiringDateStart" class="form-input w-full rounded-lg border-gray-300 text-sm">
+                                    <x-ui.company-date-picker
+                                        model="hiringDateStart"
+                                        class="w-full"
+                                    />
                                     <span class="text-gray-400">-</span>
-                                    <input type="date" wire:model.live="hiringDateEnd" class="form-input w-full rounded-lg border-gray-300 text-sm">
+                                    <x-ui.company-date-picker
+                                        model="hiringDateEnd"
+                                        class="w-full"
+                                    />
                                 </div>
                             @endif
                         </div>
@@ -647,12 +653,9 @@
                         </div>
                         
                         <div class="sm:col-span-1">
-                            <x-ui.input 
-                                type="date" 
-                                :label="tr('Effective Date')" 
-                                wire:model="deactivateDate" 
-                                error="deactivateDate"
-                                :required="true" 
+                            <x-ui.company-date-picker
+                                model="deactivateDate"
+                                :label="tr('Effective Date')"
                             />
                         </div>
 
@@ -753,12 +756,9 @@
                         </div>
                         
                         <div class="sm:col-span-1">
-                            <x-ui.input 
-                                type="date" 
-                                :label="tr('termination Date')" 
-                                wire:model="terminationDate" 
-                                error="terminationDate"
-                                :required="true" 
+                            <x-ui.company-date-picker
+                                model="terminationDate"
+                                :label="tr('Termination Date')"
                             />
                         </div>
 

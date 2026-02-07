@@ -68,7 +68,7 @@
                 {{ tr('Hire Date') }}
             </label>
             <div class="px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 text-gray-900">
-                {{ $employee->hired_at ? $employee->hired_at->format('Y-m-d') : '—' }}
+                {{ company_date($employee->hired_at) ?: '—' }}
             </div>
         </div>
 

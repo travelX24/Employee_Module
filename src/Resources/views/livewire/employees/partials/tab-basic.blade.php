@@ -27,13 +27,9 @@
         />
 
         {{-- National ID Expiry --}}
-        <x-ui.input 
-            type="date"
-            :label="tr('National ID Expiry')" 
-            wire:model="national_id_expiry" 
-            value="{{ $national_id_expiry }}"
-            error="national_id_expiry" 
-            :required="true"
+        <x-ui.company-date-picker
+            model="national_id_expiry"
+            :label="tr('National ID Expiry')"
         />
 
         {{-- Nationality --}}
@@ -58,13 +54,9 @@
         </x-ui.select>
 
         {{-- Birth Date --}}
-        <x-ui.input 
-            type="date"
-            :label="tr('Birth Date')" 
-            wire:model="birth_date" 
-            value="{{ $birth_date }}"
-            error="birth_date" 
-            :required="true"
+        <x-ui.company-date-picker
+            model="birth_date"
+            :label="tr('Birth Date')"
         />
 
         {{-- Birth Place --}}

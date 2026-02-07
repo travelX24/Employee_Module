@@ -170,13 +170,9 @@
         </div>
 
         {{-- Hire Date --}}
-        <x-ui.input 
-            type="date"
-            :label="tr('Hire Date')" 
-            wire:model="hired_at" 
-            value="{{ $hired_at }}"
-            error="hired_at" 
-            :required="true"
+        <x-ui.company-date-picker
+            model="hired_at"
+            :label="tr('Hire Date')"
         />
     </div>
 

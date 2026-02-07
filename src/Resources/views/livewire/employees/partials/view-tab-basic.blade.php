@@ -42,7 +42,7 @@
                 {{ tr('National ID Expiry') }}
             </label>
             <div class="px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 text-gray-900">
-                {{ $employee->national_id_expiry ? $employee->national_id_expiry->format('Y-m-d') : '—' }}
+                {{ company_date($employee->national_id_expiry) ?: '—' }}
             </div>
         </div>
 
@@ -94,7 +94,7 @@
                 {{ tr('Birth Date') }}
             </label>
             <div class="px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 text-gray-900">
-                {{ $employee->birth_date ? $employee->birth_date->format('Y-m-d') : '—' }}
+                {{ company_date($employee->birth_date) ?: '—' }}
             </div>
         </div>
 
