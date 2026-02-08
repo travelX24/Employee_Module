@@ -46,6 +46,15 @@ class Create extends Component
     public ?int $contract_duration_months = null;
     public $allowance = null;
     public ?int $annual_leave_days = null;
+    public $daily_wage = null;
+    public $hourly_wage = null;
+    public $minute_wage = null;
+
+    // الإجازات السنوية المتقدمة
+    public bool $is_transferred_employee = false;
+    public $opening_leave_balance = null;
+    public int $leave_balance_adjustments = 0;
+    public $calculated_leave_balance = 0;
 
     /* TAB 4: Personal */
     public string $mobile = '';
@@ -78,6 +87,11 @@ class Create extends Component
             $this->hired_at = now()->format('Y-m-d');
         }
 
+        // تعبئة أيام الإجازة السنوية من إعدادات الشركة
+        if ($this->annual_leave_days === null) {
+            $this->annual_leave_days = $this->getDefaultAnnualLeaveDays();
+        }
+
         if ($this->department_id) {
             $this->loadSubDepartments($this->department_id);
             $department = Department::find($this->department_id);
@@ -85,6 +99,75 @@ class Create extends Component
                  // manager assignment if needed
             }
         }
+
+        $this->calculateAndUpdateWages();
+        $this->updateLeaveBalancePreview();
+    }
+
+    public function updatedHiredAt()
+    {
+        $this->updateLeaveBalancePreview();
+    }
+
+    public function updatedAnnualLeaveDays()
+    {
+        $this->updateLeaveBalancePreview();
+    }
+
+    public function updatedOpeningLeaveBalance()
+    {
+        $this->updateLeaveBalancePreview();
+    }
+
+    public function updatedIsTransferredEmployee()
+    {
+        $this->updateLeaveBalancePreview();
+    }
+
+    public function addLeaveDay()
+    {
+        $this->leave_balance_adjustments++;
+        $this->updateLeaveBalancePreview();
+    }
+
+    public function subtractLeaveDay()
+    {
+        $this->leave_balance_adjustments--;
+        $this->updateLeaveBalancePreview();
+    }
+
+    private function updateLeaveBalancePreview()
+    {
+        // إنشاء نموذج مؤقت للحساب
+        $tempEmployee = new Employee([
+            'saas_company_id' => $this->companyId,
+            'hired_at' => $this->hired_at,
+            'is_transferred_employee' => $this->is_transferred_employee,
+            'opening_leave_balance' => $this->opening_leave_balance,
+            'leave_balance_adjustments' => $this->leave_balance_adjustments,
+        ]);
+        
+        // استخدام إجمالي الإجازة السنوية المدخل في الحقل بدلاً من الإعدادات إذا تم تغييره
+        $this->calculated_leave_balance = $tempEmployee->calculateLeaveBalance();
+    }
+
+    private function calculateAndUpdateWages()
+    {
+        $tempEmployee = new Employee([
+            'basic_salary' => $this->basic_salary,
+            'saas_company_id' => $this->companyId,
+        ]);
+        $wages = $tempEmployee->calculateWages();
+        if ($wages) {
+            $this->daily_wage = $wages['daily_wage'];
+            $this->hourly_wage = $wages['hourly_wage'];
+            $this->minute_wage = $wages['minute_wage'];
+        }
+    }
+
+    public function updatedBasicSalary()
+    {
+        $this->calculateAndUpdateWages();
     }
 
     private function isAr(): bool
@@ -186,7 +269,14 @@ class Create extends Component
     {
         return [
             'name_ar' => ['required', 'string', 'max:255'],
-            'national_id' => ['required', 'string', 'max:50', 'unique:employees,national_id'],
+            'national_id' => [
+                'required', 
+                'string', 
+                'max:50', 
+                Rule::unique('employees', 'national_id')
+                    ->where('saas_company_id', $this->companyId)
+                    ->whereNull('deleted_at')
+            ],
             'national_id_expiry' => ['required', 'date', 'after:today'],
             'nationality' => ['required', 'string', 'max:100'],
             'gender' => ['required', Rule::in(['male', 'female'])],
@@ -228,8 +318,23 @@ class Create extends Component
     private function rulesTab4(): array
     {
         return [
-            'mobile' => ['required', 'string', 'max:30'],
-            'email_work' => ['required', 'email'],
+            'mobile' => [
+                'required',
+                'string',
+                'max:30',
+                Rule::unique('employees', 'mobile')
+                    ->where('saas_company_id', $this->companyId)
+                    ->where('status', 'ACTIVE')
+                    ->whereNull('deleted_at')
+            ],
+            'email_work' => [
+                'required',
+                'email',
+                Rule::unique('employees', 'email_work')
+                    ->where('saas_company_id', $this->companyId)
+                    ->where('status', 'ACTIVE')
+                    ->whereNull('deleted_at')
+            ],
             'city' => ['required', 'string', 'max:100'],
             'district' => ['required', 'string', 'max:100'],
             'address' => ['required', 'string', 'max:255'],
@@ -238,7 +343,14 @@ class Create extends Component
             'emergency_contact_relation' => ['required', 'string', 'max:50'],
             
             'mobile_alt' => ['nullable', 'string', 'max:30'],
-            'email_personal' => ['nullable', 'email'],
+            'email_personal' => [
+                'nullable',
+                'email',
+                Rule::unique('employees', 'email_personal')
+                    ->where('saas_company_id', $this->companyId)
+                    ->where('status', 'ACTIVE')
+                    ->whereNull('deleted_at')
+            ],
 
         ];
     }
@@ -513,6 +625,15 @@ class Create extends Component
         $power = $bytes > 0 ? floor(log($bytes, 1024)) : 0;
         
         return number_format($bytes / pow(1024, $power), 2, '.', ',') . ' ' . $units[$power];
+    }
+
+    /**
+     * جلب عدد أيام الإجازة السنوية الافتراضية من إعدادات الشركة
+     */
+    private function getDefaultAnnualLeaveDays(): int
+    {
+        $settings = \Athka\Saas\Models\SaasCompanyOtherinfo::where('company_id', $this->companyId)->first();
+        return $settings->default_annual_leave_days ?? 0;
     }
 
     public function render()
