@@ -14,6 +14,8 @@ class EmployeesServiceProvider extends ServiceProvider
 
         // ✅ Migrations
         $this->loadMigrationsFrom(__DIR__ . '/Database/Migrations');
+        
+        $this->loadRoutesFrom(__DIR__ . '/Routes/api.php'); // ✅ NEW
 
         // ✅ Routes (مرة واحدة فقط)
         Route::middleware([
