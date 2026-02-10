@@ -64,15 +64,6 @@
                 </div>
             </div>
 
-            {{-- Annual Leave Days --}}
-            <div>
-                <label class="block text-xs font-semibold text-gray-600 mb-1.5">
-                    {{ tr('Annual Leave Days') }}
-                </label>
-                <div class="px-4 py-2.5 bg-gray-50 rounded-lg border border-gray-200 text-gray-900 text-sm">
-                    {{ $employee->annual_leave_days ?: '—' }}
-                </div>
-            </div>
         </div>
     </div>
 

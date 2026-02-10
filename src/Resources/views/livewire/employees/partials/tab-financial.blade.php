@@ -17,10 +17,11 @@
 
         {{-- Basic Salary --}}
         <x-ui.input 
+            id="basic_salary_input"
             type="number"
             step="0.01"
             :label="tr('Basic Salary')" 
-            wire:model.blur="basic_salary" 
+            wire:model.live.debounce.500ms="basic_salary" 
             error="basic_salary" 
             :required="true"
             placeholder="0.00"
@@ -28,6 +29,7 @@
 
         {{-- Contract Duration --}}
         <x-ui.input 
+            id="contract_duration_input"
             type="number"
             :label="tr('Contract Duration (Months)')" 
             wire:model="contract_duration_months" 
@@ -81,6 +83,7 @@
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {{-- Allowance --}}
         <x-ui.input 
+            id="allowance_input"
             type="number"
             step="0.01"
             :label="tr('Allowance')" 
@@ -90,16 +93,7 @@
             placeholder="0.00"
         />
 
-        {{-- Annual Leave --}}
-        <x-ui.input 
-            type="number"
-            :label="tr('Annual Leave Days')" 
-            wire:model="annual_leave_days" 
-            value="{{ $annual_leave_days }}"
-            error="annual_leave_days"
-            min="0"
-            placeholder="21"
-        />
+        {{-- Annual Leave Field Removed as per request --}}
     </div>
 
     {{-- قسم الإجازة السنوية المتقدم --}}
@@ -130,10 +124,10 @@
                     {{-- الرصيد الافتتاحي --}}
                     <div>
                         <x-ui.input 
+                            id="opening_balance_input"
                             type="number"
                             :label="tr('Opening Balance')" 
-                            wire:model.live="opening_leave_balance" 
-                            :value="$opening_leave_balance"
+                            wire:model.live.debounce.500ms="opening_leave_balance" 
                             error="opening_leave_balance"
                             placeholder="0"
                         />
@@ -150,13 +144,25 @@
                     </div>
                 @endif
 
-                {{-- الرصيد النهائي --}}
+                {{-- الرصيد النهائي مع أزرار التحكم --}}
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">{{ tr('Current Balance') }}</label>
-                    <div class="p-4 bg-gray-50 rounded-lg border-2 border-gray-200">
-                        <div class="text-center">
-                            <span class="text-3xl font-extrabold text-[color:var(--brand-via)]">{{ $calculated_leave_balance }}</span>
-                            <p class="text-xs text-gray-600 font-medium mt-1">{{ tr('Available Days') }}</p>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">{{ tr('Current Balance / Adjustments') }}</label>
+                    <div class="p-4 bg-white rounded-lg border-2 border-dashed border-[color:var(--brand-via)]/30 flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <button type="button" wire:click="subtractLeaveDay" class="w-8 h-8 rounded-full bg-red-100 text-red-600 flex items-center justify-center hover:bg-red-200 transition-colors">
+                                <i class="fas fa-minus"></i>
+                            </button>
+                            <div class="text-center px-4">
+                                <span class="text-3xl font-extrabold text-[color:var(--brand-via)]">{{ $calculated_leave_balance }}</span>
+                                <p class="text-[10px] text-gray-500 uppercase tracking-wider font-bold">{{ tr('Available Days') }}</p>
+                            </div>
+                            <button type="button" wire:click="addLeaveDay" class="w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center hover:bg-green-200 transition-colors">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                        
+                        <div class="text-xs text-gray-400 border-r pr-3">
+                            {{ tr('Adjustments') }}: <span class="font-bold {{ $leave_balance_adjustments >= 0 ? 'text-green-500' : 'text-red-500' }}">{{ $leave_balance_adjustments > 0 ? '+' : '' }}{{ $leave_balance_adjustments }}</span>
                         </div>
                     </div>
                 </div>

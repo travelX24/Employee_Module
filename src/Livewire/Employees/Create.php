@@ -138,23 +138,22 @@ class Create extends Component
 
     private function updateLeaveBalancePreview()
     {
-        // إنشاء نموذج مؤقت للحساب
+        // إنشاء نموذج مؤقت للحساب مع تنظيف البيانات الرقمية
         $tempEmployee = new Employee([
             'saas_company_id' => $this->companyId,
             'hired_at' => $this->hired_at,
-            'is_transferred_employee' => $this->is_transferred_employee,
-            'opening_leave_balance' => $this->opening_leave_balance,
-            'leave_balance_adjustments' => $this->leave_balance_adjustments,
+            'is_transferred_employee' => (bool)$this->is_transferred_employee,
+            'opening_leave_balance' => is_numeric($this->opening_leave_balance) ? $this->opening_leave_balance : 0,
+            'leave_balance_adjustments' => is_numeric($this->leave_balance_adjustments) ? (int)$this->leave_balance_adjustments : 0,
         ]);
         
-        // استخدام إجمالي الإجازة السنوية المدخل في الحقل بدلاً من الإعدادات إذا تم تغييره
         $this->calculated_leave_balance = $tempEmployee->calculateLeaveBalance();
     }
 
     private function calculateAndUpdateWages()
     {
         $tempEmployee = new Employee([
-            'basic_salary' => $this->basic_salary,
+            'basic_salary' => is_numeric($this->basic_salary) ? $this->basic_salary : null,
             'saas_company_id' => $this->companyId,
         ]);
         $wages = $tempEmployee->calculateWages();
@@ -230,7 +229,6 @@ class Create extends Component
             'birth_date' => tr('Birth Date'),
             'children_count' => tr('Children Count'),
             
-            'sector' => tr('Sector'),
             'sector' => tr('Sector'),
             'department_id' => tr('Main Department'),
             'sub_department_id' => tr('Sub Department'),

@@ -315,8 +315,21 @@ class Edit extends Component
         $this->recalculateLeaveBalance();
     }
 
+    public function updatedHiredAt($value)
+    {
+        $this->recalculateLeaveBalance();
+    }
+
+    public function updatedOpeningLeaveBalance($value)
+    {
+        $this->recalculateLeaveBalance();
+    }
+
     private function calculateAndUpdateWages()
     {
+        // تحديث الراتب في الموديل للعملية الحسابية الجارية بأمان
+        $this->employee->basic_salary = is_numeric($this->basic_salary) ? $this->basic_salary : null;
+        
         $wages = $this->employee->calculateWages();
         if ($wages) {
             $this->daily_wage = $wages['daily_wage'];
@@ -331,11 +344,13 @@ class Edit extends Component
 
     private function recalculateLeaveBalance()
     {
-        if ($this->is_transferred_employee) {
-            $this->calculated_leave_balance = ($this->opening_leave_balance ?? 0) + $this->leave_balance_adjustments;
-        } else {
-            $this->calculated_leave_balance = $this->employee->calculateLeaveBalance() + $this->leave_balance_adjustments;
-        }
+        // تمرير البيانات للموديل لإجراء الحساب بأمان
+        $this->employee->is_transferred_employee = $this->is_transferred_employee;
+        $this->employee->opening_leave_balance = is_numeric($this->opening_leave_balance) ? $this->opening_leave_balance : 0;
+        $this->employee->leave_balance_adjustments = is_numeric($this->leave_balance_adjustments) ? (int)$this->leave_balance_adjustments : 0;
+        $this->employee->hired_at = $this->hired_at;
+
+        $this->calculated_leave_balance = $this->employee->calculateLeaveBalance();
     }
 
     private function isAr(): bool

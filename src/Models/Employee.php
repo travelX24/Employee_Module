@@ -264,21 +264,30 @@ public function subordinates(): HasMany
                 return 0;
             }
 
-            // جلب الإجازة السنوية الكاملة
+            // جلب الإجازة السنوية الكاملة من إعدادات الشركة
             $companySettings = \Athka\Saas\Models\SaasCompanyOtherinfo::where('company_id', $this->saas_company_id)->first();
             $defaultDays = $companySettings->default_annual_leave_days ?? 0;
-            if ($defaultDays == 0) return 0;
+            if ($defaultDays == 0) return ($this->leave_balance_adjustments ?? 0);
 
             $hiredDate = \Carbon\Carbon::parse($this->hired_at);
-            $endOfYear = $hiredDate->copy()->endOfYear();
+            $currentYear = now()->year;
+            $hiredYear = $hiredDate->year;
 
-            // حساب عدد الأيام المتبقية في السنة من تاريخ التوظيف
-            $daysRemainingInYear = $hiredDate->diffInDays($endOfYear) + 1;
-            
-            // حساب الاستحقاق النسبي (أيام متبقية / 365 يوم) * الرصيد السنوي
-            $earnedDays = ($daysRemainingInYear / 365) * $defaultDays;
+            if ($hiredYear < $currentYear) {
+                // موظف قديم: يستحق الرصيد كاملاً للسنة الحالية
+                $earnedDays = $defaultDays;
+            } elseif ($hiredYear == $currentYear) {
+                // موظف جديد في السنة الحالية: حساب نسبي حتى نهاية السنة
+                $endOfYear = $hiredDate->copy()->endOfYear();
+                $daysInYear = $hiredDate->copy()->startOfYear()->diffInDays($endOfYear) + 1;
+                $daysRemainingInYear = $hiredDate->diffInDays($endOfYear) + 1;
+                $earnedDays = ($daysRemainingInYear / $daysInYear) * $defaultDays;
+            } else {
+                // موظف سيبدأ في سنة مستقبلية
+                $earnedDays = 0;
+            }
 
-            return round($earnedDays) + ($this->leave_balance_adjustments ?? 0);
+            return round($earnedDays, 1) + ($this->leave_balance_adjustments ?? 0);
         }
     }
 }
