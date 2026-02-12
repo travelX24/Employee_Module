@@ -58,6 +58,7 @@ class EmployeeController extends Controller
             if (method_exists($employee, 'department')) $rels[] = 'department';
             if (method_exists($employee, 'jobTitle'))   $rels[] = 'jobTitle';
             if (method_exists($employee, 'job_title'))  $rels[] = 'job_title';
+            if (method_exists($employee, 'documents'))  $rels[] = 'documents';
 
             if (!empty($rels)) {
                 $employee->loadMissing($rels);
@@ -144,6 +145,9 @@ class EmployeeController extends Controller
                     'name' => $jobTitleObj->name ?? null,
                     'code' => $jobTitleObj->code ?? null,
                 ] : null,
+                'personal_photo_path' => $employee->documents->where('type', 'personal_photo')->first()?->file_path 
+                    ?? $employee->personal_photo_path 
+                    ?? null,
             ] : null,
 
             'company' => $company ? [
