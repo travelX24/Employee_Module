@@ -168,7 +168,318 @@ class EmployeeController extends Controller
     }
 
 
-        public function leaveRequests(Request $request)
+        public function leaveTypes(Request $request)
+    {
+        $user = $request->user();
+
+        if ($resp = $this->denyIfNotMobileEmployee($user)) {
+            return $resp;
+        }
+
+        $table = 'leave_policies';
+
+        if (!Schema::hasTable($table)) {
+            return response()->json([
+                'ok'   => true,
+                'data' => [
+                    ['id' => 1, 'name' => 'Annual Leave', 'leave_type' => 'annual'],
+                    ['id' => 2, 'name' => 'Sick Leave', 'leave_type' => 'sick'],
+                ],
+            ]);
+        }
+
+        $query = DB::table('leave_policies')
+            ->join('leave_policy_years', 'leave_policies.policy_year_id', '=', 'leave_policy_years.id')
+            ->where('leave_policies.is_active', true)
+            ->where('leave_policies.show_in_app', true)
+            ->where('leave_policy_years.is_active', true);
+
+        // Filter by company
+        if (!empty($user->saas_company_id)) {
+            $query->where('leave_policies.company_id', $user->saas_company_id);
+            $query->where('leave_policy_years.company_id', $user->saas_company_id);
+        }
+
+        // Filter by gender if the column exists
+        $cols = Schema::getColumnListing('leave_policies');
+        $employee = $user->employee ?? null;
+        if (in_array('gender', $cols) && $employee && !empty($employee->gender)) {
+            $gender = strtolower($employee->gender); // male / female
+            $query->where(function($q) use ($gender) {
+                $q->where('leave_policies.gender', 'all')
+                  ->orWhere('leave_policies.gender', $gender);
+            });
+        }
+
+        $types = $query->get([
+            'leave_policies.id', 
+            'leave_policies.name', 
+            'leave_policies.leave_type', 
+            'leave_policies.requires_attachment',
+            'leave_policies.settings'
+        ]);
+
+        $formatted = $types->map(function($t) {
+            $settings = is_string($t->settings) ? json_decode($t->settings, true) : $t->settings;
+            return [
+                'id' => $t->id,
+                'name' => $t->name,
+                'leave_type' => $t->leave_type,
+                'requires_attachment' => (bool)$t->requires_attachment,
+                'duration_unit' => $settings['duration_unit'] ?? 'full_day',
+            ];
+        });
+
+        return response()->json([
+            'ok'   => true,
+            'data' => $formatted,
+        ]);
+    }
+
+    public function workSchedule(Request $request)
+    {
+        $user = $request->user();
+
+        if ($resp = $this->denyIfNotMobileEmployee($user)) {
+            return $resp;
+        }
+
+        $employeeId = $user->employee_id;
+
+        if (!$employeeId) {
+            return response()->json(['ok' => false, 'message' => 'No employee linked'], 400);
+        }
+
+        // ── Date range ───────────────────────────────────────────────────────
+        $startStr = $request->query('start', now()->startOfWeek(Carbon::SATURDAY)->toDateString());
+        $endStr   = $request->query('end',   now()->endOfWeek(Carbon::FRIDAY)->toDateString());
+
+        try {
+            $start = Carbon::parse($startStr)->startOfDay();
+            $end   = Carbon::parse($endStr)->endOfDay();
+        } catch (\Throwable $e) {
+            $start = now()->startOfWeek(Carbon::SATURDAY)->startOfDay();
+            $end   = now()->endOfWeek(Carbon::FRIDAY)->endOfDay();
+        }
+
+        // Limit to max 31 days for safety
+        if ($start->diffInDays($end) > 31) {
+            $end = $start->copy()->addDays(30)->endOfDay();
+        }
+
+        // ── Fetch active schedule assignment ─────────────────────────────────
+        $assignment = DB::table('employee_work_schedules')
+            ->where('employee_id', $employeeId)
+            ->where('is_active', true)
+            ->where('start_date', '<=', $start->toDateString())
+            ->where(function ($q) use ($end) {
+                $q->whereNull('end_date')
+                  ->orWhere('end_date', '>=', $end->toDateString());
+            })
+            ->orderByDesc('start_date')
+            ->first();
+
+        // ── Load schedule meta: work_days + periods ───────────────────────────
+        $scheduleName = null;
+        $workDaysArr  = [];   // e.g. ['saturday','sunday','monday',...]
+        $periods      = [];   // shared periods for all working days
+
+        if ($assignment) {
+            $schedule = DB::table('work_schedules')
+                ->where('id', $assignment->work_schedule_id)
+                ->first(['name', 'work_days']);
+
+            if ($schedule) {
+                $scheduleName = $schedule->name;
+
+                // Parse work_days JSON → normalize to lowercase strings
+                $raw = $schedule->work_days;
+                if (is_string($raw)) {
+                    $decoded = json_decode($raw, true);
+                    $workDaysArr = is_array($decoded) ? array_map('strtolower', $decoded) : [];
+                } elseif (is_array($raw)) {
+                    $workDaysArr = array_map('strtolower', $raw);
+                }
+            }
+
+            // Periods apply to EVERY working day (no day_of_week column)
+            $periodRows = DB::table('work_schedule_periods')
+                ->where('work_schedule_id', $assignment->work_schedule_id)
+                ->orderBy('sort_order')
+                ->get(['start_time', 'end_time', 'is_night_shift']);
+
+            foreach ($periodRows as $p) {
+                $periods[] = [
+                    'start_time'     => substr((string)$p->start_time, 0, 5),
+                    'end_time'       => substr((string)$p->end_time, 0, 5),
+                    'is_night_shift' => (bool)$p->is_night_shift,
+                ];
+            }
+        }
+
+        // ── Fetch approved leaves that overlap the range ──────────────────────
+        // Include from_time / to_time for partial-day detection
+        $leaveColumns = [
+            'attendance_leave_requests.start_date',
+            'attendance_leave_requests.end_date',
+            'attendance_leave_requests.duration_unit',
+            'leave_policies.name as leave_name',
+        ];
+        // Add time columns only if they exist
+        $lrCols = Schema::getColumnListing('attendance_leave_requests');
+        if (in_array('from_time', $lrCols)) $leaveColumns[] = 'attendance_leave_requests.from_time';
+        if (in_array('to_time',   $lrCols)) $leaveColumns[] = 'attendance_leave_requests.to_time';
+
+        $approvedLeaves = DB::table('attendance_leave_requests')
+            ->join('leave_policies', 'attendance_leave_requests.leave_policy_id', '=', 'leave_policies.id')
+            ->where('attendance_leave_requests.employee_id', $employeeId)
+            ->where('attendance_leave_requests.status', 'approved')
+            ->where('attendance_leave_requests.start_date', '<=', $end->toDateString())
+            ->where('attendance_leave_requests.end_date',   '>=', $start->toDateString())
+            ->get($leaveColumns);
+
+        // Build lookup: date_string => [ {leave_name, from_time, to_time, is_full_day}, ... ]
+        // A date can have multiple partial leaves
+        $leaveDays = []; // date => array of leave entries
+        foreach ($approvedLeaves as $leave) {
+            $lStart = Carbon::parse($leave->start_date);
+            $lEnd   = Carbon::parse($leave->end_date);
+
+            $fromTime = isset($leave->from_time) ? substr((string)$leave->from_time, 0, 5) : null;
+            $toTime   = isset($leave->to_time)   ? substr((string)$leave->to_time, 0, 5)   : null;
+            $unit     = $leave->duration_unit ?? 'full_day';
+
+            // It's a full-day leave if no specific times OR unit is full_day
+            $isFullDay = ($unit === 'full_day') || (empty($fromTime) && empty($toTime));
+
+            $c = $lStart->copy();
+            while ($c->lte($lEnd)) {
+                $dateKey = $c->toDateString();
+                $leaveDays[$dateKey][] = [
+                    'leave_name'  => $leave->leave_name ?? 'Leave',
+                    'from_time'   => $fromTime,
+                    'to_time'     => $toTime,
+                    'is_full_day' => $isFullDay,
+                ];
+                $c->addDay();
+            }
+        }
+
+        // Helper: convert "HH:MM" to minutes-since-midnight
+        $toMins = fn(string $t): int => (int)substr($t, 0, 2) * 60 + (int)substr($t, 3, 2);
+
+        // Day-name map (Carbon: 0=Sun, 1=Mon, ..., 6=Sat)
+        $dayNames = [0 => 'sunday', 1 => 'monday', 2 => 'tuesday',
+                     3 => 'wednesday', 4 => 'thursday', 5 => 'friday', 6 => 'saturday'];
+
+        // ── Build day-by-day response ─────────────────────────────────────────
+        $days = [];
+        $cur  = $start->copy();
+
+        while ($cur->lte($end)) {
+            $dateStr = $cur->toDateString();
+            $dayKey  = $dayNames[(int)$cur->dayOfWeek];
+            $dayLeaves = $leaveDays[$dateStr] ?? [];
+
+            // Check if ANY full-day leave covers this date
+            $fullDayLeave = collect($dayLeaves)->firstWhere('is_full_day', true);
+
+            if ($fullDayLeave) {
+                // Entire day is leave
+                $days[] = [
+                    'date'         => $dateStr,
+                    'day_key'      => $dayKey,
+                    'status'       => 'on_leave',
+                    'is_holiday'   => false,
+                    'holiday_name' => null,
+                    'is_workday'   => false,
+                    'leave_name'   => $fullDayLeave['leave_name'],
+                    'periods'      => [],
+                ];
+                $cur->addDay();
+                continue;
+            }
+
+            // Check if it's a working day per the schedule's work_days list
+            $isWorkday = !empty($workDaysArr) && in_array($dayKey, $workDaysArr, true);
+
+            if (!$isWorkday) {
+                // Off day
+                $days[] = [
+                    'date'         => $dateStr,
+                    'day_key'      => $dayKey,
+                    'status'       => 'off',
+                    'is_holiday'   => false,
+                    'holiday_name' => null,
+                    'is_workday'   => false,
+                    'leave_name'   => null,
+                    'periods'      => [],
+                ];
+                $cur->addDay();
+                continue;
+            }
+
+            // Working day — for each period, check if a partial leave overlaps it
+            $partialLeaves = array_filter($dayLeaves, fn($l) => !$l['is_full_day'] && $l['from_time'] && $l['to_time']);
+            $hasAnyLeave   = !empty($partialLeaves);
+
+            $builtPeriods = [];
+            foreach ($periods as $period) {
+                $pFrom = $toMins($period['start_time']);
+                $pTo   = $toMins($period['end_time']);
+                // Night shift: period crosses midnight
+                if ($pTo <= $pFrom) $pTo += 24 * 60;
+
+                // Check overlap with each partial leave
+                $leaveMatch = null;
+                foreach ($partialLeaves as $pl) {
+                    $lFrom = $toMins($pl['from_time']);
+                    $lTo   = $toMins($pl['to_time']);
+                    if ($lTo <= $lFrom) $lTo += 24 * 60;
+                    // Overlap: leave starts before period ends AND leave ends after period starts
+                    if ($lFrom < $pTo && $lTo > $pFrom) {
+                        $leaveMatch = $pl;
+                        break;
+                    }
+                }
+
+                $builtPeriods[] = [
+                    'start_time'     => $period['start_time'],
+                    'end_time'       => $period['end_time'],
+                    'is_night_shift' => $period['is_night_shift'],
+                    'is_leave'       => $leaveMatch !== null,
+                    'leave_name'     => $leaveMatch['leave_name'] ?? null,
+                ];
+            }
+
+            $days[] = [
+                'date'         => $dateStr,
+                'day_key'      => $dayKey,
+                'status'       => $hasAnyLeave ? 'partial_leave' : 'working',
+                'is_holiday'   => false,
+                'holiday_name' => null,
+                'is_workday'   => true,
+                'leave_name'   => $hasAnyLeave ? collect($partialLeaves)->first()['leave_name'] : null,
+                'periods'      => $builtPeriods,
+            ];
+
+            $cur->addDay();
+        }
+
+        return response()->json([
+            'ok' => true,
+            'data' => [
+                'schedule' => $assignment ? [
+                    'id'   => $assignment->work_schedule_id,
+                    'name' => $scheduleName,
+                ] : null,
+                'days' => $days,
+            ],
+        ]);
+    }
+
+
+    public function leaveRequests(Request $request)
     {
         $user = $request->user();
 
@@ -294,13 +605,18 @@ class EmployeeController extends Controller
             $key,
             'status',
             'reason',
+            'requested_days',
+            'reject_reason',
             'notes',
             'from_date', 'to_date',
             'start_date', 'end_date',
             'date',
-            'permission_date', // ✅ NEW
+            'permission_date',
             'from_time', 'to_time',
             'minutes',
+            'leave_policy_id',
+            'policy_year_id',
+            'requested_by',
             'created_at',
             'updated_at',
         ];
@@ -309,24 +625,127 @@ class EmployeeController extends Controller
         $select = array_values(array_intersect($wanted, $cols));
         if (!in_array('id', $select, true)) $select[] = 'id';
 
-        $q = DB::table($table)
-            ->where($key, $value)
-            ->orderByDesc('id');
+        // Prepare query with qualified names to avoid ambiguity
+        $q = DB::table($table)->where($table . '.' . $key, $value);
+
+        // Add Joins for Leaves
+        if ($table === 'attendance_leave_requests') {
+            $q->leftJoin('leave_policies', 'attendance_leave_requests.leave_policy_id', '=', 'leave_policies.id')
+              ->leftJoin('users', 'attendance_leave_requests.requested_by', '=', 'users.id')
+              ->leftJoin('employees', 'users.employee_id', '=', 'employees.id');
+            
+            // Add related names to selection
+            $select = array_map(fn($c) => $table . '.' . $c . ' as ' . $c, $select);
+            $select[] = 'leave_policies.name as leave_type_name';
+            $select[] = 'leave_policies.leave_type as leave_type';  // ✅ ADDED THIS
+            $select[] = 'employees.name_ar as creator_name_ar';
+            $select[] = 'employees.name_en as creator_name_en';
+        }
+
+        $q->orderByDesc($table . '.id');
 
         // Filters اختيارية
         if (in_array('status', $cols, true) && $request->filled('status')) {
-            $q->where('status', (string) $request->query('status'));
+            $q->where($table . '.status', (string) $request->query('status'));
         }
 
         $total = (clone $q)->count();
+
+        // If select is empty (shouldn't happen with id), fallback to all columns
+        if (empty($select)) $select = ['*'];
 
         $items = $q->forPage($page, $perPage)
             ->get($select)
             ->values();
 
+        // ✅ Transform to match Mobile App Model
+        $locale = $request->header('Accept-Language') ?: $request->input('locale') ?: 'ar';
+        if (str_contains($locale, 'ar')) $locale = 'ar';
+        else $locale = 'en';
+
+        $transformed = $items->map(function($item) use ($table, $key, $value, $locale) {
+            $arr = (array)$item;
+            
+            // Map common fields to what Flutter expects
+            $arr['leave_type']   = $arr['leave_type_name'] ?? ($table === 'attendance_permission_requests' ? 'Permission' : '');
+            
+            // Build creator name based on locale
+            $nameAr = $arr['creator_name_ar'] ?? '';
+            $nameEn = $arr['creator_name_en'] ?? '';
+            if ($locale === 'ar') {
+                $arr['creator'] = !empty($nameAr) ? $nameAr : $nameEn;
+            } else {
+                $arr['creator'] = !empty($nameEn) ? $nameEn : $nameAr;
+            }
+
+            $arr['request_date'] = isset($arr['created_at']) ? substr((string)$arr['created_at'], 0, 10) : '';
+            
+            // Format requested_days to remove .0 if it's integer
+            if (isset($arr['requested_days'])) {
+                $arr['requested_days'] = (float)$arr['requested_days'] == (int)$arr['requested_days'] 
+                    ? (int)$arr['requested_days'] 
+                    : (float)$arr['requested_days'];
+            }
+
+            // Dates mapping
+            if (isset($arr['start_date'])) $arr['from_date'] = $arr['start_date'];
+            if (isset($arr['end_date']))   $arr['to_date']   = $arr['end_date'];
+            
+            if (isset($arr['permission_date'])) {
+                $arr['from_date'] = $arr['permission_date'];
+                $arr['to_date']   = $arr['permission_date'];
+            }
+
+            // Balance Calculation
+            $balanceStr = '';
+            if ($table === 'attendance_leave_requests' && !empty($arr['leave_policy_id'])) {
+                $employeeId = $value;
+                $policyId   = $arr['leave_policy_id'];
+                $yearId     = $arr['policy_year_id'] ?? 0;
+
+                $balanceRow = DB::table('attendance_leave_balances')
+                    ->where('employee_id', $employeeId)
+                    ->where('leave_policy_id', $policyId)
+                    ->where('policy_year_id', $yearId)
+                    ->first();
+                
+                if ($balanceRow) {
+                    $total = (float)($balanceRow->entitled_days ?? 0);
+                    $rem   = (float)($balanceRow->remaining_days ?? 0);
+                    
+                    $totalStr = ($total == (int)$total) ? (int)$total : $total;
+                    $remStr   = ($rem == (int)$rem) ? (int)$rem : $rem;
+                    
+                    $balanceStr = $totalStr . ' / ' . $remStr;
+                } else {
+                    // Fallback Calculation
+                    $policy = DB::table('leave_policies')->where('id', $policyId)->first();
+                    if ($policy) {
+                        $total = (float)($policy->days_per_year ?? 0);
+                        $taken = DB::table('attendance_leave_requests')
+                            ->where('employee_id', $employeeId)
+                            ->where('leave_policy_id', $policyId)
+                            ->where('policy_year_id', $yearId)
+                            ->where('status', 'approved')
+                            ->sum('requested_days');
+                        
+                        $rem = max($total - (float)$taken, 0);
+
+                        $totalStr = ($total == (int)$total) ? (int)$total : $total;
+                        $remStr   = ($rem == (int)$rem) ? (int)$rem : $rem;
+
+                        $balanceStr = $totalStr . ' / ' . $remStr;
+                    }
+                }
+            }
+            $arr['balance'] = $balanceStr;
+
+            return $arr;
+        });
+
         return response()->json([
             'ok'   => true,
-            'data' => $items,
+            'data' => $transformed,
             'meta' => [
                 'page'      => $page,
                 'per_page'  => $perPage,
@@ -337,67 +756,187 @@ class EmployeeController extends Controller
         ]);
     }
     public function createLeaveRequest(Request $request)
-{
-    $user = $request->user();
+    {
+        $user = $request->user();
 
-    if ($resp = $this->denyIfNotMobileEmployee($user)) {
-        return $resp;
-    }
+        if ($resp = $this->denyIfNotMobileEmployee($user)) {
+            return $resp;
+        }
 
-    $table = 'attendance_leave_requests';
+        $table = 'attendance_leave_requests';
 
-    if (!Schema::hasTable($table)) {
+        if (!Schema::hasTable($table)) {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'table_missing',
+                'message' => "Table [$table] not found.",
+            ], 500);
+        }
+
+        $validated = $request->validate([
+            'start_date' => ['required', 'date'],
+            'end_date'   => ['required', 'date', 'after_or_equal:start_date'],
+            'reason'     => ['nullable', 'string', 'max:2000'],
+            'from_time'  => ['nullable', 'date_format:H:i'],
+            'to_time'    => ['nullable', 'date_format:H:i'],
+            'leave_policy_id' => ['nullable', 'integer'],
+        ]);
+
+        // لو واحد موجود والثاني لا
+        if ($request->filled('from_time') xor $request->filled('to_time')) {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'invalid_time_range',
+                'message' => 'from_time and to_time must be provided together.',
+            ], 422);
+        }
+
+        $cols = Schema::getColumnListing($table);
+
+        // تحديد عمود الربط (employee_id أو user_id)
+        $key = in_array('employee_id', $cols, true) ? 'employee_id' : (in_array('user_id', $cols, true) ? 'user_id' : null);
+        if (!$key) {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'missing_relation_key',
+                'message' => "Table [$table] missing employee_id/user_id column.",
+            ], 500);
+        }
+
+        $value = ($key === 'employee_id') ? ($user->employee_id ?? null) : ($user->id ?? null);
+        if (!$value) {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'missing_employee_id',
+                'message' => 'Employee ID is missing for this account.',
+            ], 403);
+        }
+
+        // حساب الدقائق لو وقت موجود
+        $minutes = null;
+        if ($request->filled('from_time') && $request->filled('to_time')) {
+            $from = Carbon::createFromFormat('H:i', $request->input('from_time'));
+            $to   = Carbon::createFromFormat('H:i', $request->input('to_time'));
+            $minutes = $from->diffInMinutes($to, false);
+            if ($minutes <= 0) {
+                return response()->json([
+                    'ok'      => false,
+                    'error'   => 'invalid_time_range',
+                    'message' => 'to_time must be after from_time.',
+                ], 422);
+            }
+        }
+
+        $now = now();
+
+        $data = [];
+        $data[$key] = $value;
+
+        $leavePolicyId = $validated['leave_policy_id'] ?? null;
+        $companyId = (int) ($user->saas_company_id ?? 0);
+
+        // Fetch policy details if ID is provided
+        if ($leavePolicyId) {
+            $policy = DB::table('leave_policies')
+                ->where('id', $leavePolicyId)
+                ->where('company_id', $companyId)
+                ->first();
+            
+            if ($policy) {
+                if (in_array('leave_policy_id', $cols, true)) {
+                    $data['leave_policy_id'] = $policy->id;
+                }
+                if (in_array('policy_year_id', $cols, true)) {
+                    $data['policy_year_id'] = $policy->policy_year_id;
+                }
+            }
+        }
+
+        // ✅ NEW: company_id required in some installs
+        if (in_array('company_id', $cols, true)) {
+            if ($companyId <= 0) {
+                return response()->json([
+                    'ok'      => false,
+                    'error'   => 'missing_company_id',
+                    'message' => 'Company ID is missing for this account.',
+                ], 403);
+            }
+            $data['company_id'] = $companyId;
+        }
+
+        // (احتياطي) لو عندك جدول يستخدم saas_company_id بدل company_id
+        if (in_array('saas_company_id', $cols, true) && empty($data['saas_company_id'])) {
+            $data['saas_company_id'] = (int) ($user->saas_company_id ?? null);
+        }
+
+        if (in_array('status', $cols, true))     $data['status'] = 'pending';
+
+        if (in_array('reason', $cols, true))     $data['reason'] = $validated['reason'] ?? '';
+        if (in_array('start_date', $cols, true)) $data['start_date'] = $validated['start_date'];
+        if (in_array('end_date', $cols, true))   $data['end_date'] = $validated['end_date'];
+
+        if ($request->filled('from_time') && in_array('from_time', $cols, true)) $data['from_time'] = $validated['from_time'];
+        if ($request->filled('to_time') && in_array('to_time', $cols, true))     $data['to_time'] = $validated['to_time'];
+        if (!is_null($minutes) && in_array('minutes', $cols, true))              $data['minutes'] = $minutes;
+
+        // ✅ Calculate requested_days
+        if (in_array('requested_days', $cols, true)) {
+            $start = Carbon::parse($validated['start_date']);
+            $end = Carbon::parse($validated['end_date']);
+            $data['requested_days'] = $this->computeRequestedDaysGeneric($companyId, $leavePolicyId, $start, $end);
+        }
+
+        if (in_array('source', $cols, true)) $data['source'] = 'app';
+        if (in_array('requested_by', $cols, true)) $data['requested_by'] = $user->id;
+        if (in_array('requested_at', $cols, true)) $data['requested_at'] = $now;
+
+        if (in_array('created_at', $cols, true)) $data['created_at'] = $now;
+        if (in_array('updated_at', $cols, true)) $data['updated_at'] = $now;
+
+        $id = DB::table($table)->insertGetId($data);
+
+        $row = DB::table($table)->where('id', $id)->first();
+
         return response()->json([
-            'ok'      => false,
-            'error'   => 'table_missing',
-            'message' => "Table [$table] not found.",
-        ], 500);
+            'ok'   => true,
+            'data' => $row,
+        ], 201);
     }
 
-    $validated = $request->validate([
-        'start_date' => ['required', 'date'],
-        'end_date'   => ['required', 'date', 'after_or_equal:start_date'],
-        'reason'     => ['nullable', 'string', 'max:2000'],
-        'from_time'  => ['nullable', 'date_format:H:i'],
-        'to_time'    => ['nullable', 'date_format:H:i'],
-    ]);
+    public function createPermissionRequest(Request $request)
+    {
+        $user = $request->user();
 
-    // لو واحد موجود والثاني لا
-    if ($request->filled('from_time') xor $request->filled('to_time')) {
-        return response()->json([
-            'ok'      => false,
-            'error'   => 'invalid_time_range',
-            'message' => 'from_time and to_time must be provided together.',
-        ], 422);
-    }
+        if ($resp = $this->denyIfNotMobileEmployee($user)) {
+            return $resp;
+        }
 
-    $cols = Schema::getColumnListing($table);
+        $table = 'attendance_permission_requests';
 
-    // تحديد عمود الربط (employee_id أو user_id)
-    $key = in_array('employee_id', $cols, true) ? 'employee_id' : (in_array('user_id', $cols, true) ? 'user_id' : null);
-    if (!$key) {
-        return response()->json([
-            'ok'      => false,
-            'error'   => 'missing_relation_key',
-            'message' => "Table [$table] missing employee_id/user_id column.",
-        ], 500);
-    }
+        if (!Schema::hasTable($table)) {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'table_missing',
+                'message' => "Table [$table] not found.",
+            ], 500);
+        }
 
-    $value = ($key === 'employee_id') ? ($user->employee_id ?? null) : ($user->id ?? null);
-    if (!$value) {
-        return response()->json([
-            'ok'      => false,
-            'error'   => 'missing_employee_id',
-            'message' => 'Employee ID is missing for this account.',
-        ], 403);
-    }
+        $validated = $request->validate([
+            'permission_date' => ['nullable', 'date', 'required_without:date'],
+            'date'            => ['nullable', 'date', 'required_without:permission_date'],
 
-    // حساب الدقائق لو وقت موجود
-    $minutes = null;
-    if ($request->filled('from_time') && $request->filled('to_time')) {
-        $from = Carbon::createFromFormat('H:i', $request->input('from_time'));
-        $to   = Carbon::createFromFormat('H:i', $request->input('to_time'));
+            'reason'    => ['nullable', 'string', 'max:2000'],
+            'from_time' => ['required', 'date_format:H:i'],
+            'to_time'   => ['required', 'date_format:H:i'],
+        ]);
+
+
+        $dateVal = (string) ($validated['permission_date'] ?? $validated['date'] ?? '');
+
+        $from = Carbon::createFromFormat('H:i', $validated['from_time']);
+        $to   = Carbon::createFromFormat('H:i', $validated['to_time']);
         $minutes = $from->diffInMinutes($to, false);
+
         if ($minutes <= 0) {
             return response()->json([
                 'ok'      => false,
@@ -405,167 +944,147 @@ class EmployeeController extends Controller
                 'message' => 'to_time must be after from_time.',
             ], 422);
         }
-    }
 
-    $now = now();
+        $cols = Schema::getColumnListing($table);
 
-    $data = [];
-    $data[$key] = $value;
-
-    // ✅ NEW: company_id required in some installs
-    if (in_array('company_id', $cols, true)) {
-        $companyId = (int) ($user->saas_company_id ?? 0);
-        if ($companyId <= 0) {
+        $key = in_array('employee_id', $cols, true) ? 'employee_id' : (in_array('user_id', $cols, true) ? 'user_id' : null);
+        if (!$key) {
             return response()->json([
                 'ok'      => false,
-                'error'   => 'missing_company_id',
-                'message' => 'Company ID is missing for this account.',
-            ], 403);
+                'error'   => 'missing_relation_key',
+                'message' => "Table [$table] missing employee_id/user_id column.",
+            ], 500);
         }
-        $data['company_id'] = $companyId;
-    }
 
-    // (احتياطي) لو عندك جدول يستخدم saas_company_id بدل company_id
-    if (in_array('saas_company_id', $cols, true) && empty($data['saas_company_id'])) {
-        $data['saas_company_id'] = (int) ($user->saas_company_id ?? null);
-    }
-
-    if (in_array('status', $cols, true))     $data['status'] = 'pending';
-
-    if (in_array('reason', $cols, true))     $data['reason'] = $validated['reason'] ?? '';
-    if (in_array('start_date', $cols, true)) $data['start_date'] = $validated['start_date'];
-    if (in_array('end_date', $cols, true))   $data['end_date'] = $validated['end_date'];
-
-    if ($request->filled('from_time') && in_array('from_time', $cols, true)) $data['from_time'] = $validated['from_time'];
-    if ($request->filled('to_time') && in_array('to_time', $cols, true))     $data['to_time'] = $validated['to_time'];
-    if (!is_null($minutes) && in_array('minutes', $cols, true))              $data['minutes'] = $minutes;
-
-    if (in_array('created_at', $cols, true)) $data['created_at'] = $now;
-    if (in_array('updated_at', $cols, true)) $data['updated_at'] = $now;
-
-    $id = DB::table($table)->insertGetId($data);
-
-    $row = DB::table($table)->where('id', $id)->first();
-
-    return response()->json([
-        'ok'   => true,
-        'data' => $row,
-    ], 201);
-}
-
-public function createPermissionRequest(Request $request)
-{
-    $user = $request->user();
-
-    if ($resp = $this->denyIfNotMobileEmployee($user)) {
-        return $resp;
-    }
-
-    $table = 'attendance_permission_requests';
-
-    if (!Schema::hasTable($table)) {
-        return response()->json([
-            'ok'      => false,
-            'error'   => 'table_missing',
-            'message' => "Table [$table] not found.",
-        ], 500);
-    }
-
-    $validated = $request->validate([
-        'permission_date' => ['nullable', 'date', 'required_without:date'],
-        'date'            => ['nullable', 'date', 'required_without:permission_date'],
-
-        'reason'    => ['nullable', 'string', 'max:2000'],
-        'from_time' => ['required', 'date_format:H:i'],
-        'to_time'   => ['required', 'date_format:H:i'],
-    ]);
-
-
-    $dateVal = (string) ($validated['permission_date'] ?? $validated['date'] ?? '');
-
-    $from = Carbon::createFromFormat('H:i', $validated['from_time']);
-    $to   = Carbon::createFromFormat('H:i', $validated['to_time']);
-    $minutes = $from->diffInMinutes($to, false);
-
-    if ($minutes <= 0) {
-        return response()->json([
-            'ok'      => false,
-            'error'   => 'invalid_time_range',
-            'message' => 'to_time must be after from_time.',
-        ], 422);
-    }
-
-    $cols = Schema::getColumnListing($table);
-
-    $key = in_array('employee_id', $cols, true) ? 'employee_id' : (in_array('user_id', $cols, true) ? 'user_id' : null);
-    if (!$key) {
-        return response()->json([
-            'ok'      => false,
-            'error'   => 'missing_relation_key',
-            'message' => "Table [$table] missing employee_id/user_id column.",
-        ], 500);
-    }
-
-    $value = ($key === 'employee_id') ? ($user->employee_id ?? null) : ($user->id ?? null);
-    if (!$value) {
-        return response()->json([
-            'ok'      => false,
-            'error'   => 'missing_employee_id',
-            'message' => 'Employee ID is missing for this account.',
-        ], 403);
-    }
-
-    $now = now();
-
-    $data = [];
-    $data[$key] = $value;
-
-    // ✅ NEW: company_id required in some installs
-    if (in_array('company_id', $cols, true)) {
-        $companyId = (int) ($user->saas_company_id ?? 0);
-        if ($companyId <= 0) {
+        $value = ($key === 'employee_id') ? ($user->employee_id ?? null) : ($user->id ?? null);
+        if (!$value) {
             return response()->json([
                 'ok'      => false,
-                'error'   => 'missing_company_id',
-                'message' => 'Company ID is missing for this account.',
+                'error'   => 'missing_employee_id',
+                'message' => 'Employee ID is missing for this account.',
             ], 403);
         }
-        $data['company_id'] = $companyId;
+
+        $now = now();
+
+        $data = [];
+        $data[$key] = $value;
+
+        // ✅ NEW: company_id required in some installs
+        if (in_array('company_id', $cols, true)) {
+            $companyId = (int) ($user->saas_company_id ?? 0);
+            if ($companyId <= 0) {
+                return response()->json([
+                    'ok'      => false,
+                    'error'   => 'missing_company_id',
+                    'message' => 'Company ID is missing for this account.',
+                ], 403);
+            }
+            $data['company_id'] = $companyId;
+        }
+
+        // (احتياطي) لو عندك جدول يستخدم saas_company_id بدل company_id
+        if (in_array('saas_company_id', $cols, true) && empty($data['saas_company_id'])) {
+            $data['saas_company_id'] = (int) ($user->saas_company_id ?? null);
+        }
+
+        if (in_array('status', $cols, true))   $data['status'] = 'pending';
+
+        if (in_array('reason', $cols, true))   $data['reason'] = $validated['reason'] ?? '';
+
+        // ✅ أهم تعديل: الجدول عندك غالباً يستخدم permission_date
+        if (in_array('permission_date', $cols, true)) {
+            $data['permission_date'] = $dateVal;
+        } elseif (in_array('date', $cols, true)) {
+            $data['date'] = $dateVal;
+        }
+
+        if (in_array('from_time', $cols, true)) $data['from_time'] = $validated['from_time'];
+        if (in_array('to_time', $cols, true))   $data['to_time'] = $validated['to_time'];
+        if (in_array('minutes', $cols, true))   $data['minutes'] = $minutes;
+
+
+        if (in_array('created_at', $cols, true)) $data['created_at'] = $now;
+        if (in_array('updated_at', $cols, true)) $data['updated_at'] = $now;
+
+        $id = DB::table($table)->insertGetId($data);
+
+        $row = DB::table($table)->where('id', $id)->first();
+
+        return response()->json([
+            'ok'   => true,
+            'data' => $row,
+        ], 201);
     }
 
-    // (احتياطي) لو عندك جدول يستخدم saas_company_id بدل company_id
-    if (in_array('saas_company_id', $cols, true) && empty($data['saas_company_id'])) {
-        $data['saas_company_id'] = (int) ($user->saas_company_id ?? null);
+    protected function computeRequestedDaysGeneric($companyId, $leavePolicyId, Carbon $start, Carbon $end): float
+    {
+        $policy = $leavePolicyId ? DB::table('leave_policies')->where('id', $leavePolicyId)->first() : null;
+        $settings = $policy ? (is_string($policy->settings) ? json_decode($policy->settings, true) : $policy->settings) : [];
+        $weekendPolicy = (string) ($settings['weekend_policy'] ?? 'exclude');
+        
+        $workingDays = $this->getCompanyWorkingDays($companyId);
+        
+        $holidays = DB::table('official_holiday_occurrences')
+            ->where('company_id', $companyId)
+            ->where(function($q) use ($start, $end) {
+                $q->whereBetween('start_date', [$start->toDateString(), $end->toDateString()])
+                    ->orWhereBetween('end_date', [$start->toDateString(), $end->toDateString()]);
+            })
+            ->get();
+
+        // Check if it's a partial day (same day with times)
+        $request = request();
+        if ($start->isSameDay($end) && $request->filled('from_time') && $request->filled('to_time')) {
+            $from = Carbon::createFromFormat('H:i', $request->input('from_time'));
+            $to   = Carbon::createFromFormat('H:i', $request->input('to_time'));
+            $diffMins = $from->diffInMinutes($to);
+            // We assume a standard work day is 8 hours (480 mins) for the fraction
+            // You can adjust this based on policy if needed
+            return round($diffMins / 480, 2);
+        }
+
+        $days = 0.0;
+        $cursor = $start->copy()->startOfDay();
+        $endDay = $end->copy()->startOfDay();
+
+        while ($cursor->lte($endDay)) {
+            $isHoliday = $holidays->contains(fn($h) => $cursor->between($h->start_date, $h->end_date));
+            if ($isHoliday) {
+                $cursor->addDay();
+                continue;
+            }
+
+            if ($weekendPolicy === 'include' || in_array((int)$cursor->dayOfWeek, $workingDays, true)) {
+                $days += 1.0;
+            }
+            $cursor->addDay();
+        }
+
+        return $days;
     }
 
-    if (in_array('status', $cols, true))   $data['status'] = 'pending';
+    protected function getCompanyWorkingDays($companyId): array
+    {
+        $row = DB::table('operational_calendars')
+            ->where('company_id', $companyId)
+            ->first();
 
-    if (in_array('reason', $cols, true))   $data['reason'] = $validated['reason'] ?? '';
+        $days = $row ? (is_string($row->working_days) ? json_decode($row->working_days, true) : $row->working_days) : null;
+        
+        if ($days && is_array($days)) {
+             $out = [];
+             $map = ['sunday' => 0, 'monday' => 1, 'tuesday' => 2, 'wednesday' => 3, 'thursday' => 4, 'friday' => 5, 'saturday' => 6];
+             foreach($days as $d) {
+                 if (is_numeric($d)) $out[] = (int)$d;
+                 else {
+                     $k = strtolower(trim((string)$d));
+                     if (isset($map[$k])) $out[] = $map[$k];
+                 }
+             }
+             if (!empty($out)) return array_values(array_unique($out));
+        }
 
-    // ✅ أهم تعديل: الجدول عندك غالباً يستخدم permission_date
-    if (in_array('permission_date', $cols, true)) {
-        $data['permission_date'] = $dateVal;
-    } elseif (in_array('date', $cols, true)) {
-        $data['date'] = $dateVal;
+        return [6, 0, 1, 2, 3]; // Default fallback
     }
-
-    if (in_array('from_time', $cols, true)) $data['from_time'] = $validated['from_time'];
-    if (in_array('to_time', $cols, true))   $data['to_time'] = $validated['to_time'];
-    if (in_array('minutes', $cols, true))   $data['minutes'] = $minutes;
-
-
-    if (in_array('created_at', $cols, true)) $data['created_at'] = $now;
-    if (in_array('updated_at', $cols, true)) $data['updated_at'] = $now;
-
-    $id = DB::table($table)->insertGetId($data);
-
-    $row = DB::table($table)->where('id', $id)->first();
-
-    return response()->json([
-        'ok'   => true,
-        'data' => $row,
-    ], 201);
-}
-
-
 }
