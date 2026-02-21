@@ -5,6 +5,7 @@ namespace Athka\Employees\Livewire\Employees;
 use Livewire\Component;
 use Livewire\WithPagination;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema;
 
 use Athka\Employees\Models\Employee;
 
@@ -360,6 +361,21 @@ class Index extends Component
         return (int) (Auth::user()?->saas_company_id ?? 0);
     }
 
+    private function getBranchId(): ?int
+    {
+        $user = Auth::user();
+
+        if (! $user) {
+            return null;
+        }
+
+        if (($user->access_scope ?? 'all') === 'branch') {
+            return $user->branch_id ?? null;
+        }
+
+        return null;
+    }
+
     private function departmentModelClass(): string
     {
         return class_exists(\Athka\SystemSettings\Models\Department::class)
@@ -388,6 +404,7 @@ class Index extends Component
     public function render()
     {
         $companyId = $this->getCompanyId();
+        $branchId = $this->getBranchId();
 
         $Department = $this->departmentModelClass();
         $JobTitle   = $this->jobTitleModelClass();
@@ -412,6 +429,7 @@ class Index extends Component
         // Query الموظفين
         $employees = Employee::query()
             ->forCompany($companyId)
+            ->forBranch($branchId)
             ->when($this->search, function ($q) {
                 $s = trim($this->search);
 
@@ -438,11 +456,13 @@ class Index extends Component
             ->with(['department', 'jobTitle', 'documents'])
             ->orderByDesc('id')
             ->paginate($this->perPage);
+            $branchesMap = $this->loadBranchesMap($employees, $companyId);
 
-            return view('employees::livewire.employees.index', [
-                'employees'         => $employees,
-                'departmentsOptions'=> $departmentsOptions,
-                'jobTitlesOptions'  => $jobTitlesOptions,
+        return view('employees::livewire.employees.index', [
+                'employees'          => $employees,
+                'departmentsOptions' => $departmentsOptions,
+                'jobTitlesOptions'   => $jobTitlesOptions,
+                'branchesMap'        => $branchesMap,
             ])->layout('layouts.company-admin');
             
     }
@@ -873,6 +893,81 @@ class Index extends Component
             $this->closeImportModal();
         }
     }
+
+    private function branchModelClass(): ?string
+{
+    $candidates = [
+        \App\Models\Branch::class,
+        \Athka\SystemSettings\Models\Branch::class,
+        \Athka\Saas\Models\Branch::class,
+    ];
+
+    foreach ($candidates as $class) {
+        if (class_exists($class)) {
+            return $class;
+        }
+    }
+
+    return null;
+}
+
+private function loadBranchesMap($employees, int $companyId): array
+{
+    $Branch = $this->branchModelClass();
+
+    if (! $Branch) {
+        return [];
+    }
+
+    $collection = method_exists($employees, 'getCollection')
+        ? $employees->getCollection()
+        : collect($employees);
+
+    $branchIds = $collection->pluck('branch_id')->filter()->unique()->values();
+
+    if ($branchIds->isEmpty()) {
+        return [];
+    }
+
+    $query = $Branch::query()->whereIn('id', $branchIds->all());
+
+    // ✅ لو جدول الفروع فيه company_id أو saas_company_id نفلتر حسب الشركة (اختياري وآمن)
+    try {
+        $table = (new $Branch)->getTable();
+
+        if (Schema::hasColumn($table, 'saas_company_id')) {
+            $query->where('saas_company_id', $companyId);
+        } elseif (Schema::hasColumn($table, 'company_id')) {
+            $query->where('company_id', $companyId);
+        }
+
+        // ✅ نختار أعمدة موجودة فقط
+        $cols = ['id'];
+
+        foreach (['name', 'name_ar', 'name_en', 'code'] as $c) {
+            if (Schema::hasColumn($table, $c)) {
+                $cols[] = $c;
+            }
+        }
+
+        $branches = $query->get($cols);
+    } catch (\Throwable $e) {
+        // fallback: خذ كل الأعمدة إذا فشل فحص الأعمدة
+        $branches = $query->get();
+    }
+
+    return $branches->mapWithKeys(function ($b) {
+        return [
+            (int) $b->id => [
+                'name'    => $b->name    ?? null,
+                'name_ar' => $b->name_ar ?? null,
+                'name_en' => $b->name_en ?? null,
+                'code'    => $b->code    ?? null,
+            ],
+        ];
+    })->toArray();
+}
+
 }
 
 

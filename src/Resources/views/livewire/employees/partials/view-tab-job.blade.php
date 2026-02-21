@@ -3,12 +3,45 @@
 <div class="space-y-6">
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         {{-- Employee No --}}
+         {{-- Employee No --}}
         <div>
             <label class="block text-sm font-semibold text-gray-700 mb-2">
                 {{ tr('Employee No') }}
             </label>
             <div class="px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 text-gray-900">
                 {{ $employee->employee_no ?: '—' }}
+            </div>
+        </div>
+
+        {{-- Branch --}}
+        <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-2">
+                {{ tr('Branch') }}
+            </label>
+            <div class="px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 text-gray-900">
+                @php
+                    $branchText = '—';
+
+                    // 1) لو relation branch محمّلة استخدمها (بدون lazy load)
+                    if (method_exists($employee, 'relationLoaded') && $employee->relationLoaded('branch') && $employee->branch) {
+                        $branchText = $employee->branch->name_ar ?? $employee->branch->name ?? $employee->branch->name_en ?? '—';
+                    } else {
+                        // 2) fallback: جيب الاسم بالاستعلام (safe حتى لو lazy loading disabled)
+                        try {
+                            if (!empty($employee->branch_id)) {
+                                $b = \App\Models\Branch::query()->find((int) $employee->branch_id);
+                                if ($b) {
+                                    $isAr = substr((string) app()->getLocale(), 0, 2) === 'ar';
+                                    $branchText = $isAr
+                                        ? ($b->name_ar ?? $b->name ?? $b->name_en ?? '—')
+                                        : ($b->name_en ?? $b->name ?? $b->name_ar ?? '—');
+                                }
+                            }
+                        } catch (\Throwable $e) {}
+                    }
+                @endphp
+
+                {{ $branchText }}
             </div>
         </div>
 
@@ -21,6 +54,7 @@
                 {{ $employee->department?->name ?: '—' }}
             </div>
         </div>
+
 
         {{-- Sub Department --}}
         <div>

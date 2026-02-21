@@ -14,6 +14,9 @@ return new class extends Migration
             // الشركة (Multi-tenant)
             $table->unsignedBigInteger('saas_company_id')->index();
 
+            // الفرع (اختياري)
+            $table->unsignedBigInteger('branch_id')->nullable()->index();
+
             // رقم الموظف
             $table->string('employee_no', 50);
 
@@ -111,6 +114,12 @@ return new class extends Migration
                 $table->foreign('saas_company_id')
                     ->references('id')->on('companies')
                     ->cascadeOnDelete();
+            }
+
+            if (Schema::hasTable('branches')) {
+                $table->foreign('branch_id')
+                    ->references('id')->on('branches')
+                    ->nullOnDelete();
             }
         });
     }

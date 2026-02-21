@@ -10,12 +10,16 @@ use Athka\SystemSettings\Models\Department;
 use Athka\SystemSettings\Models\JobTitle;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
+use Athka\Saas\Models\Branch;
 
 class Create extends Component
 {
     use WithFileUploads;
 
     public ?int $companyId = null;
+    public ?int $branch_id = null;
+
+    public array $branchOptions = [];
 
     public int $tab = 1;
 
@@ -81,6 +85,9 @@ class Create extends Component
     public function mount(): void
     {
         $this->companyId = auth()->user()->saas_company_id;
+        $this->branch_id = auth()->user()->branch_id ?? null;
+
+        $this->loadBranches();
 
         // تعيين تاريخ اليوم لحقل التوظيف
         if (empty($this->hired_at)) {
@@ -124,6 +131,34 @@ class Create extends Component
         $this->updateLeaveBalancePreview();
     }
 
+    private function loadBranches(): void
+    {
+        if (! $this->companyId) {
+            $this->branchOptions = [];
+
+            return;
+        }
+
+        $this->branchOptions = Branch::query()
+            ->where('saas_company_id', $this->companyId)
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'code'])
+            ->map(function (Branch $branch): array {
+                $label = $branch->name;
+
+                if ($branch->code) {
+                    $label .= ' (' . $branch->code . ')';
+                }
+
+                return [
+                    'value' => $branch->id,
+                    'label' => $label,
+                ];
+            })
+            ->toArray();
+    }
+
     public function addLeaveDay()
     {
         $this->leave_balance_adjustments++;
@@ -139,13 +174,14 @@ class Create extends Component
     private function updateLeaveBalancePreview()
     {
         // إنشاء نموذج مؤقت للحساب مع تنظيف البيانات الرقمية
-        $tempEmployee = new Employee([
-            'saas_company_id' => $this->companyId,
-            'hired_at' => $this->hired_at,
-            'is_transferred_employee' => (bool)$this->is_transferred_employee,
-            'opening_leave_balance' => is_numeric($this->opening_leave_balance) ? $this->opening_leave_balance : 0,
-            'leave_balance_adjustments' => is_numeric($this->leave_balance_adjustments) ? (int)$this->leave_balance_adjustments : 0,
-        ]);
+            $tempEmployee = new Employee([
+                'saas_company_id' => $this->companyId,
+                'branch_id' => $this->branch_id,
+                'hired_at' => $this->hired_at,
+                'is_transferred_employee' => (bool) $this->is_transferred_employee,
+                'opening_leave_balance' => is_numeric($this->opening_leave_balance) ? $this->opening_leave_balance : 0,
+                'leave_balance_adjustments' => is_numeric($this->leave_balance_adjustments) ? (int) $this->leave_balance_adjustments : 0,
+            ]);
         
         $this->calculated_leave_balance = $tempEmployee->calculateLeaveBalance();
     }
@@ -155,6 +191,7 @@ class Create extends Component
         $tempEmployee = new Employee([
             'basic_salary' => is_numeric($this->basic_salary) ? $this->basic_salary : null,
             'saas_company_id' => $this->companyId,
+            'branch_id' => $this->branch_id,
         ]);
         $wages = $tempEmployee->calculateWages();
         if ($wages) {
@@ -429,8 +466,9 @@ class Create extends Component
             // Prepare correct mapping for DB
             $jobTitle = JobTitle::find($this->job_title_id);
  
-            $data = [
+                $data = [
                 'saas_company_id' => $this->companyId,
+                'branch_id' => $this->branch_id,
                 'name_ar' => $this->name_ar,
                 'name_en' => $this->name_en,
                 'national_id' => $this->national_id,
@@ -639,6 +677,12 @@ class Create extends Component
         return view('employees::livewire.employees.create')
             ->layout('layouts.company-admin');
     }
+
+    public function getBranchesProperty(): array
+    {
+        return $this->branchOptions;
+    }
+
 
 }
 

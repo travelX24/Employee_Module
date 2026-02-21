@@ -234,16 +234,18 @@
                 {{-- List View --}}
                 <x-ui.card>
                     <x-ui.table
-                        :headers="[
-                            tr('Employee No'),
-                            tr('Name'),
-                            tr('Department'),
-                            tr('Job Title'),
-                            tr('Mobile'),
-                            tr('Email'),
-                            tr('Status'),
-                            tr('Actions'),
-                        ]"
+                       :headers="[
+                                tr('Employee No'),
+                                tr('Name'),
+                                tr('Department'),
+                                tr('Branch'),
+                                tr('Job Title'),
+                                tr('Mobile'),
+                                tr('Email'),
+                                tr('Status'),
+                                tr('Actions'),
+                            ]"
+
                         :rtl="$isRtl"
                         :perPage="10"
                     >
@@ -288,10 +290,30 @@
                                     @endif
                                 </td>
 
-                                <td class="py-3 px-3">
+                             <td class="py-3 px-3">
                                     <span class="text-sm text-gray-700">
                                         {{ $emp->department?->name ?? '—' }}
                                     </span>
+                                </td>
+
+                                @php
+                                    $branchesMapLocal = $branchesMap ?? [];
+                                    $branchRow = $emp->branch_id ? ($branchesMapLocal[(int) $emp->branch_id] ?? null) : null;
+
+                                    $branchName = $isRtl
+                                        ? ($branchRow['name_ar'] ?? $branchRow['name'] ?? $branchRow['name_en'] ?? null)
+                                        : ($branchRow['name_en'] ?? $branchRow['name'] ?? $branchRow['name_ar'] ?? null);
+
+                                    $branchCode = $branchRow['code'] ?? null;
+                                @endphp
+
+                                <td class="py-3 px-3">
+                                    <div class="text-sm text-gray-700 truncate" title="{{ $branchName ?: '' }}">
+                                        {{ $branchName ?: ($emp->branch_id ? ('#' . $emp->branch_id) : '—') }}
+                                    </div>
+                                    @if($branchCode)
+                                        <div class="text-xs text-gray-500 mt-0.5 truncate">{{ $branchCode }}</div>
+                                    @endif
                                 </td>
 
                                 <td class="py-3 px-3">
@@ -299,6 +321,7 @@
                                         {{ $emp->jobTitle?->name ?? '—' }}
                                     </span>
                                 </td>
+
 
                                 <td class="py-3 px-3 whitespace-nowrap">
                                     <span class="text-sm text-gray-700">

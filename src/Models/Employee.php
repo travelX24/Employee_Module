@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Athka\Saas\Models\Branch;
 
 class Employee extends Model
 {
@@ -36,6 +37,7 @@ class Employee extends Model
 
     protected $fillable = [
         'saas_company_id',
+        'branch_id',
         'employee_no',
 
         'name_ar',
@@ -117,6 +119,15 @@ class Employee extends Model
         return $query->where('saas_company_id', $companyId);
     }
 
+    public function scopeForBranch(Builder $query, ?int $branchId): Builder
+    {
+        if (! $branchId) {
+            return $query;
+        }
+
+        return $query->where('branch_id', $branchId);
+    }
+
     // Relations
     public function department()
     {
@@ -125,6 +136,11 @@ class Employee extends Model
             : \Athka\SystemSettings\Models\Department::class;
 
         return $this->belongsTo($class, 'department_id');
+    }
+
+    public function branch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class, 'branch_id');
     }
 
     public function subDepartment()

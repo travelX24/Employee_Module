@@ -6,6 +6,7 @@ use Livewire\Component;
 use Livewire\WithFileUploads;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 
 use Athka\Employees\Models\Employee;
@@ -30,11 +31,15 @@ class Edit extends Component
     public string $birth_date = '';
     public ?int $children_count = null;
 
-    /* TAB 2: Job */
+      /* TAB 2: Job */
     public $sector = '';
     public $department_id = null;
     public ?int $sub_department_id = null;
+
+    public $branch_id = null;
+
     public $job_title_id = null;
+
     public $grade = null;
     public $manager_id = null;
     public $manager_name = '';
@@ -119,6 +124,15 @@ class Edit extends Component
         $this->companyId = $this->getCompanyId();
 
         abort_unless($this->employee->saas_company_id === $this->companyId, 404);
+        $scopedBranchId = $this->getScopedBranchId();
+
+        // ✅ لو المستخدم مقيد بفرع: ما يسمح يفتح موظف من فرع ثاني
+        if ($scopedBranchId) {
+            abort_unless((int) $this->employee->branch_id === (int) $scopedBranchId, 404);
+
+            // وخلي القيمة ثابتة
+            $this->branch_id = $scopedBranchId;
+        }
 
         // Tab 1: Basic
         $this->name_ar = $this->employee->name_ar ?? '';
@@ -133,10 +147,17 @@ class Edit extends Component
         $this->children_count = $this->employee->children_count;
 
         // Tab 2: Job
+        // Tab 2: Job
         $this->sector = $this->employee->sector ?? '';
         $this->department_id = $this->employee->department_id;
         $this->sub_department_id = $this->employee->sub_department_id;
+
+        // ✅ NEW: Branch
+        if (! $scopedBranchId) {
+            $this->branch_id = $this->employee->branch_id;
+        }
         $this->job_title_id = $this->employee->job_title_id;
+
         $this->grade = $this->employee->grade;
         $this->manager_id = $this->employee->manager_id;
         // Load manager name
@@ -408,6 +429,39 @@ class Edit extends Component
     {
         return [
             'sector' => ['nullable', 'string', 'max:255'],
+
+            // ✅ NEW: branch validation (safe)
+            'branch_id' => [
+                'nullable',
+                function ($attribute, $value, $fail) {
+                    if ($value === null || $value === '' || $value === 'all') {
+                        return;
+                    }
+
+                    $Branch = $this->branchModelClass();
+                    if (! $Branch) {
+                        $fail($this->txt('نظام الفروع غير مُفعّل.', 'Branches is not available.'));
+                        return;
+                    }
+
+                    $q = $Branch::query()->where('id', (int) $value);
+
+                    // فلترة حسب الشركة لو موجودة
+                    try {
+                        $table = (new $Branch)->getTable();
+                        if ($this->companyId && Schema::hasColumn($table, 'saas_company_id')) {
+                            $q->where('saas_company_id', $this->companyId);
+                        } elseif ($this->companyId && Schema::hasColumn($table, 'company_id')) {
+                            $q->where('company_id', $this->companyId);
+                        }
+                    } catch (\Throwable $e) {}
+
+                    if (! $q->exists()) {
+                        $fail($this->txt('الفرع المحدد غير صحيح.', 'Selected branch is invalid.'));
+                    }
+                }
+            ],
+
             'department_id' => ['required', 'exists:departments,id'],
             'job_title_id' => ['required', 'exists:job_titles,id'],
             'grade' => ['required', 'integer', 'min:1', 'max:10'],
@@ -415,6 +469,7 @@ class Edit extends Component
             'procedures_start_at' => ['nullable', 'date'],
         ];
     }
+
 
     protected function rulesTab3(): array
     {
@@ -511,16 +566,25 @@ class Edit extends Component
 
     public function save(): void
     {
-        // Validate all tabs including tab 5
-        $this->validate(array_merge(
-            $this->rulesTab1(),
-            $this->rulesTab2(),
-            $this->rulesTab3(),
-            $this->rulesTab4(),
-            $this->rulesTab5()
-        ));
+                    // Validate all tabs including tab 5
+            $this->validate(array_merge(
+                $this->rulesTab1(),
+                $this->rulesTab2(),
+                $this->rulesTab3(),
+                $this->rulesTab4(),
+                $this->rulesTab5()
+            ));
 
-        $this->employee->update([
+            $finalBranchId = $this->branch_id;
+
+            // ✅ لو المستخدم مقيد بفرع: تجاهل أي اختيار
+            if ($scopedBranchId = $this->getScopedBranchId()) {
+                $finalBranchId = $scopedBranchId;
+            }
+
+            $finalBranchId = ($finalBranchId === '' || $finalBranchId === null) ? null : (int) $finalBranchId;
+
+            $this->employee->update([
             // Tab 1
             'name_ar' => $this->name_ar,
             'name_en' => $this->name_en,
@@ -534,11 +598,17 @@ class Edit extends Component
             'children_count' => $this->children_count,
 
             // Tab 2
+            // Tab 2
             'sector' => $this->sector,
             'department_id' => $this->department_id,
             'sub_department_id' => $this->sub_department_id,
+
+            // ✅ NEW: Branch
+            'branch_id' => $finalBranchId,
+
             'job_title_id' => $this->job_title_id,
             'grade' => $this->grade,
+
             'manager_id' => $this->manager_id,
             'hired_at' => $this->hired_at,
             'procedures_start_at' => $this->procedures_start_at,
@@ -643,6 +713,87 @@ class Edit extends Component
     {
         return view('employees::livewire.employees.edit');
     }
+        private function branchModelClass(): ?string
+    {
+        $candidates = [
+            \App\Models\Branch::class,
+            \Athka\SystemSettings\Models\Branch::class,
+            \Athka\Saas\Models\Branch::class,
+        ];
+
+        foreach ($candidates as $class) {
+            if (class_exists($class)) {
+                return $class;
+            }
+        }
+
+        return null;
+    }
+
+        private function getScopedBranchId(): ?int
+    {
+        $user = Auth::user();
+
+        if (! $user) {
+            return null;
+        }
+
+        if (($user->access_scope ?? 'all') === 'branch') {
+            return $user->branch_id ?? null;
+        }
+
+        return null;
+    }
+    public function getBranchesProperty(): array
+    {
+        $Branch = $this->branchModelClass();
+
+        if (! $Branch || ! $this->companyId) {
+            return [];
+        }
+
+        $query = $Branch::query()->orderBy('id');
+
+        // ✅ فلترة حسب الشركة إذا الأعمدة موجودة
+        try {
+            $table = (new $Branch)->getTable();
+
+            if (Schema::hasColumn($table, 'saas_company_id')) {
+                $query->where('saas_company_id', $this->companyId);
+            } elseif (Schema::hasColumn($table, 'company_id')) {
+                $query->where('company_id', $this->companyId);
+            }
+
+            // نختار الاسم حسب المتوفر
+            $cols = ['id'];
+            foreach (['name', 'name_ar', 'name_en', 'code'] as $c) {
+                if (Schema::hasColumn($table, $c)) {
+                    $cols[] = $c;
+                }
+            }
+
+            $branches = $query->get($cols);
+        } catch (\Throwable $e) {
+            $branches = $query->get();
+        }
+
+        $isAr = substr((string) app()->getLocale(), 0, 2) === 'ar';
+
+        return $branches->map(function ($b) use ($isAr) {
+            $label = $isAr
+                ? ($b->name_ar ?? $b->name ?? $b->name_en ?? ('#' . $b->id))
+                : ($b->name_en ?? $b->name ?? $b->name_ar ?? ('#' . $b->id));
+
+            // إذا موجود code نلحقه
+            $code = $b->code ?? null;
+            if ($code) {
+                $label = $label . ' - ' . $code;
+            }
+
+            return ['value' => (string) $b->id, 'label' => $label];
+        })->toArray();
+    }
+
 }
 
 

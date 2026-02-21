@@ -1,5 +1,21 @@
 <div class="space-y-4 sm:space-y-5">
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+    <x-ui.select
+        :label="tr('Branch')"
+        wire:model.live="branch_id"
+        error="branch_id"
+    >
+        <option value="">{{ tr('Select Branch') }}</option>
+
+        @foreach($this->branches as $branch)
+            <option value="{{ $branch['value'] }}">
+                {{ $branch['label'] }}
+            </option>
+        @endforeach
+    </x-ui.select>
+
+
+
         {{-- Main Department --}}
         <x-ui.select 
             :label="tr('Main Department')" 
