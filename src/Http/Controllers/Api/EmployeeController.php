@@ -148,6 +148,7 @@ class EmployeeController extends Controller
                 'personal_photo_path' => $employee->documents->where('type', 'personal_photo')->first()?->file_path 
                     ?? $employee->personal_photo_path 
                     ?? null,
+                'annual_leave_days' => $employee->annual_leave_days ?? 30,
             ] : null,
 
             'company' => $company ? [
@@ -365,6 +366,46 @@ class EmployeeController extends Controller
             }
         }
 
+        // ── Fetch approved PERMISSIONS for the range ──────────────────────────
+        $permissionDays = []; // date => [{from_time, to_time, minutes}]
+        if (Schema::hasTable('attendance_permission_requests')) {
+            $permCols = Schema::getColumnListing('attendance_permission_requests');
+
+            // Detect employee key column
+            $permKeyCol = in_array('employee_id', $permCols, true)
+                ? 'employee_id'
+                : (in_array('user_id', $permCols, true) ? 'user_id' : null);
+
+            // Detect date column
+            $permDateCol = in_array('permission_date', $permCols, true)
+                ? 'permission_date'
+                : (in_array('date', $permCols, true) ? 'date' : null);
+
+            if ($permKeyCol && $permDateCol) {
+                // Determine the actual employee value based on key
+                $permKeyVal = ($permKeyCol === 'employee_id') ? $employeeId : ($user->id ?? null);
+
+                if ($permKeyVal) {
+                    $approvedPermissions = DB::table('attendance_permission_requests')
+                        ->where($permKeyCol, $permKeyVal)
+                        ->where('status', 'approved')
+                        ->whereBetween($permDateCol, [$start->toDateString(), $end->toDateString()])
+                        ->get([$permDateCol, 'from_time', 'to_time', 'minutes']);
+
+                    foreach ($approvedPermissions as $perm) {
+                        $rawDate = $perm->{$permDateCol} ?? null;
+                        if (!$rawDate) continue;
+                        $dateKey = substr((string)$rawDate, 0, 10);
+                        $permissionDays[$dateKey][] = [
+                            'from_time' => substr((string)($perm->from_time ?? ''), 0, 5),
+                            'to_time'   => substr((string)($perm->to_time ?? ''), 0, 5),
+                            'minutes'   => (int)($perm->minutes ?? 0),
+                        ];
+                    }
+                }
+            }
+        }
+
         // Helper: convert "HH:MM" to minutes-since-midnight
         $toMins = fn(string $t): int => (int)substr($t, 0, 2) * 60 + (int)substr($t, 3, 2);
 
@@ -380,6 +421,7 @@ class EmployeeController extends Controller
             $dateStr = $cur->toDateString();
             $dayKey  = $dayNames[(int)$cur->dayOfWeek];
             $dayLeaves = $leaveDays[$dateStr] ?? [];
+            $dayPermissions = $permissionDays[$dateStr] ?? [];
 
             // Check if ANY full-day leave covers this date
             $fullDayLeave = collect($dayLeaves)->firstWhere('is_full_day', true);
@@ -395,6 +437,7 @@ class EmployeeController extends Controller
                     'is_workday'   => false,
                     'leave_name'   => $fullDayLeave['leave_name'],
                     'periods'      => [],
+                    'permissions'  => $dayPermissions,
                 ];
                 $cur->addDay();
                 continue;
@@ -414,6 +457,7 @@ class EmployeeController extends Controller
                     'is_workday'   => false,
                     'leave_name'   => null,
                     'periods'      => [],
+                    'permissions'  => $dayPermissions,
                 ];
                 $cur->addDay();
                 continue;
@@ -461,6 +505,7 @@ class EmployeeController extends Controller
                 'is_workday'   => true,
                 'leave_name'   => $hasAnyLeave ? collect($partialLeaves)->first()['leave_name'] : null,
                 'periods'      => $builtPeriods,
+                'permissions'  => $dayPermissions,
             ];
 
             $cur->addDay();
@@ -626,18 +671,22 @@ class EmployeeController extends Controller
         if (!in_array('id', $select, true)) $select[] = 'id';
 
         // Prepare query with qualified names to avoid ambiguity
+        // Prepare query with qualified names to avoid ambiguity
         $q = DB::table($table)->where($table . '.' . $key, $value);
+        $select = array_map(fn($c) => $table . '.' . $c . ' as ' . $c, $select);
 
-        // Add Joins for Leaves
+        // Add Join for Policy (Leaves only)
         if ($table === 'attendance_leave_requests') {
-            $q->leftJoin('leave_policies', 'attendance_leave_requests.leave_policy_id', '=', 'leave_policies.id')
-              ->leftJoin('users', 'attendance_leave_requests.requested_by', '=', 'users.id')
+            $q->leftJoin('leave_policies', 'attendance_leave_requests.leave_policy_id', '=', 'leave_policies.id');
+            $select[] = 'leave_policies.name as leave_type_name';
+            $select[] = 'leave_policies.leave_type as leave_type';
+        }
+
+        // Add Join for Creator Name (Common for all tables with requested_by)
+        if (in_array('requested_by', $cols, true)) {
+            $q->leftJoin('users', $table . '.requested_by', '=', 'users.id')
               ->leftJoin('employees', 'users.employee_id', '=', 'employees.id');
             
-            // Add related names to selection
-            $select = array_map(fn($c) => $table . '.' . $c . ' as ' . $c, $select);
-            $select[] = 'leave_policies.name as leave_type_name';
-            $select[] = 'leave_policies.leave_type as leave_type';  // ✅ ADDED THIS
             $select[] = 'employees.name_ar as creator_name_ar';
             $select[] = 'employees.name_en as creator_name_en';
         }
@@ -1003,6 +1052,64 @@ class EmployeeController extends Controller
         if (in_array('to_time', $cols, true))   $data['to_time'] = $validated['to_time'];
         if (in_array('minutes', $cols, true))   $data['minutes'] = $minutes;
 
+        // 🟢 NEW: Validate Limits (Daily/Monthly) based on policy
+        $companyId = (int) ($user->saas_company_id ?? 0);
+        $policy = null;
+        if ($companyId > 0 && Schema::hasTable('permission_policies')) {
+            $permCols = Schema::getColumnListing('permission_policies');
+            $permQuery = DB::table('permission_policies')->where('company_id', $companyId);
+            // Only filter by policy_year_id if we can find the active year
+            if (in_array('policy_year_id', $permCols, true) && class_exists(\Athka\SystemSettings\Models\LeavePolicyYear::class)) {
+                $yearId = (int) \Athka\SystemSettings\Models\LeavePolicyYear::query()
+                    ->where('company_id', $companyId)
+                    ->where('is_active', true)
+                    ->value('id');
+                if ($yearId > 0) {
+                    $permQuery->where('policy_year_id', $yearId);
+                }
+            }
+            $policy = $permQuery->first();
+        }
+
+        if ($policy) {
+            // 1. Max per request limit
+            if ($policy->max_request_minutes > 0 && $minutes > $policy->max_request_minutes) {
+                return response()->json([
+                    'ok'      => false,
+                    'error'   => 'limit_exceeded',
+                    'message' => 'تجاوزت الحد المسموح به للطلب الواحد (' . $policy->max_request_minutes . ' دقيقة).',
+                ], 422);
+            }
+
+            // 2. Monthly limit
+            if ($policy->monthly_limit_minutes > 0) {
+                $monthStart = Carbon::parse($dateVal)->startOfMonth()->toDateString();
+                $monthEnd   = Carbon::parse($dateVal)->endOfMonth()->toDateString();
+
+                $usedMinutes = DB::table($table)
+                    ->where($key, $value)
+                    ->whereBetween('permission_date', [$monthStart, $monthEnd])
+                    ->whereIn('status', ['approved', 'pending'])
+                    ->sum('minutes');
+
+                if (($usedMinutes + $minutes) > $policy->monthly_limit_minutes) {
+                    // Check if policy allows exceeding
+                    $settings = is_string($policy->settings) ? json_decode($policy->settings, true) : ($policy->settings ?? []);
+                    $allowExceed = (bool)($settings['allow_exceed_monthly_limit'] ?? false);
+
+                    if (!$allowExceed) {
+                        return response()->json([
+                            'ok'      => false,
+                            'error'   => 'monthly_limit_exceeded',
+                            'message' => 'تجاوزت الرصيد الشهري المسموح به للاستئذان (' . $policy->monthly_limit_minutes . ' دقيقة).',
+                        ], 422);
+                    }
+                }
+            }
+        }
+
+        if (in_array('requested_by', $cols, true)) $data['requested_by'] = $user->id;
+        if (in_array('requested_at', $cols, true)) $data['requested_at'] = $now;
 
         if (in_array('created_at', $cols, true)) $data['created_at'] = $now;
         if (in_array('updated_at', $cols, true)) $data['updated_at'] = $now;
