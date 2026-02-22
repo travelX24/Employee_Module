@@ -8,7 +8,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
-
+use Illuminate\Support\Facades\DB;
 use Athka\Employees\Models\Employee;
 
 class Edit extends Component
@@ -126,7 +126,46 @@ class Edit extends Component
         abort_unless($this->employee->saas_company_id === $this->companyId, 404);
         $scopedBranchId = $this->getScopedBranchId();
 
-        // ✅ لو المستخدم مقيد بفرع: ما يسمح يفتح موظف من فرع ثاني
+        $user = Auth::user();
+
+        $allowed = null;
+
+        if ($user && method_exists($user, 'restrictedBranchIds')) {
+            $allowed = $user->restrictedBranchIds(); // null | [] | [ids]
+        } else {
+            $tmp = DB::table('branch_user_access')
+                ->where('user_id', Auth::id())
+                ->where('saas_company_id', $this->companyId)
+                ->pluck('branch_id')
+                ->map(fn ($v) => (int) $v)
+                ->unique()
+                ->values()
+                ->all();
+
+            $allowed = ! empty($tmp) ? $tmp : null;
+        }
+
+        if (is_array($allowed) && empty($allowed)) {
+            abort(404);
+        }
+
+        if (is_array($allowed)) {
+            abort_unless(in_array((int) $this->employee->branch_id, $allowed, true), 404);
+        }
+        $allowed = DB::table('branch_user_access')
+            ->where('user_id', Auth::id())
+            ->where('saas_company_id', $this->companyId)
+            ->pluck('branch_id')
+            ->map(fn ($v) => (int) $v)
+            ->unique()
+            ->values()
+            ->all();
+
+        if (! empty($allowed)) {
+            abort_unless(in_array((int) $this->employee->branch_id, $allowed, true), 404);
+        }
+
+        // ✅ لو المستخدم مقيد بفرع واحد: ما يسمح يفتح موظف من فرع ثاني
         if ($scopedBranchId) {
             abort_unless((int) $this->employee->branch_id === (int) $scopedBranchId, 404);
 
@@ -575,11 +614,24 @@ class Edit extends Component
                 $this->rulesTab5()
             ));
 
-            $finalBranchId = $this->branch_id;
+           $finalBranchId = $this->branch_id;
 
             // ✅ لو المستخدم مقيد بفرع: تجاهل أي اختيار
             if ($scopedBranchId = $this->getScopedBranchId()) {
                 $finalBranchId = $scopedBranchId;
+            }
+
+            $allowed = DB::table('branch_user_access')
+                ->where('user_id', Auth::id())
+                ->where('saas_company_id', $this->companyId)
+                ->pluck('branch_id')
+                ->map(fn ($v) => (int) $v)
+                ->unique()
+                ->values()
+                ->all();
+
+            if (! empty($allowed)) {
+                abort_unless($finalBranchId && in_array((int) $finalBranchId, $allowed, true), 403);
             }
 
             $finalBranchId = ($finalBranchId === '' || $finalBranchId === null) ? null : (int) $finalBranchId;
@@ -738,11 +790,14 @@ class Edit extends Component
             return null;
         }
 
-        if (($user->access_scope ?? 'all') === 'branch') {
-            return $user->branch_id ?? null;
+     $scope = $user->access_scope ?? 'all_branches';
+
+        if (in_array($scope, ['my_branch', 'branch'], true)) {
+            return $user->branch_id ?? ($user->employee?->branch_id ?? null);
         }
 
         return null;
+
     }
     public function getBranchesProperty(): array
     {
@@ -754,6 +809,18 @@ class Edit extends Component
 
         $query = $Branch::query()->orderBy('id');
 
+        $allowed = DB::table('branch_user_access')
+            ->where('user_id', Auth::id())
+            ->where('saas_company_id', $this->companyId)
+            ->pluck('branch_id')
+            ->map(fn ($v) => (int) $v)
+            ->unique()
+            ->values()
+            ->all();
+
+        if (! empty($allowed)) {
+            $query->whereIn('id', $allowed);
+        }
         // ✅ فلترة حسب الشركة إذا الأعمدة موجودة
         try {
             $table = (new $Branch)->getTable();

@@ -6,7 +6,7 @@ use Livewire\Component;
 use Livewire\WithPagination;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
-
+use Illuminate\Support\Facades\DB;
 use Athka\Employees\Models\Employee;
 
 class Index extends Component
@@ -202,8 +202,17 @@ class Index extends Component
     {
         $companyId = auth()->user()->saas_company_id;
         
-        $query = Employee::where('saas_company_id', $companyId);
-        
+        $allowed = DB::table('branch_user_access')
+            ->where('user_id', Auth::id())
+            ->where('saas_company_id', $companyId)
+            ->pluck('branch_id')
+            ->map(fn ($v) => (int) $v)
+            ->unique()
+            ->values()
+            ->all();
+
+        $query = Employee::where('saas_company_id', $companyId)
+            ->when(! empty($allowed), fn ($q) => $q->whereIn('branch_id', $allowed));        
         // Apply existing filters
         if ($this->search) {
             $query->where(function($q) {
@@ -427,9 +436,18 @@ class Index extends Component
             ->toArray();
 
         // Query الموظفين
+        $allowed = DB::table('branch_user_access')
+            ->where('user_id', Auth::id())
+            ->where('saas_company_id', $companyId)
+            ->pluck('branch_id')
+            ->map(fn ($v) => (int) $v)
+            ->unique()
+            ->values()
+            ->all();
+
         $employees = Employee::query()
             ->forCompany($companyId)
-            ->forBranch($branchId)
+            ->when(! empty($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
             ->when($this->search, function ($q) {
                 $s = trim($this->search);
 
@@ -471,7 +489,21 @@ class Index extends Component
 
     public function openDeactivateModal($employeeId)
     {
-        $this->selectedEmployee = Employee::findOrFail($employeeId);
+        $companyId = $this->getCompanyId();
+
+        $allowed = DB::table('branch_user_access')
+            ->where('user_id', Auth::id())
+            ->where('saas_company_id', $companyId)
+            ->pluck('branch_id')
+            ->map(fn ($v) => (int) $v)
+            ->unique()
+            ->values()
+            ->all();
+
+        $this->selectedEmployee = Employee::query()
+            ->where('saas_company_id', $companyId)
+            ->when(! empty($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
+            ->findOrFail($employeeId);
         $this->deactivateReason = '';
         $this->deactivateDate = now()->format('Y-m-d');
         $this->deactivateNotes = '';
@@ -503,8 +535,22 @@ class Index extends Component
  
     public function activateEmployee($employeeId)
     {
-        $employee = Employee::findOrFail($employeeId);
-        $employee->update([
+        $companyId = $this->getCompanyId();
+
+        $allowed = DB::table('branch_user_access')
+            ->where('user_id', Auth::id())
+            ->where('saas_company_id', $companyId)
+            ->pluck('branch_id')
+            ->map(fn ($v) => (int) $v)
+            ->unique()
+            ->values()
+            ->all();
+
+        $employee = Employee::query()
+            ->where('saas_company_id', $companyId)
+            ->when(! empty($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
+            ->findOrFail($employeeId);
+            $employee->update([
             'status'   => 'ACTIVE',
             'ended_at' => null,
         ]);
@@ -514,14 +560,42 @@ class Index extends Component
  
     public function openTerminationModal($employeeId)
     {
-        $this->selectedEmployee = Employee::findOrFail($employeeId);
+        $companyId = $this->getCompanyId();
+
+        $user = Auth::user();
+        $allowed = null;
+
+        if ($user && method_exists($user, 'restrictedBranchIds')) {
+            $allowed = $user->restrictedBranchIds(); // null | [] | [ids]
+        } else {
+            $tmp = DB::table('branch_user_access')
+                ->where('user_id', Auth::id())
+                ->where('saas_company_id', $companyId)
+                ->pluck('branch_id')
+                ->map(fn ($v) => (int) $v)
+                ->unique()
+                ->values()
+                ->all();
+
+            $allowed = ! empty($tmp) ? $tmp : null;
+        }
+
+        if (is_array($allowed) && empty($allowed)) {
+            abort(404);
+        }
+
+        $this->selectedEmployee = Employee::query()
+            ->where('saas_company_id', $companyId)
+            ->when(is_array($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
+            ->findOrFail($employeeId);
+
         $this->terminationType = '';
         $this->terminationDate = now()->format('Y-m-d');
         $this->terminationReason = '';
         $this->dueSalary = 0;
         $this->dueVacation = 0;
         $this->dueOthers = 0;
-        
+
         $this->showTerminationModal = true;
     }
  

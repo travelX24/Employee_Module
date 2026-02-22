@@ -11,7 +11,7 @@ use Athka\SystemSettings\Models\JobTitle;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Athka\Saas\Models\Branch;
-
+use Illuminate\Support\Facades\DB;
 class Create extends Component
 {
     use WithFileUploads;
@@ -85,9 +85,15 @@ class Create extends Component
     public function mount(): void
     {
         $this->companyId = auth()->user()->saas_company_id;
+
         $this->branch_id = auth()->user()->branch_id ?? null;
 
-        $this->loadBranches();
+        if (is_array($allowed = $this->getAllowedBranchIds())) {
+            if ($this->branch_id && ! in_array((int) $this->branch_id, $allowed, true)) {
+                $this->branch_id = $allowed[0] ?? null;
+            }
+        }
+                $this->loadBranches();
 
         // تعيين تاريخ اليوم لحقل التوظيف
         if (empty($this->hired_at)) {
@@ -139,8 +145,9 @@ class Create extends Component
             return;
         }
 
-        $this->branchOptions = Branch::query()
+      $this->branchOptions = Branch::query()
             ->where('saas_company_id', $this->companyId)
+            ->when(is_array($allowed = $this->getAllowedBranchIds()), fn ($q) => $q->whereIn('id', $allowed))
             ->where('is_active', true)
             ->orderBy('name')
             ->get(['id', 'name', 'code'])
@@ -508,8 +515,11 @@ class Create extends Component
                 'address' => $this->address,
             ];
 
-            $employee = Employee::create($data);
+            if (is_array($allowed = $this->getAllowedBranchIds())) {
+                abort_unless($this->branch_id && in_array((int) $this->branch_id, $allowed, true), 403);
+            }
 
+            $employee = Employee::create($data);
             // حفظ الصور والملفات
             $this->saveFile($employee, 'photo', 'personal_photo');
             $this->saveFile($employee, 'national_id_photo', 'national_id_photo');
@@ -683,7 +693,29 @@ class Create extends Component
         return $this->branchOptions;
     }
 
+private function getAllowedBranchIds(): ?array
+{
+    $user = Auth::user();
+    if (! $user) return null;
 
+    $companyId = (int) ($user->saas_company_id ?? 0);
+    if (! $companyId) return null;
+
+    $ids = DB::table('branch_user_access')
+        ->where('user_id', $user->id)
+        ->where('saas_company_id', $companyId)
+        ->pluck('branch_id')
+        ->map(fn ($v) => (int) $v)
+        ->unique()
+        ->values()
+        ->all();
+
+    // ✅ إذا فيه قيود فعلية
+    if (! empty($ids)) return $ids;
+
+    // ✅ لا قيود => كل فروع الشركة (بدون فلترة)
+    return null;
+}
 }
 
 
