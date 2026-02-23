@@ -82,6 +82,12 @@ class Create extends Component
     public $family_documents = [];
     public $other_documents = [];
 
+
+
+    // ✅ helpers (ليست للعرض)
+    protected array $uploadOld = [];
+    protected array $uploadAppending = [];
+    protected array $skipUploadAppend = [];
     public function mount(): void
     {
         $this->companyId = auth()->user()->saas_company_id;
@@ -715,6 +721,97 @@ private function getAllowedBranchIds(): ?array
 
     // ✅ لا قيود => كل فروع الشركة (بدون فلترة)
     return null;
+}
+
+public function updating($name, $value): void
+{
+    $fields = ['certificates', 'family_documents', 'other_documents'];
+
+    if (! in_array($name, $fields, true)) {
+        return;
+    }
+
+    // ✅ إذا هذا تغيير داخلي (حذف/تنظيف) لا تعمل append
+    if (($this->skipUploadAppend[$name] ?? false) === true) {
+        return;
+    }
+
+    // ✅ إذا الاختيار فاضي/تنظيف
+    if (! is_array($value) || count($value) === 0) {
+        return;
+    }
+
+    // ✅ منع حلقات التحديث
+    if (! empty($this->uploadAppending[$name])) {
+        return;
+    }
+
+    // خزّن القديم قبل الاستبدال
+    $this->uploadOld[$name] = is_array($this->{$name}) ? $this->{$name} : [];
+}
+
+public function updated($name, $value): void
+{
+    $fields = ['certificates', 'family_documents', 'other_documents'];
+
+    if (! in_array($name, $fields, true)) {
+        return;
+    }
+
+    // ✅ إذا كان التغيير حذف/تنظيف، اخرج بدون merge
+    if (($this->skipUploadAppend[$name] ?? false) === true) {
+        unset($this->skipUploadAppend[$name], $this->uploadOld[$name]);
+        return;
+    }
+
+    // ✅ إذا الاختيار فاضي/تنظيف
+    if (! is_array($value) || count($value) === 0) {
+        unset($this->uploadOld[$name]);
+        return;
+    }
+
+    // ✅ منع حلقات التحديث
+    if (! empty($this->uploadAppending[$name])) {
+        return;
+    }
+
+    $old = $this->uploadOld[$name] ?? [];
+
+    // أول مرة ما في شيء قديم
+    if (count($old) === 0) {
+        unset($this->uploadOld[$name]);
+        return;
+    }
+
+    $this->uploadAppending[$name] = true;
+
+    $current = is_array($this->{$name}) ? $this->{$name} : [];
+    $this->{$name} = array_values(array_merge($old, $current));
+
+    unset($this->uploadAppending[$name], $this->uploadOld[$name]);
+}
+public function removeUploadItem(string $field, int $index): void
+{
+    $allowed = ['certificates', 'family_documents', 'other_documents'];
+
+    if (! in_array($field, $allowed, true)) {
+        return;
+    }
+
+    // ✅ علّم أن هذا تعديل داخلي (لا نريد append)
+    $this->skipUploadAppend[$field] = true;
+
+    $current = $this->{$field};
+
+    if (! is_array($current)) {
+        $this->{$field} = [];
+        return;
+    }
+
+    if (array_key_exists($index, $current)) {
+        unset($current[$index]);
+        $this->{$field} = array_values($current);
+    }
 }
 }
 
