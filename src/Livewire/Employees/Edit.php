@@ -23,6 +23,7 @@ class Edit extends Component
     public string $name_ar = '';
     public ?string $name_en = null;
     public string $national_id = '';
+    public string $national_id_type = 'national_id'; 
     public string $national_id_expiry = '';
     public string $nationality = '';
     public string $gender = '';
@@ -30,6 +31,12 @@ class Edit extends Component
     public string $birth_place = '';
     public string $birth_date = '';
     public ?int $children_count = null;
+
+
+    public array $nationalityOptions = []; 
+
+
+
 
       /* TAB 2: Job */
     public $sector = '';
@@ -122,6 +129,7 @@ class Edit extends Component
     {
         $this->employee = Employee::query()->with('documents')->findOrFail($employeeId);
         $this->companyId = $this->getCompanyId();
+        $this->loadNationalities();
 
         abort_unless($this->employee->saas_company_id === $this->companyId, 404);
         $scopedBranchId = $this->getScopedBranchId();
@@ -177,6 +185,10 @@ class Edit extends Component
         $this->name_ar = $this->employee->name_ar ?? '';
         $this->name_en = $this->employee->name_en;
         $this->national_id = $this->employee->national_id ?? '';
+
+        if (Schema::hasColumn($this->employee->getTable(), 'national_id_type')) {
+            $this->national_id_type = (string) ($this->employee->national_id_type ?: 'national_id');
+        }
         $this->national_id_expiry = $this->employee->national_id_expiry ? $this->employee->national_id_expiry->format('Y-m-d') : '';
         $this->nationality = $this->employee->nationality ?? '';
         $this->gender = $this->employee->gender ?? '';
@@ -223,7 +235,7 @@ class Edit extends Component
         $this->is_transferred_employee = (bool) $this->employee->is_transferred_employee;
         $this->opening_leave_balance = $this->employee->opening_leave_balance;
         $this->leave_balance_adjustments = $this->employee->leave_balance_adjustments ?? 0;
-        $this->calculated_leave_balance = $this->employee->calculateLeaveBalance();
+        $this->calculated_leave_balance = (int) round((float) $this->employee->calculateLeaveBalance(), 0, PHP_ROUND_HALF_UP);
 
         // Tab 4: Personal
         $this->mobile = $this->employee->mobile ?? '';
@@ -410,7 +422,7 @@ class Edit extends Component
         $this->employee->leave_balance_adjustments = is_numeric($this->leave_balance_adjustments) ? (int)$this->leave_balance_adjustments : 0;
         $this->employee->hired_at = $this->hired_at;
 
-        $this->calculated_leave_balance = $this->employee->calculateLeaveBalance();
+        $this->calculated_leave_balance = (int) round((float) $this->employee->calculateLeaveBalance(), 0, PHP_ROUND_HALF_UP);
     }
 
     private function isAr(): bool
@@ -455,6 +467,7 @@ class Edit extends Component
         return [
             'name_ar' => ['required', 'string', 'max:255'],
             'name_en' => ['nullable', 'string', 'max:255'],
+            'national_id_type' => ['required', Rule::in(['national_id','iqama','passport','other'])],
             'national_id' => ['required', 'string', 'max:50'],
             'national_id_expiry' => ['required', 'date'],
             'nationality' => ['required', 'string', 'max:100'],
@@ -506,7 +519,15 @@ class Edit extends Component
             'department_id' => ['required', 'exists:departments,id'],
             'job_title_id' => ['required', 'exists:job_titles,id'],
             'grade' => ['required', 'integer', 'min:1', 'max:10'],
-            'hired_at' => ['required', 'date'],
+           'hired_at' => ['required', 'date'],
+
+            'contract_type' => ['required', Rule::in(['permanent', 'temporary', 'probation', 'contractor'])],
+            'contract_duration_months' => Rule::when(
+                ($this->contract_type && $this->contract_type !== 'permanent'),
+                ['required', 'integer', 'min:1'],
+                ['nullable', 'integer', 'min:1']
+            ),
+
             'procedures_start_at' => ['nullable', 'date'],
         ];
     }
@@ -514,15 +535,7 @@ class Edit extends Component
     protected function rulesTab3(): array
     {
         return [
-            'contract_type' => ['required', Rule::in(['permanent', 'temporary', 'probation', 'contractor'])],
-            'basic_salary' => ['required', 'numeric', 'min:0'],
-
-            'contract_duration_months' => Rule::when(
-                ($this->contract_type && $this->contract_type !== 'permanent'),
-                ['required', 'integer', 'min:1'],
-                ['nullable', 'integer', 'min:1']
-            ),
-
+             'basic_salary' => ['required', 'numeric', 'min:0'],
             'allowance' => ['nullable', 'numeric', 'min:0'],
             'annual_leave_days' => ['nullable', 'integer', 'min:0'],
         ];
@@ -578,7 +591,7 @@ class Edit extends Component
                         'regex:/^\d+$/',
                     ],
             'emergency_contact_name' => ['required', 'string', 'max:255'],
-            'emergency_contact_relation' => ['required', 'string', 'max:100'],
+            'emergency_contact_relation' => ['required', Rule::in(['أب','أم','أخ','أخت','زوج','زوجة','ابن','بنت','أخرى'])],
         ];
     }
 
@@ -716,7 +729,11 @@ class Edit extends Component
             // Tab 5 Verified Status (Optional update if needed)
             'documents_verified' => $this->document_verified,
         ]);
-
+        if (Schema::hasColumn($this->employee->getTable(), 'national_id_type')) {
+            $this->employee->forceFill([
+                'national_id_type' => $this->national_id_type,
+            ])->save();
+        }
         // Save Documents (Tab 5)
         $this->saveFile($this->employee, 'photo', 'personal_photo');
         $this->saveFile($this->employee, 'national_id_photo', 'national_id_photo');
@@ -888,6 +905,68 @@ class Edit extends Component
         if ($value === 'permanent') {
             $this->contract_duration_months = null;
         }
+    }
+
+    private function loadNationalities(): void
+    {
+        $this->nationalityOptions = [];
+
+        $cfg = config('nationalities');
+        if (is_array($cfg) && count($cfg) > 0) {
+            $this->nationalityOptions = collect($cfg)
+                ->filter(fn ($v) => is_string($v) && trim($v) !== '')
+                ->values()
+                ->map(fn ($v) => ['value' => $v, 'label' => $v])
+                ->all();
+            return;
+        }
+
+        $table = null;
+        if (Schema::hasTable('nationalities')) $table = 'nationalities';
+        elseif (Schema::hasTable('countries')) $table = 'countries';
+
+        if (! $table) {
+            $fallback = ['Yemen','Saudi Arabia','United Arab Emirates','Qatar','Kuwait','Oman','Bahrain','Egypt','Jordan','Iraq','Syria','Lebanon','Sudan','Morocco','Tunisia','Algeria'];
+            $this->nationalityOptions = collect($fallback)->map(fn ($v) => ['value'=>$v,'label'=>$v])->all();
+            return;
+        }
+
+        $cols = Schema::getColumnListing($table);
+
+        $labelCol = null;
+        $isAr = substr((string) app()->getLocale(), 0, 2) === 'ar';
+
+        if ($isAr) {
+            foreach (['nationality_ar','name_ar','arabic_name','name_arabic'] as $c) {
+                if (in_array($c, $cols, true)) { $labelCol = $c; break; }
+            }
+        } else {
+            foreach (['nationality_en','name_en','english_name','name_english'] as $c) {
+                if (in_array($c, $cols, true)) { $labelCol = $c; break; }
+            }
+        }
+
+        if (! $labelCol) {
+            foreach (['nationality','name','title'] as $c) {
+                if (in_array($c, $cols, true)) { $labelCol = $c; break; }
+            }
+        }
+
+        if (! $labelCol) return;
+
+        $rows = DB::table($table)
+            ->select($labelCol)
+            ->whereNotNull($labelCol)
+            ->where($labelCol, '!=', '')
+            ->distinct()
+            ->orderBy($labelCol)
+            ->limit(500)
+            ->get();
+
+        $this->nationalityOptions = $rows->map(fn ($r) => [
+            'value' => (string) $r->{$labelCol},
+            'label' => (string) $r->{$labelCol},
+        ])->values()->all();
     }
 }
 

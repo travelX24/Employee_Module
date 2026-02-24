@@ -19,27 +19,32 @@ class Index extends Component
  
     public string $departmentId = 'all';
     public string $jobTitleId   = 'all';
-    public string $status       = 'all'; // all | ACTIVE | SUSPENDED | RESIGNED | TERMINATED | RETIRED
+    public string $status       = 'all'; 
+
+    public string $branchFilterId = 'all';
+    public string $contractType   = 'all'; 
+
+
  
-    // ✅ Import
+    //   Import
     public bool $showImportModal = false;
     public $importFile;
     public array $importValidationErrors = [];
     public bool $isImporting = false;
 
-    // ✅ فلتر تاريخ التعيين
+    //   فلتر تاريخ التعيين
     public string $hiringDateType = 'all'; // all | this_month | last_3_months | this_year | custom
     public ?string $hiringDateStart = null;
     public ?string $hiringDateEnd   = null;
  
-    // ✅ متغيرات نافذة إلغاء التفعيل / التعطيل
+    //   متغيرات نافذة إلغاء التفعيل / التعطيل
     public bool $showDeactivateModal = false;
     public ?Employee $selectedEmployee = null;
     public string $deactivateReason = '';
     public string $deactivateDate = '';
     public string $deactivateNotes = '';
  
-    // ✅ متغيرات نافذة إنهاء الخدمة (الأرشفة / التسريح)
+    //   متغيرات نافذة إنهاء الخدمة (الأرشفة / التسريح)
     public bool $showTerminationModal = false;
     public string $terminationType = ''; // RESIGNATION, TERMINATION, RETIREMENT, DEATH, CONTRACT_END
     public string $terminationDate = '';
@@ -52,7 +57,7 @@ class Index extends Component
  
     public string $viewMode = 'list'; // list | cards
  
-    // ✅ Export
+    //   Export
     public bool $showExportModal = false;
     public string $exportFormat = 'excel'; // excel | pdf
     public string $exportScope = 'all'; // all | custom
@@ -113,6 +118,8 @@ class Index extends Component
         'departmentId'    => ['except' => 'all'],
         'jobTitleId'      => ['except' => 'all'],
         'status'          => ['except' => 'all'],
+        'branchFilterId'  => ['except' => 'all'], 
+        'contractType'    => ['except' => 'all'], 
         'hiringDateType'  => ['except' => 'all'],
         'hiringDateStart' => ['except' => null],
         'hiringDateEnd'   => ['except' => null],
@@ -171,13 +178,17 @@ class Index extends Component
         }
     }
 
-    // ✅ نفس اسم Companies لزر Clear all filters
+    //   نفس اسم Companies لزر Clear all filters
     public function clearAllFilters(): void
     {
         $this->search = '';
         $this->departmentId = 'all';
         $this->jobTitleId = 'all';
         $this->status = 'all';
+
+        $this->branchFilterId = 'all'; 
+        $this->contractType   = 'all'; 
+
         $this->hiringDateType = 'all';
         $this->hiringDateStart = null;
         $this->hiringDateEnd = null;
@@ -185,10 +196,21 @@ class Index extends Component
         $this->resetPage();
     }
 
-    // ✅ إبقاء resetFilters للتوافق (لو فيه أماكن تستدعيها)
+    //   إبقاء resetFilters للتوافق (لو فيه أماكن تستدعيها)
     public function resetFilters(): void
     {
-        $this->reset(['search', 'departmentId', 'jobTitleId', 'status', 'hiringDateType', 'hiringDateStart', 'hiringDateEnd']);
+        $this->reset([
+            'search',
+            'departmentId',
+            'jobTitleId',
+            'status',
+            'branchFilterId', 
+            'contractType', 
+            'hiringDateType',
+            'hiringDateStart',
+            'hiringDateEnd',
+        ]);
+
         $this->resetPage();
     }
 
@@ -353,12 +375,21 @@ class Index extends Component
         }, 'employees_report_' . date('Y-m-d') . '.pdf');
     }
 
+  
     public function updatingJobTitleId(): void
     {
         $this->resetPage();
     }
 
+    public function updatingBranchFilterId(): void 
+    {
+        $this->resetPage();
+    }
 
+    public function updatingContractType(): void 
+    {
+        $this->resetPage();
+    }
 
 
     private function getCompanyId(): int
@@ -418,7 +449,7 @@ class Index extends Component
         $Department = $this->departmentModelClass();
         $JobTitle   = $this->jobTitleModelClass();
 
-        // ✅ خيارات الفلاتر بصيغة value/label مثل Companies
+        //   خيارات الفلاتر بصيغة value/label مثل Companies
         $departmentsOptions = $Department::query()
             ->where('saas_company_id', $companyId)
             ->where('is_active', true) // Active only
@@ -434,6 +465,49 @@ class Index extends Component
             ->get(['id', 'name'])
             ->map(fn ($j) => ['value' => (string) $j->id, 'label' => $j->name])
             ->toArray();
+
+        $branchesOptions = [];
+        $Branch = $this->branchModelClass();
+
+        if ($Branch) {
+            $allowedBranchIds = DB::table('branch_user_access')
+                ->where('user_id', Auth::id())
+                ->where('saas_company_id', $companyId)
+                ->pluck('branch_id')
+                ->map(fn ($v) => (int) $v)
+                ->unique()
+                ->values()
+                ->all();
+
+            $qBr = $Branch::query()->orderBy('id');
+
+            if (!empty($allowedBranchIds)) {
+                $qBr->whereIn('id', $allowedBranchIds);
+            }
+
+            // فلترة حسب الشركة لو الأعمدة موجودة
+            try {
+                $table = (new $Branch)->getTable();
+                if (Schema::hasColumn($table, 'saas_company_id')) {
+                    $qBr->where('saas_company_id', $companyId);
+                } elseif (Schema::hasColumn($table, 'company_id')) {
+                    $qBr->where('company_id', $companyId);
+                }
+            } catch (\Throwable $e) {}
+
+            $isAr = substr((string) app()->getLocale(), 0, 2) === 'ar';
+
+            $branchesOptions = $qBr->get()->map(function ($b) use ($isAr) {
+                $label = $isAr
+                    ? ($b->name_ar ?? $b->name ?? $b->name_en ?? ('#' . $b->id))
+                    : ($b->name_en ?? $b->name ?? $b->name_ar ?? ('#' . $b->id));
+
+                $code = $b->code ?? null;
+                if ($code) $label .= ' - ' . $code;
+
+                return ['value' => (string) $b->id, 'label' => $label];
+            })->toArray();
+        }
 
         // Query الموظفين
         $allowed = DB::table('branch_user_access')
@@ -460,8 +534,20 @@ class Index extends Component
                         ->orWhere('national_id', 'like', "%{$s}%");
                 });
             })
-            ->when($this->departmentId !== 'all', fn ($q) => $q->where('department_id', (int) $this->departmentId))
+           ->when($this->departmentId !== 'all', fn ($q) => $q->where('department_id', (int) $this->departmentId))
             ->when($this->jobTitleId !== 'all', fn ($q) => $q->where('job_title_id', (int) $this->jobTitleId))
+
+            ->when($this->branchFilterId !== 'all', fn ($q) => $q->where('branch_id', (int) $this->branchFilterId))
+
+            ->when($this->contractType !== 'all', function ($q) {
+                $v = strtolower((string) $this->contractType);
+
+                $q->where(function ($qq) use ($v) {
+                    $qq->where('contract_type', $v)
+                    ->orWhere('contract_type', strtoupper($v));
+                });
+            })
+
             ->when($this->status !== 'all', fn ($q) => $q->where('status', $this->status))
             ->when($this->hiringDateType !== 'all', function ($q) {
                 if ($this->hiringDateStart) {
@@ -476,12 +562,13 @@ class Index extends Component
             ->paginate($this->perPage);
             $branchesMap = $this->loadBranchesMap($employees, $companyId);
 
-        return view('employees::livewire.employees.index', [
-                'employees'          => $employees,
-                'departmentsOptions' => $departmentsOptions,
-                'jobTitlesOptions'   => $jobTitlesOptions,
-                'branchesMap'        => $branchesMap,
-            ])->layout('layouts.company-admin');
+       return view('employees::livewire.employees.index', [
+            'employees'          => $employees,
+            'departmentsOptions' => $departmentsOptions,
+            'jobTitlesOptions'   => $jobTitlesOptions,
+            'branchesOptions'    => $branchesOptions,
+            'branchesMap'        => $branchesMap,
+        ])->layout('layouts.company-admin');
             
     }
 
@@ -1005,7 +1092,7 @@ private function loadBranchesMap($employees, int $companyId): array
 
     $query = $Branch::query()->whereIn('id', $branchIds->all());
 
-    // ✅ لو جدول الفروع فيه company_id أو saas_company_id نفلتر حسب الشركة (اختياري وآمن)
+    //   لو جدول الفروع فيه company_id أو saas_company_id نفلتر حسب الشركة (اختياري وآمن)
     try {
         $table = (new $Branch)->getTable();
 
@@ -1015,7 +1102,7 @@ private function loadBranchesMap($employees, int $companyId): array
             $query->where('company_id', $companyId);
         }
 
-        // ✅ نختار أعمدة موجودة فقط
+        //   نختار أعمدة موجودة فقط
         $cols = ['id'];
 
         foreach (['name', 'name_ar', 'name_en', 'code'] as $c) {

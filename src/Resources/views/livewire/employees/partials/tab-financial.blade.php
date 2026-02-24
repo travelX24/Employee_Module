@@ -1,20 +1,6 @@
 <div class="space-y-5">
     {{-- قسم العقد والراتب الأساسي --}}
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {{-- Contract Type --}}
-        <x-ui.select 
-            :label="tr('Contract Type')" 
-            wire:model.live="contract_type" 
-            error="contract_type" 
-            :required="true"
-        >
-            <option value="">{{ tr('Select Contract Type') }}</option>
-            <option value="permanent" {{ $contract_type == 'permanent' ? 'selected' : '' }}>{{ tr('Permanent') }}</option>
-            <option value="temporary" {{ $contract_type == 'temporary' ? 'selected' : '' }}>{{ tr('Temporary') }}</option>
-            <option value="probation" {{ $contract_type == 'probation' ? 'selected' : '' }}>{{ tr('Probation') }}</option>
-            <option value="contractor" {{ $contract_type == 'contractor' ? 'selected' : '' }}>{{ tr('Contractor') }}</option>
-        </x-ui.select>
-
         {{-- Basic Salary --}}
         <x-ui.input 
             id="basic_salary_input"
@@ -26,21 +12,7 @@
             :required="true"
             placeholder="0.00"
         />
-
-        {{-- Contract Duration --}}
-      <x-ui.input 
-            id="contract_duration_input"
-            type="number"
-            :label="tr('Contract Duration (Months)')" 
-            wire:model="contract_duration_months" 
-            value="{{ $contract_duration_months }}"
-            error="contract_duration_months"
-            min="1"
-            placeholder="12"
-            :required="($contract_type && $contract_type !== 'permanent')"
-        />
     </div>
-
     {{-- قسم الأجور المشتقة (ظهور فقط إذا كان هناك راتب أساسي) --}}
     @if(isset($daily_wage) && $daily_wage !== null)
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200">

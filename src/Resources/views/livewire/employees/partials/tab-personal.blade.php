@@ -105,14 +105,24 @@
         />
 
         {{-- Emergency Relation --}}
-        <x-ui.input 
-            :label="tr('Relation')" 
-            wire:model="emergency_contact_relation" 
-            value="{{ $emergency_contact_relation }}"
-            error="emergency_contact_relation" 
+        <x-ui.select
+            :label="tr('Relation')"
+            model="emergency_contact_relation"
+            error="emergency_contact_relation"
             :required="true"
-            placeholder="{{ tr('Father, Mother, Brother, etc.') }}"
-        />
+        >
+            <option value="">{{ tr('Select Relation') }}</option>
+
+            <option value="أب"   {{ ($emergency_contact_relation ?? '') === 'أب' ? 'selected' : '' }}>أب</option>
+            <option value="أم"   {{ ($emergency_contact_relation ?? '') === 'أم' ? 'selected' : '' }}>أم</option>
+            <option value="أخ"   {{ ($emergency_contact_relation ?? '') === 'أخ' ? 'selected' : '' }}>أخ</option>
+            <option value="أخت"  {{ ($emergency_contact_relation ?? '') === 'أخت' ? 'selected' : '' }}>أخت</option>
+            <option value="زوج"  {{ ($emergency_contact_relation ?? '') === 'زوج' ? 'selected' : '' }}>زوج</option>
+            <option value="زوجة" {{ ($emergency_contact_relation ?? '') === 'زوجة' ? 'selected' : '' }}>زوجة</option>
+            <option value="ابن"  {{ ($emergency_contact_relation ?? '') === 'ابن' ? 'selected' : '' }}>ابن</option>
+            <option value="بنت"  {{ ($emergency_contact_relation ?? '') === 'بنت' ? 'selected' : '' }}>بنت</option>
+
+        </x-ui.select>
     </div>
 </div>
 

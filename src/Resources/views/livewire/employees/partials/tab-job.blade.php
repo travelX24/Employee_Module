@@ -185,10 +185,38 @@
             @enderror
         </div>
 
-        {{-- Hire Date --}}
+                {{-- Hire Date --}}
         <x-ui.company-date-picker
             model="hired_at"
             :label="tr('Hire Date')"
+        />
+
+        {{-- Contract Type --}}
+        <x-ui.select
+            :label="tr('Contract Type')"
+            wire:model.live="contract_type"
+            error="contract_type"
+            :required="true"
+        >
+            <option value="">{{ tr('Select Contract Type') }}</option>
+            <option value="permanent"  {{ $contract_type == 'permanent' ? 'selected' : '' }}>{{ tr('Permanent') }}</option>
+            <option value="temporary"  {{ $contract_type == 'temporary' ? 'selected' : '' }}>{{ tr('Temporary') }}</option>
+            <option value="probation"  {{ $contract_type == 'probation' ? 'selected' : '' }}>{{ tr('Probation') }}</option>
+            <option value="contractor" {{ $contract_type == 'contractor' ? 'selected' : '' }}>{{ tr('Contractor') }}</option>
+        </x-ui.select>
+
+        {{-- Contract Duration --}}
+        <x-ui.input
+            id="contract_duration_input"
+            type="number"
+            :label="tr('Contract Duration (Months)')"
+            wire:model="contract_duration_months"
+            value="{{ $contract_duration_months }}"
+            error="contract_duration_months"
+            min="1"
+            placeholder="12"
+            :required="($contract_type && $contract_type !== 'permanent')"
+            :disabled="($contract_type === 'permanent')"
         />
     </div>
 

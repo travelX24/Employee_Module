@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Athka\Saas\Models\Branch;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 class Create extends Component
 {
     use WithFileUploads;
@@ -20,6 +21,7 @@ class Create extends Component
     public ?int $branch_id = null;
 
     public array $branchOptions = [];
+    public array $nationalityOptions = []; 
 
     public int $tab = 1;
 
@@ -34,6 +36,7 @@ class Create extends Component
     public string $birth_place = '';
     public string $birth_date = '';
     public ?int $children_count = null;
+    public string $national_id_type = 'national_id'; 
 
     /* TAB 2: Job */
     public $sector = '';
@@ -99,8 +102,8 @@ class Create extends Component
                 $this->branch_id = $allowed[0] ?? null;
             }
         }
-                $this->loadBranches();
-
+        $this->loadBranches();
+        $this->loadNationalities(); 
         // تعيين تاريخ اليوم لحقل التوظيف
         if (empty($this->hired_at)) {
             $this->hired_at = now()->format('Y-m-d');
@@ -196,7 +199,7 @@ class Create extends Component
                 'leave_balance_adjustments' => is_numeric($this->leave_balance_adjustments) ? (int) $this->leave_balance_adjustments : 0,
             ]);
         
-        $this->calculated_leave_balance = $tempEmployee->calculateLeaveBalance();
+        $this->calculated_leave_balance = (int) round((float) $tempEmployee->calculateLeaveBalance(), 0, PHP_ROUND_HALF_UP);
     }
 
     private function calculateAndUpdateWages()
@@ -271,6 +274,7 @@ class Create extends Component
         return [
             'name_ar' => tr('Arabic Name'),
             'name_en' => tr('English Name'),
+            'national_id_type' => tr('ID Type'),
             'national_id' => tr('National ID'),
             'national_id_expiry' => tr('National ID Expiry'),
             'nationality' => tr('Nationality'),
@@ -318,27 +322,31 @@ class Create extends Component
     {
         return [
             'name_ar' => ['required', 'string', 'max:255'],
+
+            'national_id_type' => ['required', Rule::in(['national_id','iqama','passport','other'])],
+
             'national_id' => [
-                'required', 
-                'string', 
-                'max:50', 
+                'required',
+                'string',
+                'max:50',
                 Rule::unique('employees', 'national_id')
                     ->where('saas_company_id', $this->companyId)
                     ->whereNull('deleted_at')
             ],
+
             'national_id_expiry' => ['required', 'date', 'after:today'],
             'nationality' => ['required', 'string', 'max:100'],
             'gender' => ['required', Rule::in(['male', 'female'])],
             'social_status' => ['required', Rule::in(['single', 'married'])],
             'birth_place' => ['required', 'string', 'max:255'],
             'birth_date' => ['required', 'date'],
-            
+
             'name_en' => ['nullable', 'string', 'max:255'],
             'children_count' => ['nullable', 'integer', 'min:0'],
         ];
     }
 
-    private function rulesTab2(): array
+   private function rulesTab2(): array
     {
         return [
             'sector' => ['nullable', 'string', 'max:255'],
@@ -347,7 +355,14 @@ class Create extends Component
             'grade' => ['required', 'integer', 'min:1', 'max:10'],
             'manager_id' => ['nullable', 'exists:employees,id'],
             'hired_at' => ['required', 'date'],
-            
+
+            'contract_type' => ['required', Rule::in(['permanent', 'temporary', 'probation', 'contractor'])],
+            'contract_duration_months' => Rule::when(
+                ($this->contract_type !== '' && $this->contract_type !== 'permanent'),
+                ['required', 'integer', 'min:1'],
+                ['nullable', 'integer', 'min:1']
+            ),
+
             'sub_department_id' => ['nullable', 'exists:departments,id'],
         ];
     }
@@ -355,15 +370,7 @@ class Create extends Component
     private function rulesTab3(): array
     {
         return [
-            'contract_type' => ['required', Rule::in(['permanent', 'temporary', 'probation', 'contractor'])],
             'basic_salary' => ['required', 'numeric', 'min:0'],
-
-            'contract_duration_months' => Rule::when(
-                ($this->contract_type !== '' && $this->contract_type !== 'permanent'),
-                ['required', 'integer', 'min:1'],
-                ['nullable', 'integer', 'min:1']
-            ),
-
             'allowance' => ['nullable', 'numeric', 'min:0'],
             'annual_leave_days' => ['nullable', 'integer', 'min:0'],
         ];
@@ -400,8 +407,7 @@ class Create extends Component
                 'regex:/^\d+$/',
             ],
             'emergency_contact_name' => ['required', 'string', 'max:100'],
-            'emergency_contact_relation' => ['required', 'string', 'max:50'],
-            
+            'emergency_contact_relation' => ['required', Rule::in(['أب','أم','أخ','أخت','زوج','زوجة','ابن','بنت','أخرى'])],            
             'mobile_alt' => [
                 'nullable',
                 'string',
@@ -830,12 +836,76 @@ public function removeUploadItem(string $field, int $index): void
         $this->{$field} = array_values($current);
     }
 }
-public function updatedContractType($value): void
-{
-    if ($value === 'permanent') {
-        $this->contract_duration_months = null;
+    public function updatedContractType($value): void
+    {
+        if ($value === 'permanent') {
+            $this->contract_duration_months = null;
+        }
     }
-}
+
+    private function loadNationalities(): void
+    {
+        $this->nationalityOptions = [];
+
+        $cfg = config('nationalities');
+        if (is_array($cfg) && count($cfg) > 0) {
+            $this->nationalityOptions = collect($cfg)
+                ->filter(fn ($v) => is_string($v) && trim($v) !== '')
+                ->values()
+                ->map(fn ($v) => ['value' => $v, 'label' => $v])
+                ->all();
+            return;
+        }
+
+        $table = null;
+        if (Schema::hasTable('nationalities')) $table = 'nationalities';
+        elseif (Schema::hasTable('countries')) $table = 'countries';
+
+        if (! $table) {
+            $fallback = ['Yemen','Saudi Arabia','United Arab Emirates','Qatar','Kuwait','Oman','Bahrain','Egypt','Jordan','Iraq','Syria','Lebanon','Sudan','Morocco','Tunisia','Algeria'];
+            $this->nationalityOptions = collect($fallback)->map(fn ($v) => ['value'=>$v,'label'=>$v])->all();
+            return;
+        }
+
+        $cols = Schema::getColumnListing($table);
+
+        $labelCol = null;
+
+        if ($this->isAr()) {
+            foreach (['nationality_ar','name_ar','arabic_name','name_arabic'] as $c) {
+                if (in_array($c, $cols, true)) { $labelCol = $c; break; }
+            }
+        } else {
+            foreach (['nationality_en','name_en','english_name','name_english'] as $c) {
+                if (in_array($c, $cols, true)) { $labelCol = $c; break; }
+            }
+        }
+
+        if (! $labelCol) {
+            foreach (['nationality','name','title'] as $c) {
+                if (in_array($c, $cols, true)) { $labelCol = $c; break; }
+            }
+        }
+
+        if (! $labelCol) {
+            $this->nationalityOptions = [];
+            return;
+        }
+
+        $rows = DB::table($table)
+            ->select($labelCol)
+            ->whereNotNull($labelCol)
+            ->where($labelCol, '!=', '')
+            ->distinct()
+            ->orderBy($labelCol)
+            ->limit(500)
+            ->get();
+
+        $this->nationalityOptions = $rows->map(function ($r) use ($labelCol) {
+            $v = (string) $r->{$labelCol};
+            return ['value' => $v, 'label' => $v];
+        })->values()->all();
+    }
 }
 
 

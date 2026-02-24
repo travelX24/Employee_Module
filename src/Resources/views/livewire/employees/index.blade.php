@@ -115,45 +115,73 @@
                         x-transition
                         class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end"
                     >
-                        <x-ui.filter-select
-                            model="departmentId"
-                            :label="tr('Department')"
-                            :placeholder="tr('All Departments')"
-                            :options="$departmentsOptions"
-                            width="full"
-                            :defer="false"
-                            :applyOnChange="true"
-                            allValue="all"
-                        />
+                  <x-ui.filter-select
+                                model="departmentId"
+                                :label="tr('Department')"
+                                :placeholder="tr('All Departments')"
+                                :options="$departmentsOptions"
+                                width="full"
+                                :defer="false"
+                                :applyOnChange="true"
+                                allValue="all"
+                            />
 
-                        <x-ui.filter-select
-                            model="jobTitleId"
-                            :label="tr('Job Title')"
-                            :placeholder="tr('All Job Titles')"
-                            :options="$jobTitlesOptions"
-                            width="full"
-                            :defer="false"
-                            :applyOnChange="true"
-                            allValue="all"
-                        />
+                            <x-ui.filter-select
+                                model="jobTitleId"
+                                :label="tr('Job Title')"
+                                :placeholder="tr('All Job Titles')"
+                                :options="$jobTitlesOptions"
+                                width="full"
+                                :defer="false"
+                                :applyOnChange="true"
+                                allValue="all"
+                            />
 
-                        <x-ui.filter-select
-                            model="status"
-                            :label="tr('Status')"
-                            :placeholder="tr('All Status')"
-                            :options="[
-                                ['value' => 'ACTIVE', 'label' => tr('Active')],
-                                ['value' => 'SUSPENDED', 'label' => tr('Suspended')],
-                                ['value' => 'RESIGNED', 'label' => tr('Resigned')],
-                                ['value' => 'TERMINATED', 'label' => tr('Terminated')],
-                                ['value' => 'RETIRED', 'label' => tr('Retired')],
-                            ]"
-                            width="full"
-                            :defer="false"
-                            :applyOnChange="true"
-                            allValue="all"
-                        />
+                            {{-- ✅ NEW: Branch Filter --}}
+                            <x-ui.filter-select
+                                model="branchFilterId"
+                                :label="tr('Branch')"
+                                :placeholder="tr('All Branches')"
+                                :options="$branchesOptions"
+                                width="full"
+                                :defer="false"
+                                :applyOnChange="true"
+                                allValue="all"
+                            />
 
+                            {{-- ✅ NEW: Contract Type Filter --}}
+                            <x-ui.filter-select
+                                model="contractType"
+                                :label="tr('Contract Type')"
+                                :placeholder="tr('All Contract Types')"
+                                :options="[
+                                    ['value' => 'permanent',  'label' => tr('Permanent')],
+                                    ['value' => 'temporary',  'label' => tr('Temporary')],
+                                    ['value' => 'probation',  'label' => tr('Probation')],
+                                    ['value' => 'contractor', 'label' => tr('Contractor')],
+                                ]"
+                                width="full"
+                                :defer="false"
+                                :applyOnChange="true"
+                                allValue="all"
+                            />
+
+                            <x-ui.filter-select
+                                model="status"
+                                :label="tr('Status')"
+                                :placeholder="tr('All Status')"
+                                :options="[
+                                    ['value' => 'ACTIVE', 'label' => tr('Active')],
+                                    ['value' => 'SUSPENDED', 'label' => tr('Suspended')],
+                                    ['value' => 'RESIGNED', 'label' => tr('Resigned')],
+                                    ['value' => 'TERMINATED', 'label' => tr('Terminated')],
+                                    ['value' => 'RETIRED', 'label' => tr('Retired')],
+                                ]"
+                                width="full"
+                                :defer="false"
+                                :applyOnChange="true"
+                                allValue="all"
+                            />
                         {{-- Hiring Date Filter --}}
                         <div class="flex flex-col w-full">
                             <x-ui.filter-select
