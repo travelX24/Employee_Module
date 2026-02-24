@@ -1171,6 +1171,327 @@ class EmployeeController extends Controller
         return $days;
     }
 
+    public function updateLeaveRequest(Request $request, $id)
+    {
+        $user = $request->user();
+
+        if ($resp = $this->denyIfNotMobileEmployee($user)) {
+            return $resp;
+        }
+
+        $table = 'attendance_leave_requests';
+
+        if (!Schema::hasTable($table)) {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'table_missing',
+                'message' => "Table [$table] not found.",
+            ], 500);
+        }
+
+        $cols = Schema::getColumnListing($table);
+        $key = in_array('employee_id', $cols, true) ? 'employee_id' : (in_array('user_id', $cols, true) ? 'user_id' : null);
+        
+        $value = ($key === 'employee_id') ? ($user->employee_id ?? null) : ($user->id ?? null);
+        
+        $leaveRequest = DB::table($table)->where('id', $id)->where($key, $value)->first();
+
+        if (!$leaveRequest) {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'not_found',
+                'message' => 'Request not found.',
+            ], 404);
+        }
+
+        if ($leaveRequest->status !== 'pending') {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'cannot_update',
+                'message' => 'Cannot update a request that is not pending.',
+            ], 400);
+        }
+
+        $validated = $request->validate([
+            'start_date' => ['required', 'date'],
+            'end_date'   => ['required', 'date', 'after_or_equal:start_date'],
+            'reason'     => ['nullable', 'string', 'max:2000'],
+            'from_time'  => ['nullable', 'date_format:H:i'],
+            'to_time'    => ['nullable', 'date_format:H:i'],
+            'leave_policy_id' => ['nullable', 'integer'],
+        ]);
+
+        if ($request->filled('from_time') xor $request->filled('to_time')) {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'invalid_time_range',
+                'message' => 'from_time and to_time must be provided together.',
+            ], 422);
+        }
+
+        $minutes = null;
+        if ($request->filled('from_time') && $request->filled('to_time')) {
+            $from = Carbon::createFromFormat('H:i', $request->input('from_time'));
+            $to   = Carbon::createFromFormat('H:i', $request->input('to_time'));
+            $minutes = $from->diffInMinutes($to, false);
+            if ($minutes <= 0) {
+                return response()->json([
+                    'ok'      => false,
+                    'error'   => 'invalid_time_range',
+                    'message' => 'to_time must be after from_time.',
+                ], 422);
+            }
+        }
+
+        $now = now();
+        $data = [];
+        
+        $leavePolicyId = $validated['leave_policy_id'] ?? $leaveRequest->leave_policy_id;
+        $companyId = (int) ($user->saas_company_id ?? 0);
+
+        if (isset($validated['leave_policy_id'])) {
+            $policy = DB::table('leave_policies')
+                ->where('id', $leavePolicyId)
+                ->where('company_id', $companyId)
+                ->first();
+            
+            if ($policy) {
+                if (in_array('leave_policy_id', $cols, true)) $data['leave_policy_id'] = $policy->id;
+                if (in_array('policy_year_id', $cols, true)) $data['policy_year_id'] = $policy->policy_year_id;
+            }
+        }
+
+        if (array_key_exists('reason', $validated) && in_array('reason', $cols, true)) $data['reason'] = $validated['reason'];
+        if (in_array('start_date', $cols, true)) $data['start_date'] = $validated['start_date'];
+        if (in_array('end_date', $cols, true))   $data['end_date'] = $validated['end_date'];
+
+        if ($request->filled('from_time') && in_array('from_time', $cols, true)) $data['from_time'] = $validated['from_time'];
+        if ($request->filled('to_time') && in_array('to_time', $cols, true))     $data['to_time'] = $validated['to_time'];
+        if (!is_null($minutes) && in_array('minutes', $cols, true))              $data['minutes'] = $minutes;
+
+        if (in_array('requested_days', $cols, true)) {
+            $start = Carbon::parse($validated['start_date']);
+            $end = Carbon::parse($validated['end_date']);
+            $data['requested_days'] = $this->computeRequestedDaysGeneric($companyId, $leavePolicyId, $start, $end);
+        }
+
+        if (in_array('updated_at', $cols, true)) $data['updated_at'] = $now;
+
+        DB::table($table)->where('id', $id)->update($data);
+
+        return response()->json([
+            'ok'   => true,
+            'message' => 'Request updated successfully.',
+            'data' => DB::table($table)->where('id', $id)->first(),
+        ]);
+    }
+
+    public function deleteLeaveRequest(Request $request, $id)
+    {
+        $user = $request->user();
+
+        if ($resp = $this->denyIfNotMobileEmployee($user)) {
+            return $resp;
+        }
+
+        $table = 'attendance_leave_requests';
+        $cols = Schema::getColumnListing($table);
+        $key = in_array('employee_id', $cols, true) ? 'employee_id' : (in_array('user_id', $cols, true) ? 'user_id' : null);
+        $value = ($key === 'employee_id') ? ($user->employee_id ?? null) : ($user->id ?? null);
+        
+        $leaveRequest = DB::table($table)->where('id', $id)->where($key, $value)->first();
+
+        if (!$leaveRequest) {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'not_found',
+                'message' => 'Request not found.',
+            ], 404);
+        }
+
+        if ($leaveRequest->status !== 'pending') {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'cannot_delete',
+                'message' => 'Cannot delete a request that is not pending.',
+            ], 400);
+        }
+
+        DB::table($table)->where('id', $id)->delete();
+
+        return response()->json([
+            'ok'   => true,
+            'message' => 'Request deleted successfully.',
+        ]);
+    }
+
+    public function updatePermissionRequest(Request $request, $id)
+    {
+        $user = $request->user();
+
+        if ($resp = $this->denyIfNotMobileEmployee($user)) {
+            return $resp;
+        }
+
+        $table = 'attendance_permission_requests';
+        $cols = Schema::getColumnListing($table);
+        $key = in_array('employee_id', $cols, true) ? 'employee_id' : (in_array('user_id', $cols, true) ? 'user_id' : null);
+        $value = ($key === 'employee_id') ? ($user->employee_id ?? null) : ($user->id ?? null);
+
+        $permissionRequest = DB::table($table)->where('id', $id)->where($key, $value)->first();
+
+        if (!$permissionRequest) {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'not_found',
+                'message' => 'Request not found.',
+            ], 404);
+        }
+
+        if ($permissionRequest->status !== 'pending') {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'cannot_update',
+                'message' => 'Cannot update a request that is not pending.',
+            ], 400);
+        }
+
+        $validated = $request->validate([
+            'permission_date' => ['nullable', 'date', 'required_without:date'],
+            'date'            => ['nullable', 'date', 'required_without:permission_date'],
+            'reason'          => ['nullable', 'string', 'max:2000'],
+            'from_time'       => ['required', 'date_format:H:i'],
+            'to_time'         => ['required', 'date_format:H:i'],
+        ]);
+
+        $dateVal = (string) ($validated['permission_date'] ?? $validated['date'] ?? '');
+        $from = Carbon::createFromFormat('H:i', $validated['from_time']);
+        $to   = Carbon::createFromFormat('H:i', $validated['to_time']);
+        $minutes = $from->diffInMinutes($to, false);
+
+        if ($minutes <= 0) {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'invalid_time_range',
+                'message' => 'to_time must be after from_time.',
+            ], 422);
+        }
+
+        $data = [];
+        if (array_key_exists('reason', $validated) && in_array('reason', $cols, true)) $data['reason'] = $validated['reason'];
+        
+        if (in_array('permission_date', $cols, true)) {
+            $data['permission_date'] = $dateVal;
+        } elseif (in_array('date', $cols, true)) {
+            $data['date'] = $dateVal;
+        }
+
+        if (in_array('from_time', $cols, true)) $data['from_time'] = $validated['from_time'];
+        if (in_array('to_time', $cols, true))   $data['to_time'] = $validated['to_time'];
+        if (in_array('minutes', $cols, true))   $data['minutes'] = $minutes;
+        if (in_array('updated_at', $cols, true)) $data['updated_at'] = now();
+
+        // 🟢 NEW: Validate Limits (Daily/Monthly) based on policy
+        $companyId = (int) ($user->saas_company_id ?? 0);
+        $policy = null;
+        if ($companyId > 0 && Schema::hasTable('permission_policies')) {
+            $permCols = Schema::getColumnListing('permission_policies');
+            $permQuery = DB::table('permission_policies')->where('company_id', $companyId);
+            if (in_array('policy_year_id', $permCols, true) && class_exists(\Athka\SystemSettings\Models\LeavePolicyYear::class)) {
+                $yearId = (int) \Athka\SystemSettings\Models\LeavePolicyYear::query()
+                    ->where('company_id', $companyId)
+                    ->where('is_active', true)
+                    ->value('id');
+                if ($yearId > 0) {
+                    $permQuery->where('policy_year_id', $yearId);
+                }
+            }
+            $policy = $permQuery->first();
+        }
+
+        if ($policy) {
+            if ($policy->max_request_minutes > 0 && $minutes > $policy->max_request_minutes) {
+                return response()->json([
+                    'ok'      => false,
+                    'error'   => 'limit_exceeded',
+                    'message' => 'تجاوزت الحد المسموح به للطلب الواحد (' . $policy->max_request_minutes . ' دقيقة).',
+                ], 422);
+            }
+
+            if ($policy->monthly_limit_minutes > 0) {
+                $monthStart = Carbon::parse($dateVal)->startOfMonth()->toDateString();
+                $monthEnd   = Carbon::parse($dateVal)->endOfMonth()->toDateString();
+
+                $usedMinutes = DB::table($table)
+                    ->where($key, $value)
+                    ->where('id', '!=', $id) // Exclude current request
+                    ->whereBetween('permission_date', [$monthStart, $monthEnd])
+                    ->whereIn('status', ['approved', 'pending'])
+                    ->sum('minutes');
+
+                if (($usedMinutes + $minutes) > $policy->monthly_limit_minutes) {
+                    $settings = is_string($policy->settings) ? json_decode($policy->settings, true) : ($policy->settings ?? []);
+                    $allowExceed = (bool)($settings['allow_exceed_monthly_limit'] ?? false);
+
+                    if (!$allowExceed) {
+                        return response()->json([
+                            'ok'      => false,
+                            'error'   => 'monthly_limit_exceeded',
+                            'message' => 'تجاوزت الرصيد الشهري المسموح به للاستئذان (' . $policy->monthly_limit_minutes . ' دقيقة).',
+                        ], 422);
+                    }
+                }
+            }
+        }
+
+        DB::table($table)->where('id', $id)->update($data);
+
+        return response()->json([
+            'ok'   => true,
+            'message' => 'Request updated successfully.',
+            'data' => DB::table($table)->where('id', $id)->first(),
+        ]);
+    }
+
+    public function deletePermissionRequest(Request $request, $id)
+    {
+        $user = $request->user();
+
+        if ($resp = $this->denyIfNotMobileEmployee($user)) {
+            return $resp;
+        }
+
+        $table = 'attendance_permission_requests';
+        $cols = Schema::getColumnListing($table);
+        $key = in_array('employee_id', $cols, true) ? 'employee_id' : (in_array('user_id', $cols, true) ? 'user_id' : null);
+        $value = ($key === 'employee_id') ? ($user->employee_id ?? null) : ($user->id ?? null);
+
+        $permissionRequest = DB::table($table)->where('id', $id)->where($key, $value)->first();
+
+        if (!$permissionRequest) {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'not_found',
+                'message' => 'Request not found.',
+            ], 404);
+        }
+
+        if ($permissionRequest->status !== 'pending') {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'cannot_delete',
+                'message' => 'Cannot delete a request that is not pending.',
+            ], 400);
+        }
+
+        DB::table($table)->where('id', $id)->delete();
+
+        return response()->json([
+            'ok'   => true,
+            'message' => 'Request deleted successfully.',
+        ]);
+    }
+
     protected function getCompanyWorkingDays($companyId): array
     {
         $row = DB::table('operational_calendars')
