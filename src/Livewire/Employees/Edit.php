@@ -437,6 +437,8 @@ class Edit extends Component
                 'file' => $this->txt('يجب أن يكون حجم الملف :attribute على الأقل :min كيلوبايت.', 'The :attribute must be at least :min kilobytes.'),
                 'string' => $this->txt('يجب أن يكون طول النص :attribute على الأقل :min حروف.', 'The :attribute must be at least :min characters.'),
             ],
+            'regex' => $this->txt('يجب أن يحتوي :attribute على أرقام فقط.', 'The :attribute must contain digits only.'),
+
             'max' => [
                 'numeric' => $this->txt('يجب أن لا يزيد :attribute عن :max.', 'The :attribute may not be greater than :max.'),
                 'file' => $this->txt('يجب أن لا يزيد حجم الملف :attribute عن :max كيلوبايت.', 'The :attribute may not be greater than :max kilobytes.'),
@@ -509,13 +511,18 @@ class Edit extends Component
         ];
     }
 
-
     protected function rulesTab3(): array
     {
         return [
             'contract_type' => ['required', Rule::in(['permanent', 'temporary', 'probation', 'contractor'])],
             'basic_salary' => ['required', 'numeric', 'min:0'],
-            'contract_duration_months' => ['nullable', 'integer', 'min:1'],
+
+            'contract_duration_months' => Rule::when(
+                ($this->contract_type && $this->contract_type !== 'permanent'),
+                ['required', 'integer', 'min:1'],
+                ['nullable', 'integer', 'min:1']
+            ),
+
             'allowance' => ['nullable', 'numeric', 'min:0'],
             'annual_leave_days' => ['nullable', 'integer', 'min:0'],
         ];
@@ -524,17 +531,23 @@ class Edit extends Component
     protected function rulesTab4(): array
     {
         return [
-            'mobile' => [
-                'required',
-                'string',
-                'max:30',
-                Rule::unique('employees', 'mobile')
-                    ->where('saas_company_id', $this->companyId)
-                    ->where('status', 'ACTIVE')
-                    ->whereNull('deleted_at')
-                    ->ignore($this->employee->id)
-            ],
-            'mobile_alt' => ['nullable', 'string', 'max:30'],
+             'mobile' => [
+                    'required',
+                    'string',
+                    'max:20',
+                    'regex:/^\d+$/',
+                    Rule::unique('employees', 'mobile')
+                        ->where('saas_company_id', $this->companyId)
+                        ->where('status', 'ACTIVE')
+                        ->whereNull('deleted_at')
+                        ->ignore($this->employee->id)
+                ],
+            'mobile_alt' => [
+                    'nullable',
+                    'string',
+                    'max:20',
+                    'regex:/^\d*$/',
+                ],       
             'email_work' => [
                 'required',
                 'email',
@@ -558,7 +571,12 @@ class Edit extends Component
             'city' => ['required', 'string', 'max:100'],
             'district' => ['required', 'string', 'max:100'],
             'address' => ['required', 'string', 'max:500'],
-            'emergency_contact_phone' => ['required', 'string', 'max:30'],
+            'emergency_contact_phone' => [
+                        'required',
+                        'string',
+                        'max:20',
+                        'regex:/^\d+$/',
+                    ],
             'emergency_contact_name' => ['required', 'string', 'max:255'],
             'emergency_contact_relation' => ['required', 'string', 'max:100'],
         ];
@@ -605,7 +623,12 @@ class Edit extends Component
 
     public function save(): void
     {
-                    // Validate all tabs including tab 5
+            $this->mobile = preg_replace('/\D+/', '', (string) $this->mobile);
+            $this->mobile_alt = $this->mobile_alt !== null
+                ? preg_replace('/\D+/', '', (string) $this->mobile_alt)
+                : null;
+            $this->emergency_contact_phone = preg_replace('/\D+/', '', (string) $this->emergency_contact_phone);
+
             $this->validate(array_merge(
                 $this->rulesTab1(),
                 $this->rulesTab2(),
@@ -860,7 +883,12 @@ class Edit extends Component
             return ['value' => (string) $b->id, 'label' => $label];
         })->toArray();
     }
-
+    public function updatedContractType($value): void
+    {
+        if ($value === 'permanent') {
+            $this->contract_duration_months = null;
+        }
+    }
 }
 
 

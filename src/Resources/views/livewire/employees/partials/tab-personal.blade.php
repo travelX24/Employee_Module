@@ -1,23 +1,27 @@
 <div class="space-y-4 sm:space-y-5">
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         {{-- Mobile --}}
-        <x-ui.input 
-            :label="tr('Mobile')" 
-            wire:model="mobile" 
-            value="{{ $mobile }}"
-            error="mobile" 
-            :required="true"
-            placeholder="+966 5x xxx xxxx"
-        />
+     <x-ui.input 
+        :label="tr('Mobile')" 
+        wire:model="mobile" 
+        value="{{ $mobile }}"
+        error="mobile" 
+        :required="true"
+        :digitsOnly="true"
+        :digitsMax="20"
+        placeholder="9665XXXXXXXX"
+    />
 
         {{-- Alt Mobile --}}
-        <x-ui.input 
-            :label="tr('Alternative Mobile')" 
-            wire:model="mobile_alt" 
-            value="{{ $mobile_alt }}"
-            error="mobile_alt"
-            placeholder="+966 5x xxx xxxx"
-        />
+    <x-ui.input 
+        :label="tr('Alternative Mobile')" 
+        wire:model="mobile_alt" 
+        value="{{ $mobile_alt }}"
+        error="mobile_alt"
+        :digitsOnly="true"
+        :digitsMax="20"
+        placeholder="9665XXXXXXXX"
+    />
 
         {{-- Work Email --}}
         <x-ui.input 
@@ -79,14 +83,16 @@
     
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         {{-- Emergency Phone --}}
-        <x-ui.input 
-            :label="tr('Emergency Phone')" 
-            wire:model="emergency_contact_phone" 
-            value="{{ $emergency_contact_phone }}"
-            error="emergency_contact_phone" 
-            :required="true"
-            placeholder="+966 5x xxx xxxx"
-        />
+     <x-ui.input 
+        :label="tr('Emergency Phone')" 
+        wire:model="emergency_contact_phone" 
+        value="{{ $emergency_contact_phone }}"
+        error="emergency_contact_phone" 
+        :required="true"
+        :digitsOnly="true"
+        :digitsMax="20"
+        placeholder="9665XXXXXXXX"
+    />
 
         {{-- Emergency Name --}}
         <x-ui.input 

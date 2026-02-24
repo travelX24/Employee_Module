@@ -262,6 +262,7 @@ class Create extends Component
             'certificates.*.mimes' => $this->txt('الصيغ المقبولة: JPG, PNG, PDF', 'Accepted formats: JPG, PNG, PDF'),
             'family_documents.*.mimes' => $this->txt('الصيغ المقبولة: JPG, PNG, PDF', 'Accepted formats: JPG, PNG, PDF'),
             'other_documents.*.mimes' => $this->txt('الصيغ المقبولة: JPG, PNG, PDF', 'Accepted formats: JPG, PNG, PDF'),
+            'regex' => $this->txt('يجب أن يحتوي :attribute على أرقام فقط.', 'The :attribute must contain digits only.'),
         ];
     }
 
@@ -356,8 +357,13 @@ class Create extends Component
         return [
             'contract_type' => ['required', Rule::in(['permanent', 'temporary', 'probation', 'contractor'])],
             'basic_salary' => ['required', 'numeric', 'min:0'],
-            
-            'contract_duration_months' => ['nullable', 'integer', 'min:1'],
+
+            'contract_duration_months' => Rule::when(
+                ($this->contract_type !== '' && $this->contract_type !== 'permanent'),
+                ['required', 'integer', 'min:1'],
+                ['nullable', 'integer', 'min:1']
+            ),
+
             'allowance' => ['nullable', 'numeric', 'min:0'],
             'annual_leave_days' => ['nullable', 'integer', 'min:0'],
         ];
@@ -366,10 +372,11 @@ class Create extends Component
     private function rulesTab4(): array
     {
         return [
-            'mobile' => [
+           'mobile' => [
                 'required',
                 'string',
-                'max:30',
+                'max:20',
+                'regex:/^\d+$/',
                 Rule::unique('employees', 'mobile')
                     ->where('saas_company_id', $this->companyId)
                     ->where('status', 'ACTIVE')
@@ -386,11 +393,21 @@ class Create extends Component
             'city' => ['required', 'string', 'max:100'],
             'district' => ['required', 'string', 'max:100'],
             'address' => ['required', 'string', 'max:255'],
-            'emergency_contact_phone' => ['required', 'string', 'max:30'],
+            'emergency_contact_phone' => [
+                'required',
+                'string',
+                'max:20',
+                'regex:/^\d+$/',
+            ],
             'emergency_contact_name' => ['required', 'string', 'max:100'],
             'emergency_contact_relation' => ['required', 'string', 'max:50'],
             
-            'mobile_alt' => ['nullable', 'string', 'max:30'],
+            'mobile_alt' => [
+                'nullable',
+                'string',
+                'max:20',
+                'regex:/^\d+$/',
+            ],  
             'email_personal' => [
                 'nullable',
                 'email',
@@ -811,6 +828,12 @@ public function removeUploadItem(string $field, int $index): void
     if (array_key_exists($index, $current)) {
         unset($current[$index]);
         $this->{$field} = array_values($current);
+    }
+}
+public function updatedContractType($value): void
+{
+    if ($value === 'permanent') {
+        $this->contract_duration_months = null;
     }
 }
 }

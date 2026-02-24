@@ -28,7 +28,7 @@
         />
 
         {{-- Contract Duration --}}
-        <x-ui.input 
+      <x-ui.input 
             id="contract_duration_input"
             type="number"
             :label="tr('Contract Duration (Months)')" 
@@ -37,6 +37,7 @@
             error="contract_duration_months"
             min="1"
             placeholder="12"
+            :required="($contract_type && $contract_type !== 'permanent')"
         />
     </div>
 
