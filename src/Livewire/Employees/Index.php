@@ -741,44 +741,43 @@ class Index extends Component
             $file = fopen('php://output', 'w');
             fprintf($file, chr(0xEF) . chr(0xBB) . chr(0xBF)); // BOM
  
-            fputcsv($file, [
-                tr('Employee No'),           // 0 (Optional)
-                tr('Name AR'),              // 1
-                tr('Name EN'),              // 2
-                tr('National ID'),          // 3
-                tr('National ID Expiry'),   // 4
-                tr('Nationality'),          // 5
-                tr('Birth Date'),           // 6
-                tr('Gender'),               // 7
-                tr('Marital Status'),       // 8
-                tr('Children Count'),       // 9
-                tr('Mobile'),               // 10
-                tr('Email Work'),           // 11
-                tr('Email Personal'),       // 12
-                tr('Main Department Code'),      // 13
-                tr('Sub Department Code'),       // 14
-                tr('Job Title Code'),       // 15
-                tr('Manager Employee No'),  // 16
-                tr('Hired At'),             // 17
-                tr('Basic Salary'),         // 18
-                tr('Allowances'),           // 19
-                tr('Annual Leave Days'),    // 20
-                tr('Contract Type'),        // 21
-                tr('Contract Duration (Months)'), // 22
-                tr('City'),                 // 23
-                tr('District'),             // 24
-                tr('Address'),              // 25
-                tr('Emergency Contact Name'), // 26
-                tr('Emergency Contact Phone'), // 27
-                tr('Emergency Relation'),    // 28
-            ]);
- 
-            // Sample Row (Empty employee_no)
-            fputcsv($file, [
-                '', 'أحمد محمد', 'Ahmed Mohamed', '1234567890', '2030-01-01', 'Saudi', '1990-05-15', 'MALE', 'MARRIED', '2',
-                '0500000000', 'ahmed@company.com', 'ahmed@personal.com', 'DEPT-001', 'SUB-001', 'JOB-001', '', '2024-01-01',
-                '8000', '2000', '30', 'LIMITED', '24', 'Riyadh', 'Al-Malqa', 'King Saud St', 'Ali Mohamed', '0511111111', 'Brother'
-            ]);
+        fputcsv($file, [
+            tr('Name AR'),                    // 0
+            tr('Name EN'),                    // 1
+            tr('National ID'),                // 2
+            tr('National ID Expiry'),         // 3
+            tr('Nationality'),                // 4
+            tr('Birth Date'),                 // 5
+            tr('Gender'),                     // 6
+            tr('Marital Status'),             // 7
+            tr('Children Count'),             // 8
+            tr('Mobile'),                     // 9
+            tr('Email Work'),                 // 10
+            tr('Email Personal'),             // 11
+            tr('Main Department Code'),       // 12
+            tr('Sub Department Code'),        // 13
+            tr('Job Title Code'),             // 14
+            tr('Manager Employee No'),        // 15
+            tr('Hired At'),                   // 16
+            tr('Basic Salary'),               // 17
+            tr('Allowances'),                 // 18
+            tr('Annual Leave Days'),          // 19
+            tr('Contract Type'),              // 20
+            tr('Contract Duration (Months)'), // 21
+            tr('City'),                       // 22
+            tr('District'),                   // 23
+            tr('Address'),                    // 24
+            tr('Emergency Contact Name'),     // 25
+            tr('Emergency Contact Phone'),    // 26
+            tr('Emergency Relation'),         // 27
+        ]);
+
+        // Sample Row
+        fputcsv($file, [
+            'أحمد محمد', 'Ahmed Mohamed', '1234567890', '2030-01-01', 'Saudi Arabia', '1990-05-15', 'male', 'married', '2',
+            '0500000000', 'ahmed@company.com', 'ahmed@personal.com', 'DEPT-001', 'SUB-001', 'JOB-001', '', '2024-01-01',
+            '8000', '2000', '30', 'permanent', '', 'Riyadh', 'Al-Malqa', 'King Saud St', 'Ali Mohamed', '0511111111', 'أخ'
+        ]);
  
             fclose($file);
         };
@@ -845,8 +844,25 @@ class Index extends Component
         $this->isImporting = true;
         $this->importValidationErrors = [];
         $companyId = $this->getCompanyId();
-        
-        $path = $this->importFile->getRealPath();
+
+            $allowedBranchIds = DB::table('branch_user_access')
+                ->where('user_id', Auth::id())
+                ->where('saas_company_id', $companyId)
+                ->pluck('branch_id')
+                ->map(fn ($v) => (int) $v)
+                ->unique()
+                ->values()
+                ->all();
+
+            $defaultBranchId = (int) (Auth::user()?->branch_id ?? 0) ?: null;
+
+            if (! empty($allowedBranchIds) && ! in_array((int) $defaultBranchId, $allowedBranchIds, true)) {
+                $defaultBranchId = $allowedBranchIds[0] ?? null;
+            }
+
+            $defaultAnnualLeaveDays = (int) (\Athka\Saas\Models\SaasCompanyOtherinfo::where('company_id', $companyId)->value('default_annual_leave_days') ?? 0);
+
+            $path = $this->importFile->getRealPath();
         $file = fopen($path, 'r');
         
         // Detect Delimiter
@@ -881,36 +897,35 @@ class Index extends Component
                 };
 
                 // Map columns
-                $row = [
-                    'employee_no'              => $clean($data[0] ?? ''),
-                    'name_ar'                  => $clean($data[1] ?? ''),
-                    'name_en'                  => $clean($data[2] ?? ''),
-                    'national_id'              => $clean($data[3] ?? ''),
-                    'national_id_expiry'       => $clean($data[4] ?? ''),
-                    'nationality'              => $clean($data[5] ?? ''),
-                    'birth_date'               => $clean($data[6] ?? ''),
-                    'gender'                   => strtoupper($clean($data[7] ?? '')),
-                    'marital_status'           => strtoupper($clean($data[8] ?? '')),
-                    'children_count'           => (int) $clean($data[9] ?? 0),
-                    'mobile'                   => $clean($data[10] ?? ''),
-                    'email_work'               => $clean($data[11] ?? ''),
-                    'email_personal'           => $clean($data[12] ?? ''),
-                    'dept_code'                => $clean($data[13] ?? ''),
-                    'sub_dept_code'            => $clean($data[14] ?? ''),
-                    'job_code'                 => $clean($data[15] ?? ''),
-                    'manager_emp_no'           => $clean($data[16] ?? ''),
-                    'hired_at'                 => $clean($data[17] ?? ''),
-                    'basic_salary'             => (float) $clean($data[18] ?? 0),
-                    'allowances'               => (float) $clean($data[19] ?? 0),
-                    'annual_leave_days'        => (int) $clean($data[20] ?? 30),
-                    'contract_type'            => $clean($data[21] ?? ''),
-                    'contract_duration_months' => (int) $clean($data[22] ?? 0),
-                    'city'                     => $clean($data[23] ?? ''),
-                    'district'                 => $clean($data[24] ?? ''),
-                    'address'                  => $clean($data[25] ?? ''),
-                    'emergency_contact_name'   => $clean($data[26] ?? ''),
-                    'emergency_contact_phone'  => $clean($data[27] ?? ''),
-                    'emergency_contact_relation' => $clean($data[28] ?? ''),
+              $row = [
+                    'name_ar'                    => $clean($data[0] ?? ''),
+                    'name_en'                    => $clean($data[1] ?? ''),
+                    'national_id'                => $clean($data[2] ?? ''),
+                    'national_id_expiry'         => $clean($data[3] ?? ''),
+                    'nationality'                => $clean($data[4] ?? ''),
+                    'birth_date'                 => $clean($data[5] ?? ''),
+                    'gender'                     => strtolower((string) $clean($data[6] ?? '')),
+                    'marital_status'             => strtolower((string) $clean($data[7] ?? '')),
+                    'children_count'             => (int) ($clean($data[8] ?? 0) ?: 0),
+                    'mobile'                     => $clean($data[9] ?? ''),
+                    'email_work'                 => $clean($data[10] ?? ''),
+                    'email_personal'             => $clean($data[11] ?? ''),
+                    'dept_code'                  => $clean($data[12] ?? ''),
+                    'sub_dept_code'              => $clean($data[13] ?? ''),
+                    'job_code'                   => $clean($data[14] ?? ''),
+                    'manager_emp_no'             => $clean($data[15] ?? ''),
+                    'hired_at'                   => $clean($data[16] ?? ''),
+                    'basic_salary'               => (float) ($clean($data[17] ?? 0) ?: 0),
+                    'allowances'                 => (float) ($clean($data[18] ?? 0) ?: 0),
+                    'annual_leave_days'          => (int) ($clean($data[19] ?? $defaultAnnualLeaveDays) ?: $defaultAnnualLeaveDays),
+                    'contract_type'              => strtolower((string) $clean($data[20] ?? '')),
+                    'contract_duration_months'   => (int) ($clean($data[21] ?? 0) ?: 0),
+                    'city'                       => $clean($data[22] ?? ''),
+                    'district'                   => $clean($data[23] ?? ''),
+                    'address'                    => $clean($data[24] ?? ''),
+                    'emergency_contact_name'     => $clean($data[25] ?? ''),
+                    'emergency_contact_phone'    => $clean($data[26] ?? ''),
+                    'emergency_contact_relation' => $clean($data[27] ?? ''),
                 ];
 
                 // Basic Mandatory Validation
@@ -920,22 +935,29 @@ class Index extends Component
                 }
 
                 // Duplicate Check (More granular results)
-                $duplicate = Employee::where('saas_company_id', $companyId)
+               $duplicate = Employee::where('saas_company_id', $companyId)
                     ->where(function($q) use ($row) {
                         $q->where('national_id', $row['national_id'])
-                          ->when($row['employee_no'], fn($qq) => $qq->orWhere('employee_no', $row['employee_no']))
-                          ->when($row['email_work'], fn($qq) => $qq->orWhere('email_work', $row['email_work']));
+                        ->when($row['email_work'], fn($qq) => $qq->orWhere('email_work', $row['email_work']))
+                        ->when($row['mobile'], fn($qq) => $qq->orWhere('mobile', $row['mobile']));
                     })->first();
 
                 if ($duplicate) {
-                    $field = 'ID';
-                    if ($row['employee_no'] && $duplicate->employee_no == $row['employee_no']) $field = tr('Employee No');
-                    if ($row['email_work'] && $duplicate->email_work == $row['email_work']) $field = tr('Email');
-                    
+                    $field = tr('National ID');
+                    $value = $row['national_id'];
+
+                    if ($row['email_work'] && $duplicate->email_work === $row['email_work']) {
+                        $field = tr('Email');
+                        $value = $row['email_work'];
+                    } elseif ($row['mobile'] && $duplicate->mobile === $row['mobile']) {
+                        $field = tr('Mobile');
+                        $value = $row['mobile'];
+                    }
+
                     $this->importValidationErrors[] = $this->trp('Row :row: Employee already exists matching :field (:value).', [
-                        'row' => $rowCount, 
+                        'row' => $rowCount,
                         'field' => $field,
-                        'value' => ($field == tr('Employee No') ? $row['employee_no'] : ($field == tr('Email') ? $row['email_work'] : $row['national_id']))
+                        'value' => $value,
                     ]);
                     continue;
                 }
@@ -973,48 +995,60 @@ class Index extends Component
                 }
 
                 // Fuzzy Matching for Gender and Marital Status
-                $gender = 'MALE';
-                if ($row['gender'] && str_starts_with($row['gender'], 'F')) $gender = 'FEMALE';
-                
-                $mStatus = 'SINGLE';
-                if ($row['marital_status'] && str_starts_with($row['marital_status'], 'M')) $mStatus = 'MARRIED';
+                $gender = in_array($row['gender'], ['female', 'f'], true) ? 'female' : 'male';
+
+                $mStatus = in_array($row['marital_status'], ['married', 'm'], true) ? 'married' : 'single';
+
+                $contractType = in_array($row['contract_type'], ['permanent', 'temporary', 'probation', 'contractor'], true)
+                    ? $row['contract_type']
+                    : 'permanent';
 
                 try {
+                  $jobTitleName = $jobId ? ($JobTitleModel::find($jobId)?->name) : null;
+
                     Employee::create([
-                        'saas_company_id'          => $companyId,
-                        'employee_no'              => $row['employee_no'] ?: null,
-                        'name_ar'                  => $row['name_ar'],
-                        'name_en'                  => $row['name_en'],
-                        'national_id'              => $row['national_id'],
-                        'national_id_expiry'       => (empty($row['national_id_expiry']) || str_contains($row['national_id_expiry'], '#')) ? now()->addYear() : $row['national_id_expiry'],
-                        'nationality'              => $row['nationality'],
-                        'birth_date'               => (empty($row['birth_date']) || str_contains($row['birth_date'], '#')) ? '1990-01-01' : $row['birth_date'],
-                        'gender'                   => $gender,
-                        'marital_status'           => $mStatus,
-                        'children_count'           => $row['children_count'] ?: 0,
-                        'mobile'                   => $row['mobile'],
-                        'email_work'               => $row['email_work'] ?: null,
-                        'email_personal'           => $row['email_personal'] ?: null,
-                        'department_id'            => $deptId,
-                        'sub_department_id'        => $subDeptId,
-                        'job_title_id'             => $jobId,
-                        'manager_id'               => $managerId,
-                        'sector'                   => tr('Main'),
-                        'grade'                    => 'Staff',
-                        'job_function'             => $JobTitleModel::find($jobId)?->name ?? 'N/A',
-                        'hired_at'                 => (empty($row['hired_at']) || str_contains($row['hired_at'], '#')) ? now() : $row['hired_at'],
-                        'basic_salary'             => $row['basic_salary'] ?: 0,
-                        'allowances'               => $row['allowances'] ?: 0,
-                        'annual_leave_days'        => $row['annual_leave_days'] ?: 30,
-                        'contract_type'            => $row['contract_type'] ?: tr('PERMANENT'),
-                        'contract_duration_months' => $row['contract_duration_months'] ?: 0,
-                        'city'                     => $row['city'] ?: tr('Unknown'),
-                        'district'                 => $row['district'],
-                        'address'                  => $row['address'],
-                        'emergency_contact_name'   => $row['emergency_contact_name'] ?: 'N/A',
-                        'emergency_contact_phone'  => $row['emergency_contact_phone'] ?: '000',
-                        'emergency_contact_relation' => $row['emergency_contact_relation'] ?: 'N/A',
-                        'status'                   => 'ACTIVE',
+                        'saas_company_id'            => $companyId,
+                        'branch_id'                  => $defaultBranchId,
+                        // لا نرسل employee_no هنا -> سيتولد تلقائياً بنفس منطق شاشة الإضافة
+                        'name_ar'                    => $row['name_ar'],
+                        'name_en'                    => $row['name_en'],
+                        'national_id'                => $row['national_id'],
+                        'national_id_expiry'         => (empty($row['national_id_expiry']) || str_contains($row['national_id_expiry'], '#'))
+                            ? now()->addYear()->format('Y-m-d')
+                            : $row['national_id_expiry'],
+                        'nationality'                => $row['nationality'] ?: tr('Unknown'),
+                        'birth_date'                 => (empty($row['birth_date']) || str_contains($row['birth_date'], '#'))
+                            ? '1990-01-01'
+                            : $row['birth_date'],
+                        'birth_place'                => $row['city'] ?: tr('Unknown'),
+                        'gender'                     => $gender,
+                        'marital_status'             => $mStatus,
+                        'children_count'             => $row['children_count'] ?: 0,
+                        'mobile'                     => $row['mobile'],
+                        'email_work'                 => $row['email_work'] ?: null,
+                        'email_personal'             => $row['email_personal'] ?: null,
+                        'department_id'              => $deptId,
+                        'sub_department_id'          => $subDeptId,
+                        'job_title_id'               => $jobId,
+                        'manager_id'                 => $managerId,
+                        'sector'                     => 'Staff',
+                        'grade'                      => 1,
+                        'job_function'               => $jobTitleName ?: 'Staff',
+                        'hired_at'                   => (empty($row['hired_at']) || str_contains($row['hired_at'], '#'))
+                            ? now()->format('Y-m-d')
+                            : $row['hired_at'],
+                        'basic_salary'               => $row['basic_salary'] ?: 0,
+                        'allowances'                 => $row['allowances'] ?: 0,
+                        'annual_leave_days'          => $row['annual_leave_days'] ?: $defaultAnnualLeaveDays,
+                        'contract_type'              => $contractType,
+                        'contract_duration_months'   => $contractType === 'permanent' ? 0 : ($row['contract_duration_months'] ?: 0),
+                        'city'                       => $row['city'] ?: tr('Unknown'),
+                        'district'                   => $row['district'] ?: tr('Unknown'),
+                        'address'                    => $row['address'] ?: tr('Unknown'),
+                        'emergency_contact_name'     => $row['emergency_contact_name'] ?: tr('Unknown'),
+                        'emergency_contact_phone'    => $row['emergency_contact_phone'] ?: '0000000000',
+                        'emergency_contact_relation' => $row['emergency_contact_relation'] ?: 'أخرى',
+                        'status'                     => 'ACTIVE',
                     ]);
                     $importedCount++;
                 } catch (\Exception $e) {
