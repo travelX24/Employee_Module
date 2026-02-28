@@ -712,7 +712,48 @@ class EmployeeController extends Controller
         if (str_contains($locale, 'ar')) $locale = 'ar';
         else $locale = 'en';
 
-        $transformed = $items->map(function($item) use ($table, $key, $value, $locale) {
+        // ✅ Fetch all approval tasks for the items in one go (Bulk Load)
+        $itemIds = $items->pluck('id')->toArray();
+        $allTasks = DB::table('approval_tasks')
+            ->where('approvable_type', $table === 'attendance_leave_requests' ? 'leaves' : 'permissions')
+            ->whereIn('approvable_id', $itemIds)
+            ->orderBy('position')
+            ->get();
+
+        // Get approver employee details for these tasks
+        $approverIds = $allTasks->pluck('approver_employee_id')->filter()->unique()->toArray();
+        $approvers = DB::table('employees')
+            ->whereIn('id', $approverIds)
+            ->get()
+            ->keyBy('id');
+
+        $groupedTasks = $allTasks->groupBy('approvable_id');
+
+        // ✅ Calculate monthly stats (Approved requests in the current month)
+        $employeeId = ($key === 'employee_id') ? $value : 0;
+        if ($employeeId === 0 && $key === 'user_id') {
+            $employeeId = DB::table('employees')->where('user_id', $value)->value('id') ?: 0;
+        }
+
+        $currentMonth = now()->format('Y-m');
+        $monthlyLeaveDays = 0;
+        $monthlyPermissionMinutes = 0;
+
+        if ($employeeId > 0) {
+            $monthlyLeaveDays = DB::table('attendance_leave_requests')
+                ->where('employee_id', $employeeId)
+                ->where('status', 'approved')
+                ->where('start_date', 'like', $currentMonth . '%')
+                ->sum('requested_days');
+
+            $monthlyPermissionMinutes = DB::table('attendance_permission_requests')
+                ->where('employee_id', $employeeId)
+                ->where('status', 'approved')
+                ->where('permission_date', 'like', $currentMonth . '%')
+                ->sum('minutes');
+        }
+
+        $transformed = $items->map(function($item) use ($table, $key, $value, $locale, $groupedTasks, $approvers, $monthlyLeaveDays, $monthlyPermissionMinutes) {
             $arr = (array)$item;
             
             // Map common fields to what Flutter expects
@@ -788,6 +829,21 @@ class EmployeeController extends Controller
                 }
             }
             $arr['balance'] = $balanceStr;
+            
+            // Monthly Stats
+            $arr['monthly_taken_days'] = (float)$monthlyLeaveDays;
+            $arr['monthly_taken_minutes'] = (int)$monthlyPermissionMinutes;
+
+            // ✅ Include Approval Tasks
+            $tasks = $groupedTasks->get($arr['id']) ?? collect();
+            $arr['approval_tasks'] = $tasks->map(function($t) use ($approvers) {
+                $tArr = (array)$t;
+                $approver = $approvers->get($tArr['approver_employee_id']);
+                if ($approver) {
+                    $tArr['approver'] = (array)$approver;
+                }
+                return $tArr;
+            })->values()->toArray();
 
             return $arr;
         });
