@@ -568,6 +568,27 @@ class EmployeeController extends Controller
         return $this->listRequestsFromTable($request, $table, $user);
     }
 
+    public function missionRequests(Request $request)
+    {
+        $user = $request->user();
+
+        if ($resp = $this->denyIfNotMobileEmployee($user)) {
+            return $resp;
+        }
+
+        $table = 'attendance_mission_requests';
+
+        if (!Schema::hasTable($table)) {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'table_missing',
+                'message' => "Table [$table] not found.",
+            ], 500);
+        }
+
+        return $this->listRequestsFromTable($request, $table, $user);
+    }
+
     protected function denyIfNotMobileEmployee($user)
     {
         if (! $user) {
@@ -645,9 +666,10 @@ class EmployeeController extends Controller
         $perPage = max(1, min($perPage, 100));
 
         // أعمدة شائعة (نرجع الموجود فقط)
-      $wanted = [
+        $wanted = [
             'id',
             $key,
+            'type',
             'status',
             'reason',
             'requested_days',
@@ -659,9 +681,11 @@ class EmployeeController extends Controller
             'permission_date',
             'from_time', 'to_time',
             'minutes',
+            'destination',
             'leave_policy_id',
             'policy_year_id',
             'requested_by',
+            'requested_at',
             'created_at',
             'updated_at',
         ];
@@ -714,8 +738,12 @@ class EmployeeController extends Controller
 
         // ✅ Fetch all approval tasks for the items in one go (Bulk Load)
         $itemIds = $items->pluck('id')->toArray();
+        $approvableType = 'leaves';
+        if ($table === 'attendance_permission_requests') $approvableType = 'permissions';
+        if ($table === 'attendance_mission_requests')    $approvableType = 'missions';
+
         $allTasks = DB::table('approval_tasks')
-            ->where('approvable_type', $table === 'attendance_leave_requests' ? 'leaves' : 'permissions')
+            ->where('approvable_type', $approvableType)
             ->whereIn('approvable_id', $itemIds)
             ->orderBy('position')
             ->get();
@@ -757,7 +785,11 @@ class EmployeeController extends Controller
             $arr = (array)$item;
             
             // Map common fields to what Flutter expects
-            $arr['leave_type']   = $arr['leave_type_name'] ?? ($table === 'attendance_permission_requests' ? 'Permission' : '');
+            if ($table === 'attendance_mission_requests') {
+                $arr['leave_type'] = $locale === 'ar' ? 'مهمة عمل' : 'Work Mission';
+            } else {
+                $arr['leave_type'] = $arr['leave_type_name'] ?? ($table === 'attendance_permission_requests' ? ($locale === 'ar' ? 'إذن' : 'Permission') : '');
+            }
             
             // Build creator name based on locale
             $nameAr = $arr['creator_name_ar'] ?? '';
@@ -769,6 +801,7 @@ class EmployeeController extends Controller
             }
 
             $arr['request_date'] = isset($arr['created_at']) ? substr((string)$arr['created_at'], 0, 10) : '';
+            $arr['requested_at'] = isset($arr['requested_at']) ? (string)$arr['requested_at'] : (isset($arr['created_at']) ? (string)$arr['created_at'] : '');
             
             // Format requested_days to remove .0 if it's integer
             if (isset($arr['requested_days'])) {
@@ -780,6 +813,12 @@ class EmployeeController extends Controller
             // Dates mapping
             if (isset($arr['start_date'])) $arr['from_date'] = $arr['start_date'];
             if (isset($arr['end_date']))   $arr['to_date']   = $arr['end_date'];
+            
+            // Fix for missions explicitly mapping startDate/endDate if they are just start_date/end_date
+            if ($table === 'attendance_mission_requests') {
+                 $arr['start_date'] = $arr['start_date'] ?? '';
+                 $arr['end_date']   = $arr['end_date'] ?? '';
+            }
             
             if (isset($arr['permission_date'])) {
                 $arr['from_date'] = $arr['permission_date'];
@@ -1545,6 +1584,241 @@ class EmployeeController extends Controller
         return response()->json([
             'ok'   => true,
             'message' => 'Request deleted successfully.',
+        ]);
+    }
+
+    public function createMissionRequest(Request $request)
+    {
+        $user = $request->user();
+
+        if ($resp = $this->denyIfNotMobileEmployee($user)) {
+            return $resp;
+        }
+
+        $table = 'attendance_mission_requests';
+
+        if (!Schema::hasTable($table)) {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'table_missing',
+                'message' => "Table [$table] not found.",
+            ], 500);
+        }
+
+        $validated = $request->validate([
+            'type'            => ['required', 'in:full_day,partial'],
+            'start_date'      => ['required', 'date'],
+            'end_date'        => ['nullable', 'date'],
+            'from_time'       => ['nullable', 'date_format:H:i'],
+            'to_time'         => ['nullable', 'date_format:H:i'],
+            'destination'     => ['nullable', 'string', 'max:255'],
+            'reason'          => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $employeeId = (int) ($user->employee_id ?? null);
+        $companyId = (int) ($user->saas_company_id ?? 0);
+
+        if (!$employeeId) {
+            return response()->json(['ok' => false, 'error' => 'missing_employee_id'], 403);
+        }
+
+        $data = [
+            'company_id'    => $companyId,
+            'employee_id'   => $employeeId,
+            'type'          => $validated['type'],
+            'start_date'    => $validated['start_date'],
+            'end_date'      => $validated['end_date'] ?? $validated['start_date'],
+            'from_time'     => $validated['from_time'] ?? null,
+            'to_time'       => $validated['to_time'] ?? null,
+            'destination'   => $validated['destination'] ?? '',
+            'reason'        => $validated['reason'] ?? '',
+            'status'        => 'pending',
+            'requested_by'  => $user->id,
+            'requested_at'  => now(),
+            'created_at'    => now(),
+            'updated_at'    => now(),
+        ];
+
+        $id = DB::table($table)->insertGetId($data);
+
+        // ✅ NEW: Trigger lazy task generation immediately so it shows up in "My Missions"
+        try {
+            if (class_exists('Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController')) {
+                 $inbox = new \Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController();
+                 // We need to use reflection or just copy the logic if it's private.
+                 // Actually, let's just use the DB to trigger it if there's no better way,
+                 // or just copy the essential logic here.
+                 $this->ensureMissionTasks($id, $employeeId, $companyId);
+            }
+        } catch (\Throwable $e) {
+            // Log or ignore if settings module not available
+        }
+
+        return response()->json([
+            'ok'      => true,
+            'id'      => $id,
+            'message' => 'Mission request created successfully.',
+        ]);
+    }
+
+    public function updateMissionRequest(Request $request, $id)
+    {
+        $user = $request->user();
+
+        if ($resp = $this->denyIfNotMobileEmployee($user)) {
+            return $resp;
+        }
+
+        $table = 'attendance_mission_requests';
+        $missionRequest = DB::table($table)->where('id', $id)->first();
+
+        if (!$missionRequest) {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'not_found',
+                'message' => 'Request not found.',
+            ], 404);
+        }
+
+        if ($missionRequest->employee_id != $user->employee_id) {
+             return response()->json([
+                'ok'      => false,
+                'error'   => 'unauthorized',
+                'message' => 'Unauthorized.',
+            ], 403);
+        }
+
+        if ($missionRequest->status !== 'pending') {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'cannot_update',
+                'message' => 'Cannot update a request that is not pending.',
+            ], 400);
+        }
+
+        $validated = $request->validate([
+            'type'        => ['required', 'in:full_day,partial'],
+            'start_date'  => ['required', 'date'],
+            'end_date'    => ['required_if:type,full_day', 'nullable', 'date'],
+            'from_time'   => ['required_if:type,partial', 'nullable', 'date_format:H:i'],
+            'to_time'     => ['required_if:type,partial', 'nullable', 'date_format:H:i'],
+            'destination' => ['nullable', 'string', 'max:500'],
+            'reason'      => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $data = [
+            'type'          => $validated['type'],
+            'start_date'    => $validated['start_date'],
+            'end_date'      => $validated['type'] === 'full_day' ? ($validated['end_date'] ?? $validated['start_date']) : $validated['start_date'],
+            'from_time'     => $validated['type'] === 'partial' ? $validated['from_time'] : null,
+            'to_time'       => $validated['type'] === 'partial' ? $validated['to_time'] : null,
+            'destination'   => $validated['destination'] ?? '',
+            'reason'        => $validated['reason'] ?? '',
+            'updated_at'    => now(),
+        ];
+
+        DB::table($table)->where('id', $id)->update($data);
+
+        return response()->json([
+            'ok'   => true,
+            'message' => 'Mission request updated successfully.',
+        ]);
+    }
+
+    /**
+     * ✅ Helper to ensure tasks for mission request on creation
+     */
+    protected function ensureMissionTasks($id, $employeeId, $companyId)
+    {
+        // Copy logic from ApprovalInboxController to avoid private access issues
+        $policy = DB::table('approval_policies')
+            ->where('company_id', $companyId)
+            ->where('operation_key', 'missions')
+            ->where('is_active', true)
+            ->orderByDesc('id')
+            ->first();
+
+        if (!$policy) return;
+
+        $steps = DB::table('approval_policy_steps')
+            ->where('policy_id', $policy->id)
+            ->orderBy('position')
+            ->get();
+
+        $firstPendingDone = false;
+        foreach ($steps as $s) {
+            $approverId = 0;
+            if ($s->approver_type === 'user') {
+                $approverId = (int) $s->approver_id;
+            } else {
+                // direct_manager logic
+                $approverId = DB::table('employees')->where('id', $employeeId)->value('manager_id');
+            }
+
+            $status = 'waiting';
+            if ($approverId > 0 && !$firstPendingDone) {
+                $status = 'pending';
+                $firstPendingDone = true;
+            } elseif ($approverId <= 0) {
+                $status = 'skipped';
+            }
+
+            DB::table('approval_tasks')->insert([
+                'company_id' => $companyId,
+                'operation_key' => 'missions',
+                'approvable_type' => 'missions',
+                'approvable_id' => $id,
+                'request_employee_id' => $employeeId,
+                'position' => $s->position,
+                'approver_employee_id' => $approverId ?: null,
+                'status' => $status,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+    }
+
+    public function deleteMissionRequest(Request $request, $id)
+    {
+        $user = $request->user();
+
+        if ($resp = $this->denyIfNotMobileEmployee($user)) {
+            return $resp;
+        }
+
+        $table = 'attendance_mission_requests';
+
+        if (!Schema::hasTable($table)) {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'table_missing',
+                'message' => "Table [$table] not found.",
+            ], 500);
+        }
+
+        $mission = DB::table($table)->where('id', $id)->first();
+
+        if (!$mission) {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'not_found',
+                'message' => 'Mission request not found.',
+            ], 404);
+        }
+
+        if ($mission->status !== 'pending') {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'cannot_delete',
+                'message' => 'Cannot delete a request that is not pending.',
+            ], 400);
+        }
+
+        DB::table($table)->where('id', $id)->delete();
+
+        return response()->json([
+            'ok'      => true,
+            'message' => 'Mission request deleted successfully.',
         ]);
     }
 

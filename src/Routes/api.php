@@ -19,5 +19,10 @@ Route::middleware(['api', 'auth:sanctum'])
         Route::post('/permission-requests', [EmployeeController::class, 'createPermissionRequest'])->name('permission_requests.create');
         Route::put('/permission-requests/{id}', [EmployeeController::class, 'updatePermissionRequest'])->name('permission_requests.update');
         Route::delete('/permission-requests/{id}', [EmployeeController::class, 'deletePermissionRequest'])->name('permission_requests.delete');
+
+        Route::get('/mission-requests', [EmployeeController::class, 'missionRequests'])->name('mission_requests');
+        Route::post('/mission-requests', [EmployeeController::class, 'createMissionRequest'])->name('mission_requests.create');
+        Route::put('/mission-requests/{id}', [EmployeeController::class, 'updateMissionRequest'])->name('mission_requests.update');
+        Route::delete('/mission-requests/{id}', [EmployeeController::class, 'deleteMissionRequest'])->name('mission_requests.delete');
     });
 
