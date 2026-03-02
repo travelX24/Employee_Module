@@ -26,7 +26,7 @@ class EmployeesServiceProvider extends ServiceProvider
             'company.domain',
             \Athka\Saas\Http\Middleware\SetCompanyTimezone::class,
         ])
-            ->prefix('staff')
+            ->prefix('hr/employees')
             ->name('company-admin.employees.')
             ->group(__DIR__ . '/Routes/web.php');
 
