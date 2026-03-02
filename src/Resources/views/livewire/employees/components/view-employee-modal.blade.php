@@ -7,7 +7,7 @@
     if (!$employee) {
         return;
     }
-    
+
     $steps = [
         1 => tr('Basic Information'),
         2 => tr('Job Information'),
@@ -15,7 +15,7 @@
         4 => tr('Personal Information'),
         5 => tr('Documents'),
     ];
-    
+
     $locale = app()->getLocale();
 @endphp
 
@@ -25,35 +25,46 @@
         activeTab: 1,
         editMode: false,
         employeeId: {{ $employee->id }},
+
         show() {
             this.open = true;
             this.activeTab = 1;
             this.editMode = false;
             document.body.style.overflow = 'hidden';
         },
+
         hide() {
             this.open = false;
             this.editMode = false;
             document.body.style.overflow = '';
         },
+
         enableEdit() {
             this.editMode = true;
             this.activeTab = 1;
         },
+
         cancelEdit() {
             this.editMode = false;
             window.dispatchEvent(new CustomEvent('employee-edit-cancelled'));
         },
-        refreshAndReopen() {
+
+        reopenAfterSave() {
             this.hide();
+
             setTimeout(() => {
                 window.dispatchEvent(new CustomEvent('open-view-employee-{{ $employee->id }}'));
-            }, 500);
+            }, 250);
         }
     }"
-    x-on:employee-updated.window="editMode = false; refreshAndReopen()"
     x-on:open-view-employee-{{ $employee->id }}.window="show()"
     x-on:keydown.escape.window="hide()"
+    x-on:employee-updated.window="
+        const updatedId = $event.detail?.employeeId ?? $event.detail?.[0]?.employeeId ?? $event.detail?.[0] ?? null;
+        if (updatedId != employeeId) return;
+        editMode = false;
+        reopenAfterSave();
+    "
     x-show="open"
     x-transition:enter="transition ease-out duration-300"
     x-transition:enter-start="opacity-0"
@@ -94,12 +105,14 @@
             <div class="absolute top-0 right-0 w-32 h-32 opacity-10">
                 <div class="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent rounded-full blur-2xl"></div>
             </div>
-            
+
             <div class="flex items-center justify-between relative z-10">
                 <div class="min-w-0 flex-1 pr-4">
                     <h3 class="text-xl font-bold text-gray-900">
-                        {{ tr('Employee Details') }}
+                        <span x-show="!editMode">{{ tr('Employee Details') }}</span>
+                        <span x-show="editMode">{{ tr('Edit Employee') }}</span>
                     </h3>
+
                     <p class="text-sm text-gray-600 mt-1 mb-0 leading-normal">
                         @if($locale === 'ar')
                             {{ $employee->name_ar }}
@@ -108,7 +121,7 @@
                         @endif
                     </p>
                 </div>
-                
+
                 <button
                     type="button"
                     @click="hide()"
@@ -119,17 +132,19 @@
             </div>
         </div>
 
-        {{-- Stepper (View Mode) --}}
-        <div class="px-6 py-5 bg-gradient-to-br from-gray-50 via-gray-50/80 to-gray-50/60 border-b border-gray-200/50" x-show="!editMode">
+        {{-- Stepper (View mode only) --}}
+        <div
+            class="px-6 py-5 bg-gradient-to-br from-gray-50 via-gray-50/80 to-gray-50/60 border-b border-gray-200/50"
+            x-show="!editMode"
+        >
             {{-- Desktop / Tablet --}}
             <div class="hidden sm:block">
                 <div class="flex justify-center overflow-x-auto pb-2">
                     <div class="inline-flex items-start justify-center min-w-fit">
                         @foreach($steps as $stepNum => $stepLabel)
-                            @php
-                                $isLast = $loop->last;
-                            @endphp
-                            <button 
+                            @php $isLast = $loop->last; @endphp
+
+                            <button
                                 type="button"
                                 @click="activeTab = {{ $stepNum }}"
                                 class="group flex flex-col items-center gap-2 px-1 transition-all duration-200"
@@ -137,7 +152,7 @@
                             >
                                 <div class="relative w-12 h-12 transition-all duration-200">
                                     <svg viewBox="0 0 56 56" class="absolute inset-0 drop-shadow-sm">
-                                        <polygon 
+                                        <polygon
                                             points="28,4 48,20 40,48 16,48 8,20"
                                             :fill="activeTab === {{ $stepNum }} ? 'var(--brand-via)' : (activeTab > {{ $stepNum }} ? 'var(--brand-via)' : '#f3f4f6')"
                                             :stroke="activeTab === {{ $stepNum }} ? 'var(--brand-via)' : (activeTab > {{ $stepNum }} ? 'var(--brand-via)' : '#d1d5db')"
@@ -145,7 +160,8 @@
                                             class="transition-all duration-200"
                                         />
                                     </svg>
-                                    <div 
+
+                                    <div
                                         class="absolute inset-0 flex items-center justify-center text-base font-extrabold transition-colors duration-200"
                                         :class="activeTab === {{ $stepNum }} || activeTab > {{ $stepNum }} ? 'text-white' : 'text-gray-600'"
                                     >
@@ -154,7 +170,7 @@
                                     </div>
                                 </div>
 
-                                <div 
+                                <div
                                     class="text-[11px] font-semibold text-center leading-tight max-w-[110px] transition-colors duration-200"
                                     :class="activeTab === {{ $stepNum }} || activeTab > {{ $stepNum }} ? 'text-[color:var(--brand-via)]' : 'text-gray-500'"
                                 >
@@ -163,7 +179,7 @@
                             </button>
 
                             @if(!$isLast)
-                                <div 
+                                <div
                                     class="h-[3px] w-16 md:w-20 lg:w-24 mx-3 md:mx-4 mt-6 rounded-full transition-all duration-300"
                                     :class="activeTab > {{ $stepNum }} ? 'bg-gradient-to-r from-[color:var(--brand-via)] to-[color:var(--brand-via)]/80 shadow-sm' : 'bg-gray-200'"
                                 ></div>
@@ -174,7 +190,8 @@
 
                 <div class="text-center mt-4">
                     <span class="text-sm font-bold text-[color:var(--brand-via)] bg-white/60 px-4 py-1.5 rounded-full inline-block shadow-sm">
-                        {{ tr('Step') }} <span x-text="activeTab"></span> {{ tr('of') }} 5: <span x-text="['{{ $steps[1] }}', '{{ $steps[2] }}', '{{ $steps[3] }}', '{{ $steps[4] }}', '{{ $steps[5] }}'][activeTab - 1]"></span>
+                        {{ tr('Step') }} <span x-text="activeTab"></span> {{ tr('of') }} 5:
+                        <span x-text="['{{ $steps[1] }}', '{{ $steps[2] }}', '{{ $steps[3] }}', '{{ $steps[4] }}', '{{ $steps[5] }}'][activeTab - 1]"></span>
                     </span>
                 </div>
             </div>
@@ -184,10 +201,9 @@
                 <div class="flex justify-center overflow-x-auto pb-2">
                     <div class="inline-flex items-center gap-2">
                         @foreach($steps as $stepNum => $stepLabel)
-                            @php
-                                $isLast = $loop->last;
-                            @endphp
-                            <button 
+                            @php $isLast = $loop->last; @endphp
+
+                            <button
                                 type="button"
                                 @click="activeTab = {{ $stepNum }}"
                                 class="group transition-all duration-200"
@@ -195,14 +211,15 @@
                             >
                                 <div class="relative w-10 h-10">
                                     <svg viewBox="0 0 56 56" class="absolute inset-0">
-                                        <polygon 
+                                        <polygon
                                             points="28,4 48,20 40,48 16,48 8,20"
                                             :fill="activeTab === {{ $stepNum }} ? 'var(--brand-via)' : (activeTab > {{ $stepNum }} ? 'var(--brand-via)' : '#f3f4f6')"
                                             :stroke="activeTab === {{ $stepNum }} ? 'var(--brand-via)' : (activeTab > {{ $stepNum }} ? 'var(--brand-via)' : '#d1d5db')"
                                             stroke-width="2.5"
                                         />
                                     </svg>
-                                    <div 
+
+                                    <div
                                         class="absolute inset-0 flex items-center justify-center text-sm font-extrabold"
                                         :class="activeTab === {{ $stepNum }} || activeTab > {{ $stepNum }} ? 'text-white' : 'text-gray-600'"
                                     >
@@ -213,7 +230,7 @@
                             </button>
 
                             @if(!$isLast)
-                                <div 
+                                <div
                                     class="h-[3px] w-7 rounded-full transition-all duration-300"
                                     :class="activeTab > {{ $stepNum }} ? 'bg-[color:var(--brand-via)]' : 'bg-gray-200'"
                                 ></div>
@@ -224,37 +241,33 @@
 
                 <div class="text-center mt-3">
                     <span class="text-xs font-bold text-[color:var(--brand-via)] bg-white/60 px-3 py-1 rounded-full inline-block">
-                        {{ tr('Step') }} <span x-text="activeTab"></span> / 5 — <span x-text="['{{ $steps[1] }}', '{{ $steps[2] }}', '{{ $steps[3] }}', '{{ $steps[4] }}', '{{ $steps[5] }}'][activeTab - 1]"></span>
+                        {{ tr('Step') }} <span x-text="activeTab"></span> / 5 —
+                        <span x-text="['{{ $steps[1] }}', '{{ $steps[2] }}', '{{ $steps[3] }}', '{{ $steps[4] }}', '{{ $steps[5] }}'][activeTab - 1]"></span>
                     </span>
                 </div>
             </div>
         </div>
 
-        {{-- Content (Scrollable) --}}
+        {{-- Content --}}
         <div class="flex-1 overflow-y-auto p-6">
             {{-- View Mode --}}
             <div x-show="!editMode" x-transition>
-                {{-- Tab 1: Basic Information --}}
                 <div x-show="activeTab === 1" x-transition>
                     @include('employees::livewire.employees.partials.view-tab-basic', ['employee' => $employee])
                 </div>
 
-                {{-- Tab 2: Job Information --}}
                 <div x-show="activeTab === 2" x-transition>
                     @include('employees::livewire.employees.partials.view-tab-job', ['employee' => $employee])
                 </div>
 
-                {{-- Tab 3: Financial Information --}}
                 <div x-show="activeTab === 3" x-transition>
                     @include('employees::livewire.employees.partials.view-tab-financial', ['employee' => $employee])
                 </div>
 
-                {{-- Tab 4: Personal Information --}}
                 <div x-show="activeTab === 4" x-transition>
                     @include('employees::livewire.employees.partials.view-tab-personal', ['employee' => $employee])
                 </div>
 
-                {{-- Tab 5: Documents --}}
                 <div x-show="activeTab === 5" x-transition>
                     @include('employees::livewire.employees.partials.view-tab-documents', ['employee' => $employee])
                 </div>
@@ -267,34 +280,32 @@
         </div>
 
         {{-- Footer --}}
-        <div class="px-6 py-4 border-t border-gray-100 bg-white flex justify-between gap-3">
-            {{-- Edit Button (View Mode) --}}
-            @if(!$readonly)
-                <button
-                    type="button"
-                    x-show="!editMode"
-                    x-transition
-                    @click="enableEdit()"
-                    class="px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-[color:var(--brand-from)] via-[color:var(--brand-via)] to-[color:var(--brand-to)] rounded-2xl hover:shadow-lg active:scale-[0.97] transition-all duration-200 shadow-sm"
-                >
-                    <i class="fas fa-edit me-2"></i>
-                    {{ tr('Edit') }}
-                </button>
-            @endif
-            
-            {{-- Cancel Button (Edit Mode) --}}
-            @if(!$readonly)
-                <button
-                    type="button"
-                    x-show="editMode"
-                    x-transition
-                    @click="cancelEdit()"
-                    class="px-6 py-3 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-2xl hover:bg-gray-50 hover:border-gray-400 hover:shadow-md active:scale-[0.97] transition-all duration-200 shadow-sm"
-                >
-                    {{ tr('Cancel') }}
-                </button>
-            @endif
-            
+        <div class="px-6 py-4 border-t border-gray-100 bg-white flex justify-between items-center gap-3">
+            <div class="flex items-center gap-3">
+                @if(!$readonly)
+                    <button
+                        type="button"
+                        x-show="!editMode"
+                        x-transition
+                        @click="enableEdit()"
+                        class="inline-flex items-center px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-[color:var(--brand-from)] via-[color:var(--brand-via)] to-[color:var(--brand-to)] rounded-2xl hover:shadow-lg active:scale-[0.97] transition-all duration-200 shadow-sm"
+                    >
+                        <i class="fas fa-edit me-2"></i>
+                        {{ tr('Edit') }}
+                    </button>
+
+                    <button
+                        type="button"
+                        x-show="editMode"
+                        x-transition
+                        @click="cancelEdit()"
+                        class="px-6 py-3 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-2xl hover:bg-gray-50 hover:border-gray-400 hover:shadow-md active:scale-[0.97] transition-all duration-200 shadow-sm"
+                    >
+                        {{ tr('Cancel Edit') }}
+                    </button>
+                @endif
+            </div>
+
             <div class="flex gap-3">
                 <button
                     type="button"
@@ -307,7 +318,3 @@
         </div>
     </div>
 </div>
-
-
-
-

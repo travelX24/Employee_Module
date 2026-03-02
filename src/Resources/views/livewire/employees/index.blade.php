@@ -565,10 +565,10 @@
                 </div>
             @endif
 
-            {{-- Modals --}}
-            @foreach($employees as $emp)
-                @include('employees::livewire.employees.components.view-employee-modal', ['employee' => $emp])
-            @endforeach
+            
+			@foreach($employees as $emp)
+				@include('employees::livewire.employees.components.view-employee-modal', ['employee' => $emp])
+			@endforeach
 
         @else
             {{-- Empty State (مثل Companies) --}}

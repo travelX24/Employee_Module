@@ -126,52 +126,53 @@ class Edit extends Component
     }
 
     public function mount(int $employeeId): void
-    {
-        $this->employee = Employee::query()->with('documents')->findOrFail($employeeId);
-        $this->companyId = $this->getCompanyId();
-        $this->loadNationalities();
+{
+    $this->companyId = $this->getCompanyId();
+    $this->loadNationalities();
 
-        abort_unless($this->employee->saas_company_id === $this->companyId, 404);
-        $scopedBranchId = $this->getScopedBranchId();
+    $this->employee = Employee::query()
+        ->with('documents')
+        ->where('id', $employeeId)
+        ->where('saas_company_id', (int) $this->companyId)
+        ->firstOrFail();
+
+    $scopedBranchId = $this->getScopedBranchId();
 
         $user = Auth::user();
 
         $allowed = null;
 
-        if ($user && method_exists($user, 'restrictedBranchIds')) {
-            $allowed = $user->restrictedBranchIds(); // null | [] | [ids]
-        } else {
-            $tmp = DB::table('branch_user_access')
-                ->where('user_id', Auth::id())
-                ->where('saas_company_id', $this->companyId)
-                ->pluck('branch_id')
-                ->map(fn ($v) => (int) $v)
-                ->unique()
-                ->values()
-                ->all();
+if ($user && method_exists($user, 'restrictedBranchIds')) {
+    $restricted = $user->restrictedBranchIds();
 
-            $allowed = ! empty($tmp) ? $tmp : null;
-        }
+    if ($restricted instanceof \Illuminate\Support\Collection) {
+        $restricted = $restricted->all();
+    }
 
-        if (is_array($allowed) && empty($allowed)) {
-            abort(404);
-        }
-
-        if (is_array($allowed)) {
-            abort_unless(in_array((int) $this->employee->branch_id, $allowed, true), 404);
-        }
-        $allowed = DB::table('branch_user_access')
-            ->where('user_id', Auth::id())
-            ->where('saas_company_id', $this->companyId)
-            ->pluck('branch_id')
+    $allowed = is_array($restricted)
+        ? collect($restricted)
             ->map(fn ($v) => (int) $v)
+            ->filter()
             ->unique()
             ->values()
-            ->all();
+            ->all()
+        : null;
+} else {
+    $tmp = DB::table('branch_user_access')
+        ->where('user_id', Auth::id())
+        ->where('saas_company_id', $this->companyId)
+        ->pluck('branch_id')
+        ->map(fn ($v) => (int) $v)
+        ->unique()
+        ->values()
+        ->all();
 
-        if (! empty($allowed)) {
-            abort_unless(in_array((int) $this->employee->branch_id, $allowed, true), 404);
-        }
+    $allowed = ! empty($tmp) ? $tmp : null;
+}
+
+if (! empty($allowed)) {
+    abort_unless(in_array((int) $this->employee->branch_id, $allowed, true), 404);
+}
 
         // ✅ لو المستخدم مقيد بفرع واحد: ما يسمح يفتح موظف من فرع ثاني
         if ($scopedBranchId) {
@@ -224,7 +225,9 @@ class Edit extends Component
         // Tab 3: Financial
         $this->contract_type = $this->employee->contract_type ?? '';
         $this->basic_salary = $this->employee->basic_salary;
-        $this->contract_duration_months = $this->employee->contract_duration_months;
+        $this->contract_duration_months = $this->employee->contract_type === 'permanent'
+    ? null
+    : $this->employee->contract_duration_months;
         $this->allowance = $this->employee->allowances;
         $this->annual_leave_days = $this->employee->annual_leave_days ?? $this->getDefaultAnnualLeaveDays();
 
@@ -523,10 +526,10 @@ class Edit extends Component
 
             'contract_type' => ['required', Rule::in(['permanent', 'temporary', 'probation', 'contractor'])],
             'contract_duration_months' => Rule::when(
-                ($this->contract_type && $this->contract_type !== 'permanent'),
-                ['required', 'integer', 'min:1'],
-                ['nullable', 'integer', 'min:1']
-            ),
+    ($this->contract_type && $this->contract_type !== 'permanent'),
+    ['required', 'integer', 'min:1'],
+    ['nullable', 'integer', 'min:0']
+),
 
             'procedures_start_at' => ['nullable', 'date'],
         ];
@@ -707,7 +710,9 @@ class Edit extends Component
             'daily_wage' => $this->daily_wage,
             'hourly_wage' => $this->hourly_wage,
             'minute_wage' => $this->minute_wage,
-            'contract_duration_months' => $this->contract_duration_months,
+            'contract_duration_months' => $this->contract_type === 'permanent'
+    ? null
+    : $this->contract_duration_months,
             'allowances' => $this->allowance,
             'annual_leave_days' => $this->annual_leave_days,
             'is_transferred_employee' => $this->is_transferred_employee,
@@ -744,7 +749,7 @@ class Edit extends Component
         $this->saveMultipleFiles($this->employee, 'other_documents', 'other_documents');
 
         $this->dispatch('toast', type: 'success', title: tr('Saved'), message: tr('Employee updated successfully'));
-        $this->dispatch('employee-updated');
+        $this->dispatch('employee-updated', employeeId: $this->employee->id);
         // REMOVED logic that reopens the modal automatically
         // Instead, the view-employee-modal will handle closing on employee-updated via Alpine
     }
@@ -802,9 +807,10 @@ class Edit extends Component
     }
 
     public function render()
-    {
-        return view('employees::livewire.employees.edit');
-    }
+{
+    return view('employees::livewire.employees.edit')
+        ->layout('layouts.company-admin');
+}
         private function branchModelClass(): ?string
     {
         $candidates = [
