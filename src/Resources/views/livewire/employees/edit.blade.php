@@ -13,7 +13,7 @@
                     type="button"
                     wire:click="$set('tab', {{ $stepNum }})"
                     class="group flex flex-col items-center gap-2 px-2 transition-all duration-200 min-w-[80px]"
-                    :class="tab === {{ $stepNum }} ? 'scale-105' : 'hover:scale-105'"
+                    :class="$wire.tab === {{ $stepNum }} ? 'scale-105' : 'hover:scale-105'"
                 >
                     <div class="relative w-10 h-10 sm:w-12 sm:h-12 transition-all duration-200">
                         <svg viewBox="0 0 56 56" class="absolute inset-0 drop-shadow-sm">
