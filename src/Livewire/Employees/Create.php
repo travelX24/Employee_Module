@@ -559,16 +559,18 @@ class Create extends Component
             $this->saveMultipleFiles($employee, 'family_documents', 'family_documents');
             $this->saveMultipleFiles($employee, 'other_documents', 'other_documents');
 
-            return redirect()->route('company-admin.employees.index')
-                ->with('status', tr('Employee created successfully'))
-                ->with('employee_id', $employee->id);
+            session()->flash('status', tr('Employee created successfully'));
+            session()->flash('employee_id', $employee->id);
+
+            return $this->redirectRoute('company-admin.employees.index', navigate: true);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             throw $e;
         } catch (\Throwable $e) {
             report($e);
             session()->flash('error', tr('Failed to create employee. Please try again. Error: ') . $e->getMessage());
-            return redirect()->route('company-admin.employees.create');
+            session()->flash('error', tr('Failed to create employee. Please try again. Error: ') . $e->getMessage());
+            return $this->redirectRoute('company-admin.employees.create', navigate: true);
         }
     }
 
