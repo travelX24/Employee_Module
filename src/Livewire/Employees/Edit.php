@@ -711,7 +711,7 @@ if (! empty($allowed)) {
             'hourly_wage' => $this->hourly_wage,
             'minute_wage' => $this->minute_wage,
             'contract_duration_months' => $this->contract_type === 'permanent'
-    ? null
+    ? 0
     : $this->contract_duration_months,
             'allowances' => $this->allowance,
             'annual_leave_days' => $this->annual_leave_days,
