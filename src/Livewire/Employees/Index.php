@@ -63,6 +63,14 @@ class Index extends Component
     public string $exportScope = 'all'; // all | custom
     public array $selectedFields = [];
     
+    public function mount()
+    {
+        // One of these permissions is required to see the listing
+        if (!Auth::user()->can('employees.view')) {
+            abort(403);
+        }
+    }
+
     public function getAvailableFieldsProperty(): array
     {
         return [
@@ -234,7 +242,22 @@ class Index extends Component
             ->all();
 
         $query = Employee::where('saas_company_id', $companyId)
-            ->when(! empty($allowed), fn ($q) => $q->whereIn('branch_id', $allowed));        
+            ->when(! empty($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
+            // ✅ NEW: Scoping based on permission
+            ->when(!Auth::user()->can('employees.view.all'), function ($q) {
+                $user = Auth::user();
+                $q->where(function ($qq) use ($user) {
+                    if ($user->employee_id) {
+                        $qq->where('manager_id', $user->employee_id);
+                    }
+                    if ($user->department_id) {
+                        $qq->orWhere('department_id', $user->department_id);
+                    }
+                    if (!$user->employee_id && !$user->department_id) {
+                        $qq->where('id', 0);
+                    }
+                });
+            });        
         // Apply existing filters
         if ($this->search) {
             $query->where(function($q) {
@@ -522,6 +545,23 @@ class Index extends Component
         $employees = Employee::query()
             ->forCompany($companyId)
             ->when(! empty($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
+            // ✅ NEW: Scoping based on permission
+            ->when(!Auth::user()->can('employees.view.all'), function ($q) {
+                $user = Auth::user();
+                $q->where(function ($qq) use ($user) {
+                    if ($user->employee_id) {
+                        $qq->where('manager_id', $user->employee_id);
+                    }
+                    if ($user->department_id) {
+                        $qq->orWhere('department_id', $user->department_id);
+                    }
+                    
+                    // If no employee ID and no department assigned, show nothing unless they have higher permission
+                    if (!$user->employee_id && !$user->department_id) {
+                        $qq->where('id', 0);
+                    }
+                });
+            })
             ->when($this->search, function ($q) {
                 $s = trim($this->search);
 
@@ -576,6 +616,8 @@ class Index extends Component
 
     public function openDeactivateModal($employeeId)
     {
+        $this->authorize('employees.status.manage');
+
         $companyId = $this->getCompanyId();
 
         $allowed = DB::table('branch_user_access')
@@ -590,6 +632,14 @@ class Index extends Component
         $this->selectedEmployee = Employee::query()
             ->where('saas_company_id', $companyId)
             ->when(! empty($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
+            // ✅ Simplified scoping: if they can't view all, scope by manager/department
+            ->when(!Auth::user()->can('employees.view'), function ($q) {
+                $user = Auth::user();
+                $q->where(function ($qq) use ($user) {
+                    if ($user->employee_id) $qq->where('manager_id', $user->employee_id);
+                    if ($user->department_id) $qq->orWhere('department_id', $user->department_id);
+                });
+            })
             ->findOrFail($employeeId);
         $this->deactivateReason = '';
         $this->deactivateDate = now()->format('Y-m-d');
@@ -622,6 +672,8 @@ class Index extends Component
  
     public function activateEmployee($employeeId)
     {
+        $this->authorize('employees.status.manage');
+
         $companyId = $this->getCompanyId();
 
         $allowed = DB::table('branch_user_access')
@@ -636,6 +688,14 @@ class Index extends Component
         $employee = Employee::query()
             ->where('saas_company_id', $companyId)
             ->when(! empty($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
+            // ✅ NEW: Scoping based on permission
+            ->when(!Auth::user()->can('employees.view.all'), function ($q) {
+                $user = Auth::user();
+                $q->where(function ($qq) use ($user) {
+                    if ($user->employee_id) $qq->where('manager_id', $user->employee_id);
+                    if ($user->department_id) $qq->orWhere('department_id', $user->department_id);
+                });
+            })
             ->findOrFail($employeeId);
             $employee->update([
             'status'   => 'ACTIVE',
@@ -647,6 +707,8 @@ class Index extends Component
  
     public function openTerminationModal($employeeId)
     {
+        $this->authorize('employees.delete');
+
         $companyId = $this->getCompanyId();
 
         $user = Auth::user();
@@ -674,6 +736,14 @@ class Index extends Component
         $this->selectedEmployee = Employee::query()
             ->where('saas_company_id', $companyId)
             ->when(is_array($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
+            // ✅ NEW: Scoping based on permission
+            ->when(!Auth::user()->can('employees.view.all'), function ($q) {
+                $user = Auth::user();
+                $q->where(function ($qq) use ($user) {
+                    if ($user->employee_id) $qq->where('manager_id', $user->employee_id);
+                    if ($user->department_id) $qq->orWhere('department_id', $user->department_id);
+                });
+            })
             ->findOrFail($employeeId);
 
         $this->terminationType = '';
@@ -694,6 +764,7 @@ class Index extends Component
  
     public function terminateEmployee()
     {
+        $this->authorize('employees.delete');
         $this->validate([
             'terminationType'   => 'required|string',
             'terminationDate'   => 'required|date',
@@ -717,6 +788,7 @@ class Index extends Component
  
     public function openImportModal()
     {
+        $this->authorize('employees.import');
         $this->importFile = null;
         $this->importValidationErrors = [];
         $this->showImportModal = true;
@@ -837,9 +909,19 @@ class Index extends Component
  
     public function import()
     {
+        $this->authorize('employees.import');
+
         $this->validate([
             'importFile' => 'required|file|mimes:csv,txt|max:4096',
         ]);
+
+        // ✅ NEW: Scoping for import
+        $forcedDeptId = null;
+        $forcedManagerId = null;
+        if (!Auth::user()->can('employees.view.all')) {
+            $forcedDeptId = Auth::user()->department_id;
+            $forcedManagerId = Auth::user()->employee_id;
+        }
 
         $this->isImporting = true;
         $this->importValidationErrors = [];
@@ -1027,10 +1109,10 @@ class Index extends Component
                         'mobile'                     => $row['mobile'],
                         'email_work'                 => $row['email_work'] ?: null,
                         'email_personal'             => $row['email_personal'] ?: null,
-                        'department_id'              => $deptId,
+                        'department_id'              => $forcedDeptId ?: $deptId,
                         'sub_department_id'          => $subDeptId,
                         'job_title_id'               => $jobId,
-                        'manager_id'                 => $managerId,
+                        'manager_id'                 => $forcedManagerId ?: $managerId,
                         'sector'                     => 'Staff',
                         'grade'                      => 1,
                         'job_function'               => $jobTitleName ?: 'Staff',

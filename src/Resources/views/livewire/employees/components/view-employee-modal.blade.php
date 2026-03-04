@@ -283,6 +283,7 @@
         <div class="px-6 py-4 border-t border-gray-100 bg-white flex justify-between items-center gap-3">
             <div class="flex items-center gap-3">
                 @if(!$readonly)
+                    @can('employees.edit')
                     <button
                         type="button"
                         x-show="!editMode"
@@ -293,6 +294,7 @@
                         <i class="fas fa-edit me-2"></i>
                         {{ tr('Edit') }}
                     </button>
+                    @endcan
 
                     <button
                         type="button"

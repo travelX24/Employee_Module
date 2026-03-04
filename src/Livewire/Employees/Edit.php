@@ -127,6 +127,7 @@ class Edit extends Component
 
     public function mount(int $employeeId): void
 {
+    $this->authorize('employees.edit');
     $this->companyId = $this->getCompanyId();
     $this->loadNationalities();
 
@@ -134,6 +135,21 @@ class Edit extends Component
         ->with('documents')
         ->where('id', $employeeId)
         ->where('saas_company_id', (int) $this->companyId)
+        // ✅ NEW: Scoping based on permission
+        ->when(!Auth::user()->can('employees.view.all'), function ($q) {
+            $user = Auth::user();
+            $q->where(function ($qq) use ($user) {
+                if ($user->employee_id) {
+                    $qq->where('manager_id', $user->employee_id);
+                }
+                if ($user->department_id) {
+                    $qq->orWhere('department_id', $user->department_id);
+                }
+                if (!$user->employee_id && !$user->department_id) {
+                    $qq->where('id', 0);
+                }
+            });
+        })
         ->firstOrFail();
 
     $scopedBranchId = $this->getScopedBranchId();
@@ -296,6 +312,14 @@ if (! empty($allowed)) {
         $model = $this->departmentModelClass();
         return $model::query()
             ->where('saas_company_id', $this->companyId)
+            // ✅ NEW: Scoping based on permission
+            ->when(!Auth::user()->can('employees.view.all'), function ($q) {
+                if ($deptId = Auth::user()->department_id) {
+                    $q->where('id', $deptId);
+                } else {
+                    $q->where('id', 0);
+                }
+            })
             ->orderBy('name')
             ->get(['id', 'name'])
             ->map(fn ($d) => ['value' => $d->id, 'label' => $d->name])
@@ -321,6 +345,22 @@ if (! empty($allowed)) {
 
         return Employee::where('saas_company_id', $this->companyId)
             ->where('id', '!=', $this->employee->id ?? 0)
+            // ✅ NEW: Scoping based on permission
+            ->when(!Auth::user()->can('employees.view.all'), function ($q) {
+                $user = Auth::user();
+                $q->where(function ($qq) use ($user) {
+                    if ($user->employee_id) {
+                        $qq->where('manager_id', $user->employee_id)
+                           ->orWhere('id', $user->employee_id);
+                    }
+                    if ($user->department_id) {
+                        $qq->orWhere('department_id', $user->department_id);
+                    }
+                    if (!$user->employee_id && !$user->department_id) {
+                        $qq->where('id', 0);
+                    }
+                });
+            })
             ->get()
             ->map(function($employee) {
                 return [
@@ -639,7 +679,19 @@ if (! empty($allowed)) {
 
     public function save(): void
     {
-            $this->mobile = preg_replace('/\D+/', '', (string) $this->mobile);
+        $this->authorize('employees.edit');
+
+        // ✅ NEW: Re-enforce scoping during save to prevent manipulation
+        if (!Auth::user()->can('employees.view.all')) {
+            if (Auth::user()->department_id) {
+                $this->department_id = Auth::user()->department_id;
+            }
+            // For managers, we don't necessarily force manager_id on edit 
+            // because they might be editing someone they manage who has a different manager (rare but possible)
+            // But we already scoped the initial query in mount(), so they can only edit allowed employees.
+        }
+
+        $this->mobile = preg_replace('/\D+/', '', (string) $this->mobile);
             $this->mobile_alt = $this->mobile_alt !== null
                 ? preg_replace('/\D+/', '', (string) $this->mobile_alt)
                 : null;

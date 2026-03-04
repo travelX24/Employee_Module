@@ -4,6 +4,7 @@
         :label="tr('Branch')"
         wire:model.live="branch_id"
         error="branch_id"
+        :required="true"
     >
         <option value="">{{ tr('Select Branch') }}</option>
 
@@ -107,7 +108,10 @@
              }"
              @click.away="open = false"
         >
-            <label class="block text-sm font-semibold text-gray-700">{{ tr('Manager') }}</label>
+            <label class="block text-sm font-semibold text-gray-700">
+                <span>{{ tr('Manager') }}</span>
+                <span class="text-red-500 ms-1">*</span>
+            </label>
             
             <div class="relative">
                 <button
@@ -189,6 +193,7 @@
         <x-ui.company-date-picker
             model="hired_at"
             :label="tr('Hire Date')"
+            :required="true"
         />
 
         {{-- Contract Type --}}

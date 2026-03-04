@@ -93,6 +93,7 @@ class Create extends Component
     protected array $skipUploadAppend = [];
     public function mount(): void
     {
+        $this->authorize('employees.create');
         $this->companyId = auth()->user()->saas_company_id;
 
         $this->branch_id = auth()->user()->branch_id ?? null;
@@ -112,6 +113,17 @@ class Create extends Component
         // تعبئة أيام الإجازة السنوية من إعدادات الشركة
         if ($this->annual_leave_days === null) {
             $this->annual_leave_days = $this->getDefaultAnnualLeaveDays();
+        }
+
+        // ✅ NEW: Default department and manager for scoped users
+        if (!Auth::user()->can('employees.view.all')) {
+            if (Auth::user()->department_id) {
+                $this->department_id = Auth::user()->department_id;
+                $this->loadSubDepartments($this->department_id);
+            }
+            if (Auth::user()->employee_id) {
+                $this->manager_id = Auth::user()->employee_id;
+            }
         }
 
         if ($this->department_id) {
@@ -490,7 +502,19 @@ class Create extends Component
 
     public function store()
     {
+        $this->authorize('employees.create');
+
         try {
+            // ✅ NEW: Ensure department enforcement for scoped users during save
+            if (!Auth::user()->can('employees.view.all')) {
+                if (Auth::user()->department_id) {
+                    $this->department_id = Auth::user()->department_id;
+                }
+                if (Auth::user()->employee_id) {
+                    $this->manager_id = Auth::user()->employee_id;
+                }
+            }
+
             $this->validate(array_merge(
                 $this->rulesTab1(),
                 $this->rulesTab2(),
@@ -615,6 +639,14 @@ class Create extends Component
         return Department::forCompany($this->companyId)
             ->active()
             ->whereNull('parent_id')
+            // ✅ NEW: Scoping based on permission
+            ->when(!Auth::user()->can('employees.view.all'), function ($q) {
+                if ($deptId = Auth::user()->department_id) {
+                    $q->where('id', $deptId);
+                } else {
+                    $q->where('id', 0); // No assigned department = see nothing
+                }
+            })
             ->get()
             ->map(function($department) {
                 return [
@@ -683,6 +715,22 @@ class Create extends Component
 
         return Employee::where('saas_company_id', $this->companyId)
             ->where('id', '!=', $this->employee_id ?? 0)
+            // ✅ NEW: Scoping based on permission
+            ->when(!Auth::user()->can('employees.view.all'), function ($q) {
+                $user = Auth::user();
+                $q->where(function ($qq) use ($user) {
+                    if ($user->employee_id) {
+                        $qq->where('manager_id', $user->employee_id)
+                           ->orWhere('id', $user->employee_id);
+                    }
+                    if ($user->department_id) {
+                        $qq->orWhere('department_id', $user->department_id);
+                    }
+                    if (!$user->employee_id && !$user->department_id) {
+                        $qq->where('id', 0);
+                    }
+                });
+            })
             ->get()
             ->map(function($employee) {
                 return [

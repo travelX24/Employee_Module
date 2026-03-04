@@ -51,6 +51,7 @@
         <x-ui.company-date-picker
             model="national_id_expiry"
             :label="tr('National ID Expiry')"
+            :required="true"
         />
 
     {{-- Nationality --}}
@@ -85,6 +86,7 @@
         <x-ui.company-date-picker
             model="birth_date"
             :label="tr('Birth Date')"
+            :required="true"
         />
 
         {{-- Birth Place --}}

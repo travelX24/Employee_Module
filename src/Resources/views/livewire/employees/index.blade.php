@@ -41,7 +41,7 @@
                         </x-ui.secondary-button>
                         @endcan
 
-                        @can('employees.create') {{-- Using create for import as it creates many --}}
+                        @can('employees.import')
                         <x-ui.secondary-button
                             wire:click="openImportModal"
                             :fullWidth="false"
@@ -389,7 +389,7 @@
                                         </x-ui.dropdown-item>
                                         @endcan
                                         
-                                        @can('employees.edit')
+                                        @can('employees.status.manage')
                                         @if($emp->status === 'ACTIVE')
                                             <x-ui.dropdown-item
                                                 href="#"
@@ -493,7 +493,7 @@
                                     </x-ui.dropdown-item>
                                     @endcan
 
-                                    @can('employees.edit')
+                                    @can('employees.status.manage')
                                     @if($emp->status === 'ACTIVE')
                                         <x-ui.dropdown-item
                                             href="#"
