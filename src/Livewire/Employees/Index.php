@@ -1002,15 +1002,31 @@ class Index extends Component
                 // Skip empty or malformed rows
                 if (count($data) < 4 || empty(array_filter($data))) continue;
 
-                // Clean data helper (handles Scientific Notation from Excel)
+                // Clean data helper (handles Scientific Notation from Excel and Null Bytes)
                 $clean = function($val) {
-                    $val = trim($val ?? '');
+                    if ($val === null) return null;
+                    // إزالة الرموز الصفرية والرموز غير المرئية التي قد تأتي من ترميز خاطئ
+                    $val = str_replace("\0", "", (string)$val);
+                    $val = trim($val);
+                    
                     if (empty($val)) return null;
-                    // Fix scientific notation e.g., 5.5E+07 -> 55000000
-                    if (stripos($val, 'E+') !== false && is_numeric($val)) {
-                        return number_format((float)$val, 0, '.', '');
+                    
+                    // Fix scientific notation e.g., 1.23E+09 -> 1230000000 (Very common for National IDs in Excel)
+                    if (stripos((string)$val, 'E+') !== false && is_numeric($val)) {
+                        return sprintf('%.0f', (float)$val);
                     }
                     return $val;
+                };
+
+                // Helper to parse dates correctly from various formats (common in Excel/CSV)
+                $parseDate = function($val) {
+                    if (empty($val)) return null;
+                    try {
+                        // محاولة التعامل مع Y-m-d أو d/m/Y أو m/d/Y
+                        return \Carbon\Carbon::parse($val)->format('Y-m-d');
+                    } catch (\Exception $e) {
+                        return null;
+                    }
                 };
 
                 // Map columns
@@ -1018,9 +1034,9 @@ class Index extends Component
                     'name_ar'                    => $clean($data[0] ?? ''),
                     'name_en'                    => $clean($data[1] ?? ''),
                     'national_id'                => $clean($data[2] ?? ''),
-                    'national_id_expiry'         => $clean($data[3] ?? ''),
+                    'national_id_expiry'         => $parseDate($clean($data[3] ?? '')),
                     'nationality'                => $clean($data[4] ?? ''),
-                    'birth_date'                 => $clean($data[5] ?? ''),
+                    'birth_date'                 => $parseDate($clean($data[5] ?? '')),
                     'gender'                     => strtolower((string) $clean($data[6] ?? '')),
                     'marital_status'             => strtolower((string) $clean($data[7] ?? '')),
                     'children_count'             => (int) ($clean($data[8] ?? 0) ?: 0),
@@ -1031,7 +1047,7 @@ class Index extends Component
                     'sub_dept_code'              => $clean($data[13] ?? ''),
                     'job_code'                   => $clean($data[14] ?? ''),
                     'manager_emp_no'             => $clean($data[15] ?? ''),
-                    'hired_at'                   => $clean($data[16] ?? ''),
+                    'hired_at'                   => $parseDate($clean($data[16] ?? '')),
                     'basic_salary'               => (float) ($clean($data[17] ?? 0) ?: 0),
                     'allowances'                 => (float) ($clean($data[18] ?? 0) ?: 0),
                     'annual_leave_days'          => (int) ($clean($data[19] ?? $defaultAnnualLeaveDays) ?: $defaultAnnualLeaveDays),
@@ -1111,14 +1127,24 @@ class Index extends Component
                     else $this->importValidationErrors[] = $this->trp('Row :row: Manager ":no" not found.', ['row' => $rowCount, 'no' => $row['manager_emp_no']]);
                 }
 
-                // Fuzzy Matching for Gender and Marital Status
-                $gender = in_array($row['gender'], ['female', 'f'], true) ? 'female' : 'male';
+                // Fuzzy Matching for Gender and Marital Status (Support Arabic and English)
+                $genderInput = strtolower((string) $row['gender']);
+                $gender = (in_array($genderInput, ['female', 'f', 'أنثى', 'انثى'], true)) ? 'female' : 'male';
 
-                $mStatus = in_array($row['marital_status'], ['married', 'm'], true) ? 'married' : 'single';
+                $mStatusInput = strtolower((string) $row['marital_status']);
+                $mStatus = (in_array($mStatusInput, ['married', 'm', 'متزوج', 'متزوجة'], true)) ? 'married' : 'single';
 
-                $contractType = in_array($row['contract_type'], ['permanent', 'temporary', 'probation', 'contractor'], true)
-                    ? $row['contract_type']
-                    : 'permanent';
+                $contractInput = strtolower((string) $row['contract_type']);
+                $contractType = 'permanent';
+                if (in_array($contractInput, ['temporary', 'probation', 'contractor', 'مؤقت', 'تجربة', 'مقاول'], true)) {
+                    // Mapping Arabic to English database values
+                    $map = [
+                        'مؤقت' => 'temporary',
+                        'تجربة' => 'probation',
+                        'مقاول' => 'contractor'
+                    ];
+                    $contractType = $map[$contractInput] ?? $contractInput;
+                }
 
                 try {
                   $jobTitleName = $jobId ? ($JobTitleModel::find($jobId)?->name) : null;
@@ -1130,11 +1156,11 @@ class Index extends Component
                         'name_ar'                    => $row['name_ar'],
                         'name_en'                    => $row['name_en'],
                         'national_id'                => $row['national_id'],
-                        'national_id_expiry'         => (empty($row['national_id_expiry']) || str_contains($row['national_id_expiry'], '#'))
+                        'national_id_expiry'         => (empty($row['national_id_expiry']) || str_contains((string)$row['national_id_expiry'], '#'))
                             ? now()->addYear()->format('Y-m-d')
                             : $row['national_id_expiry'],
                         'nationality'                => $row['nationality'] ?: tr('Unknown'),
-                        'birth_date'                 => (empty($row['birth_date']) || str_contains($row['birth_date'], '#'))
+                        'birth_date'                 => (empty($row['birth_date']) || str_contains((string)$row['birth_date'], '#'))
                             ? '1990-01-01'
                             : $row['birth_date'],
                         'birth_place'                => $row['city'] ?: tr('Unknown'),
@@ -1151,7 +1177,7 @@ class Index extends Component
                         'sector'                     => 'Staff',
                         'grade'                      => 1,
                         'job_function'               => $jobTitleName ?: 'Staff',
-                        'hired_at'                   => (empty($row['hired_at']) || str_contains($row['hired_at'], '#'))
+                        'hired_at'                   => (empty($row['hired_at']) || str_contains((string)$row['hired_at'], '#'))
                             ? now()->format('Y-m-d')
                             : $row['hired_at'],
                         'basic_salary'               => $row['basic_salary'] ?: 0,
@@ -1169,21 +1195,23 @@ class Index extends Component
                     ]);
                     $importedCount++;
                 } catch (\Exception $e) {
-                    // Try to extract a more human-readable error from database exceptions
                     $error = $e->getMessage();
                     
-                    // Simple logging for debugging if needed
-                    \Log::error('Employee Import Error Row ' . $rowCount . ': ' . $error);
-
+                    // تحسين رسائل الخطأ للمستخدم
                     if (str_contains($error, 'Data too long')) $error = tr('Some data fields are too long for the database.');
-                    elseif (str_contains($error, 'Incorrect date value')) $error = tr('Invalid date format in one of the columns.');
+                    elseif (str_contains($error, 'Incorrect date value')) $error = tr('Invalid date format in one of the columns (must be YYYY-MM-DD).');
                     elseif (str_contains($error, 'doesn\'t have a default value')) {
                         preg_match("/Field '(.+)' doesn't have a default value/", $error, $matches);
                         $field = $matches[1] ?? 'unknown';
                         $error = tr('The following required field is missing: ') . $field;
+                    } elseif (str_contains($error, 'integrity constraint violation')) {
+                        $error = tr('A database constraint was violated. Check if all codes (Department/Job) are correct.');
+                    } else {
+                        // إذا لم يكن من الأخطاء المعروفة، نعرض رسالة مختصرة للخطأ الفني
+                        $error = tr('Technical Error: ') . substr($error, 0, 100);
                     }
                     
-                    $this->importValidationErrors[] = $this->trp('Row :row: Failed to save: :error', ['row' => $rowCount, 'error' => $error]);
+                    $this->importValidationErrors[] = $this->trp('Row :row: Failed to save: :error', ['row' => $rowCount, 'error' => $error], 'ui');
                 }
             }
         } catch (\Throwable $th) {
