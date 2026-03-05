@@ -931,6 +931,11 @@ class Index extends Component
         $this->importValidationErrors = [];
         $companyId = $this->getCompanyId();
 
+        // ✅ تأمين العملية
+        set_time_limit(0); 
+        ini_set('memory_limit', '512M');
+
+        try {
             $allowedBranchIds = DB::table('branch_user_access')
                 ->where('user_id', Auth::id())
                 ->where('saas_company_id', $companyId)
@@ -946,27 +951,53 @@ class Index extends Component
                 $defaultBranchId = $allowedBranchIds[0] ?? null;
             }
 
-            $defaultAnnualLeaveDays = (int) (\Athka\Saas\Models\SaasCompanyOtherinfo::where('company_id', $companyId)->value('default_annual_leave_days') ?? 0);
+            // ✅ حماية ضد Class not found
+            $defaultAnnualLeaveDays = 21; // القيمة الافتراضية
+            if (class_exists(\Athka\Saas\Models\SaasCompanyOtherinfo::class)) {
+                $defaultAnnualLeaveDays = (int) (\Athka\Saas\Models\SaasCompanyOtherinfo::where('company_id', $companyId)->value('default_annual_leave_days') ?? 21);
+            }
 
             $path = $this->importFile->getRealPath();
-        $file = fopen($path, 'r');
-        
-        // Detect Delimiter
-        $firstLine = fgets($file);
-        $delimiter = (str_contains($firstLine, ';') && !str_contains($firstLine, ',')) ? ';' : ',';
-        rewind($file);
-        
-        // Skip header
-        fgets($file);
+            
+            // قراءة محتوى الملف بالكامل لمعالجة الترميز إذا لزم الأمر
+            $content = file_get_contents($path);
+            
+            // تحويل الترميز إلى UTF-8 إذا كان مختلفاً (مشكلة شائعة في Excel CSV)
+            if (!mb_check_encoding($content, 'UTF-8')) {
+                $content = mb_convert_encoding($content, 'UTF-8', 'UTF-16, ISO-8859-1, Windows-1252');
+            }
+            
+            // كتابة المحتوى المنظف في ملف مؤقت للقراءة
+            $tempFile = fopen('php://temp', 'r+');
+            fwrite($tempFile, $content);
+            rewind($tempFile);
+            
+            // Skip BOM if exists
+            $bom = fread($tempFile, 3);
+            if ($bom !== "\xEF\xBB\xBF") {
+                rewind($tempFile);
+            }
+            
+            // Detect Delimiter
+            $firstLine = fgets($tempFile);
+            $delimiter = (str_contains($firstLine, ';') && !str_contains($firstLine, ',')) ? ';' : ',';
+            rewind($tempFile);
+            if ($bom !== "\xEF\xBB\xBF") {
+                // skip if we rewound but there was no BOM
+            } else {
+                fread($tempFile, 3); // skip BOM again
+            }
 
-        $rowCount = 0;
-        $importedCount = 0;
-        
-        $DepartmentModel = $this->departmentModelClass();
-        $JobTitleModel = $this->jobTitleModelClass();
+            // Skip header
+            fgets($tempFile);
 
-        try {
-            while (($data = fgetcsv($file, 0, $delimiter)) !== FALSE) {
+            $rowCount = 0;
+            $importedCount = 0;
+            
+            $DepartmentModel = $this->departmentModelClass();
+            $JobTitleModel = $this->jobTitleModelClass();
+
+            while (($data = fgetcsv($tempFile, 0, $delimiter)) !== FALSE) {
                 $rowCount++;
                 // Skip empty or malformed rows
                 if (count($data) < 4 || empty(array_filter($data))) continue;
@@ -1158,7 +1189,9 @@ class Index extends Component
         } catch (\Throwable $th) {
             $this->importValidationErrors[] = tr('Critical error during import: ') . $th->getMessage();
         } finally {
-            fclose($file);
+            if (isset($tempFile) && is_resource($tempFile)) {
+                fclose($tempFile);
+            }
             $this->isImporting = false;
         }
 
