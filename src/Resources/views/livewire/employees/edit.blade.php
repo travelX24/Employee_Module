@@ -52,7 +52,7 @@
         </div>
     </div>
 
-    <form wire:submit.prevent="save">
+    <form wire:submit.prevent="save" novalidate>
         <div class="space-y-6">
             {{-- Tab 1: Basic Information --}}
             <div x-show="tab === 1" x-transition>
