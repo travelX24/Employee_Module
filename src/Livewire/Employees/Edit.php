@@ -697,13 +697,63 @@ if (! empty($allowed)) {
                 : null;
             $this->emergency_contact_phone = preg_replace('/\D+/', '', (string) $this->emergency_contact_phone);
 
-            $this->validate(array_merge(
-                $this->rulesTab1(),
-                $this->rulesTab2(),
-                $this->rulesTab3(),
-                $this->rulesTab4(),
-                $this->rulesTab5()
-            ));
+            // Validate each tab individually to find the first tab with errors
+            $tabRules = [
+                1 => $this->rulesTab1(),
+                2 => $this->rulesTab2(),
+                3 => $this->rulesTab3(),
+                4 => $this->rulesTab4(),
+                5 => $this->rulesTab5(),
+            ];
+
+            $tabNames = [
+                1 => $this->txt('المعلومات الأساسية', 'Basic Information'),
+                2 => $this->txt('المعلومات الوظيفية', 'Job Information'),
+                3 => $this->txt('المعلومات المالية', 'Financial Information'),
+                4 => $this->txt('المعلومات الشخصية', 'Personal Information'),
+                5 => $this->txt('المستندات', 'Documents'),
+            ];
+
+            $allErrors = [];
+            $firstErrorTab = null;
+
+            foreach ($tabRules as $tabNum => $rules) {
+                $validator = \Illuminate\Support\Facades\Validator::make(
+                    $this->all(),
+                    $rules,
+                    $this->messages()
+                );
+
+                if ($validator->fails()) {
+                    if ($firstErrorTab === null) {
+                        $firstErrorTab = $tabNum;
+                    }
+                    foreach ($validator->errors()->toArray() as $field => $msgs) {
+                        $allErrors[$field] = $msgs;
+                    }
+                }
+            }
+
+            if ($firstErrorTab !== null) {
+                // Switch to the first tab that has errors
+                $this->tab = $firstErrorTab;
+
+                // Add all errors to the error bag
+                $errorBag = new \Illuminate\Support\MessageBag($allErrors);
+                $this->setErrorBag($errorBag);
+
+                // Show a toast message indicating which tab has the problem
+                $this->dispatch('toast',
+                    type: 'error',
+                    title: $this->txt('خطأ في التحقق', 'Validation Error'),
+                    message: $this->txt(
+                        'يرجى تعبئة الحقول المطلوبة في تبويب: ' . $tabNames[$firstErrorTab],
+                        'Please fill required fields in tab: ' . $tabNames[$firstErrorTab]
+                    )
+                );
+
+                return;
+            }
 
            $finalBranchId = $this->branch_id;
 
