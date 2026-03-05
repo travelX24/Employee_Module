@@ -912,7 +912,11 @@ class Index extends Component
         $this->authorize('employees.import');
 
         $this->validate([
-            'importFile' => 'required|file|mimes:csv,txt|max:4096',
+            'importFile' => 'required|file|mimes:csv,txt,xlsx,xls|max:5120',
+        ], [
+            'importFile.required' => $this->trp('Please select a file to import.', [], 'ui'),
+            'importFile.mimes'    => $this->trp('The file must be in CSV or Excel format (.csv, .xlsx, .xls).', [], 'ui'),
+            'importFile.max'      => $this->trp('The file size must not exceed 5MB.', [], 'ui'),
         ]);
 
         // ✅ NEW: Scoping for import
