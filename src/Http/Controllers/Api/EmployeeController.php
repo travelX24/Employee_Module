@@ -1027,7 +1027,30 @@ class EmployeeController extends Controller
         if (in_array('requested_days', $cols, true)) {
             $start = Carbon::parse($validated['start_date']);
             $end = Carbon::parse($validated['end_date']);
-            $data['requested_days'] = $this->computeRequestedDaysGeneric($companyId, $leavePolicyId, $start, $end);
+            $requestedDays = $this->computeRequestedDaysGeneric($companyId, $leavePolicyId, $start, $end);
+            $data['requested_days'] = $requestedDays;
+
+            if ($leavePolicyId && $requestedDays > 0) {
+                $policy = DB::table('leave_policies')->where('id', $leavePolicyId)->where('company_id', $companyId)->first();
+                if ($policy && in_array('is_exception', $cols, true)) {
+                    $yearId = $policy->policy_year_id;
+                    $balance = DB::table('attendance_leave_balances')
+                        ->where('company_id', $companyId)
+                        ->where($key, $value)
+                        ->where('leave_policy_id', $leavePolicyId)
+                        ->where('policy_year_id', $yearId)
+                        ->first();
+                        
+                    $remaining = $balance ? (float) $balance->remaining_days : (float) ($policy->days_per_year ?? 0);
+                    
+                    if ($requestedDays > $remaining) {
+                        $data['is_exception'] = true;
+                        if (in_array('exception_status', $cols, true)) {
+                            $data['exception_status'] = 'pending_hr';
+                        }
+                    }
+                }
+            }
         }
 
         if (in_array('source', $cols, true)) $data['source'] = 'app';
@@ -1641,14 +1664,10 @@ class EmployeeController extends Controller
 
         $id = DB::table($table)->insertGetId($data);
 
-        // ✅ NEW: Trigger lazy task generation immediately so it shows up in "My Missions"
+        // ✅ NEW: Trigger lazy task generation immediately
         try {
             if (class_exists('Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController')) {
-                 $inbox = new \Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController();
-                 // We need to use reflection or just copy the logic if it's private.
-                 // Actually, let's just use the DB to trigger it if there's no better way,
-                 // or just copy the essential logic here.
-                 $this->ensureMissionTasks($id, $employeeId, $companyId);
+                 $this->ensureTasksForReq('missions', $id);
             }
         } catch (\Throwable $e) {
             // Log or ignore if settings module not available
@@ -1726,55 +1745,21 @@ class EmployeeController extends Controller
     }
 
     /**
-     * ✅ Helper to ensure tasks for mission request on creation
+     * ✅ Helper to trigger task generation via ApprovalInboxController
      */
-    protected function ensureMissionTasks($id, $employeeId, $companyId)
+    protected function ensureTasksForReq(string $type, int $id): void
     {
-        // Copy logic from ApprovalInboxController to avoid private access issues
-        $policy = DB::table('approval_policies')
-            ->where('company_id', $companyId)
-            ->where('operation_key', 'missions')
-            ->where('is_active', true)
-            ->orderByDesc('id')
-            ->first();
-
-        if (!$policy) return;
-
-        $steps = DB::table('approval_policy_steps')
-            ->where('policy_id', $policy->id)
-            ->orderBy('position')
-            ->get();
-
-        $firstPendingDone = false;
-        foreach ($steps as $s) {
-            $approverId = 0;
-            if ($s->approver_type === 'user') {
-                $approverId = (int) $s->approver_id;
-            } else {
-                // direct_manager logic
-                $approverId = DB::table('employees')->where('id', $employeeId)->value('manager_id');
+        try {
+            $ctrl = app(\Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController::class);
+            $method = new \ReflectionMethod(get_class($ctrl), 'requestSource');
+            $method->setAccessible(true);
+            $src = $method->invoke($ctrl, $type);
+            
+            if ($src) {
+                $ctrl->ensureTasksForRequest($src, $id);
             }
-
-            $status = 'waiting';
-            if ($approverId > 0 && !$firstPendingDone) {
-                $status = 'pending';
-                $firstPendingDone = true;
-            } elseif ($approverId <= 0) {
-                $status = 'skipped';
-            }
-
-            DB::table('approval_tasks')->insert([
-                'company_id' => $companyId,
-                'operation_key' => 'missions',
-                'approvable_type' => 'missions',
-                'approvable_id' => $id,
-                'request_employee_id' => $employeeId,
-                'position' => $s->position,
-                'approver_employee_id' => $approverId ?: null,
-                'status' => $status,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+        } catch (\Throwable $e) {
+            // settings module might not be fully available or method missing
         }
     }
 
