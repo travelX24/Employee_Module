@@ -803,58 +803,154 @@ class Index extends Component
  
     public function downloadTemplate()
     {
-        $filename = 'employee_import_full_template.csv';
-        $headers = [
-            'Content-Type' => 'text/csv',
-            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
-        ];
- 
-        $callback = function () {
-            $file = fopen('php://output', 'w');
-            fprintf($file, chr(0xEF) . chr(0xBB) . chr(0xBF)); // BOM
- 
-        fputcsv($file, [
-            tr('Name AR'),                    // 0
-            tr('Name EN'),                    // 1
-            tr('National ID'),                // 2
-            tr('National ID Expiry'),         // 3
-            tr('Nationality'),                // 4
-            tr('Birth Date'),                 // 5
-            tr('Gender'),                     // 6
-            tr('Marital Status'),             // 7
-            tr('Children Count'),             // 8
-            tr('Mobile'),                     // 9
-            tr('Email Work'),                 // 10
-            tr('Email Personal'),             // 11
-            tr('Main Department Code'),       // 12
-            tr('Sub Department Code'),        // 13
-            tr('Job Title Code'),             // 14
-            tr('Manager Employee No'),        // 15
-            tr('Hired At'),                   // 16
-            tr('Basic Salary'),               // 17
-            tr('Allowances'),                 // 18
-            tr('Annual Leave Days'),          // 19
-            tr('Contract Type'),              // 20
-            tr('Contract Duration (Months)'), // 21
-            tr('City'),                       // 22
-            tr('District'),                   // 23
-            tr('Address'),                    // 24
-            tr('Emergency Contact Name'),     // 25
-            tr('Emergency Contact Phone'),    // 26
-            tr('Emergency Relation'),         // 27
-        ]);
+        $filename = 'employee_import_full_template.xlsx';
+        
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Employees');
 
-        // Sample Row
-        fputcsv($file, [
+        // Headers
+        $headings = [
+            tr('Name AR'),                    // A
+            tr('Name EN'),                    // B
+            tr('National ID'),                // C
+            tr('National ID Expiry'),         // D
+            tr('Nationality'),                // E
+            tr('Birth Date'),                 // F
+            tr('Gender'),                     // G
+            tr('Marital Status'),             // H
+            tr('Children Count'),             // I
+            tr('Mobile'),                     // J
+            tr('Email Work'),                 // K
+            tr('Email Personal'),             // L
+            tr('Main Department Code'),       // M
+            tr('Sub Department Code'),        // N
+            tr('Job Title Code'),             // O
+            tr('Manager Employee No'),        // P
+            tr('Hired At'),                   // Q
+            tr('Basic Salary'),               // R
+            tr('Allowances'),                 // S
+            tr('Annual Leave Days'),          // T
+            tr('Contract Type'),              // U
+            tr('Contract Duration (Months)'), // V
+            tr('City'),                       // W
+            tr('District'),                   // X
+            tr('Address'),                    // Y
+            tr('Emergency Contact Name'),     // Z
+            tr('Emergency Contact Phone'),    // AA
+            tr('Emergency Relation'),         // AB
+        ];
+
+        // Ensure headers are written
+        $col = 'A';
+        foreach ($headings as $header) {
+            $sheet->setCellValue($col . '1', $header);
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+            $sheet->getStyle($col . '1')->getFont()->setBold(true);
+            $col++;
+        }
+
+        // sample row
+        $sampleData = [
             'أحمد محمد', 'Ahmed Mohamed', '1234567890', '2030-01-01', 'Saudi Arabia', '1990-05-15', 'male', 'married', '2',
             '0500000000', 'ahmed@company.com', 'ahmed@personal.com', 'DEPT-001', 'SUB-001', 'JOB-001', '', '2024-01-01',
             '8000', '2000', '30', 'permanent', '', 'Riyadh', 'Al-Malqa', 'King Saud St', 'Ali Mohamed', '0511111111', 'أخ'
-        ]);
- 
-            fclose($file);
+        ];
+        $col = 'A';
+        foreach ($sampleData as $dataItem) {
+            $sheet->setCellValue($col . '2', $dataItem);
+            $col++;
+        }
+
+        // --- Data Sheet for Validation ---
+        $dataSheet = $spreadsheet->createSheet();
+        $dataSheet->setTitle('DataStorage_Hidden');
+        
+        $companyId = $this->getCompanyId();
+
+        // Departments
+        $Department = $this->departmentModelClass();
+        $departments = $Department::forCompany($companyId)->get(['code', 'name']);
+        $deptCodes = $departments->map(fn($d) => $d->code ? ($d->name . ' (' . $d->code . ')') : $d->name)->filter()->values()->toArray();
+
+        // Job Titles
+        $JobTitle = $this->jobTitleModelClass();
+        $jobTitles = $JobTitle::forCompany($companyId)->get(['code', 'name']);
+        $jobCodes = $jobTitles->map(fn($j) => $j->code ? ($j->name . ' (' . $j->code . ')') : $j->name)->filter()->values()->toArray();
+
+        // Managers
+        $employeesList = Employee::where('saas_company_id', $companyId)->get(['employee_no', 'name_ar', 'name_en']);
+        $managerCodes = $employeesList->map(function($e) {
+            $name = $e->name_ar ?: $e->name_en;
+            return $e->employee_no ? ($name . ' (' . $e->employee_no . ')') : $name;
+        })->filter()->values()->toArray();
+
+        // Static Lists
+        $genderList = ['male', 'female', 'ذكر', 'أنثى'];
+        $maritalList = ['single', 'married', 'أعزب', 'متزوج'];
+        $contractList = ['permanent', 'temporary', 'probation', 'contractor', 'دائم', 'مؤقت', 'تجربة', 'مقاول'];
+
+        $writeCol = function ($colLetter, $list) use ($dataSheet) {
+            $row = 1;
+            foreach ($list as $val) {
+                $val = str_replace([',', '"'], '', (string)$val);
+                $dataSheet->setCellValue($colLetter . $row, $val);
+                $row++;
+            }
+            return $row - 1; // max row
         };
- 
-        return response()->stream($callback, 200, $headers);
+
+        $maxDeptRow = $writeCol('A', $deptCodes);
+        $maxJobRow = $writeCol('B', $jobCodes);
+        $maxManagerRow = $writeCol('C', $managerCodes);
+        $maxGenderRow = $writeCol('D', $genderList);
+        $maxMaritalRow = $writeCol('E', $maritalList);
+        $maxContractRow = $writeCol('F', $contractList);
+
+        // Hide data sheet
+        $dataSheet->setSheetState(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet::SHEETSTATE_HIDDEN);
+
+        // --- Apply Validation to the Main Sheet ---
+        $applyDropdown = function ($colLetter, $dataColLetter, $maxDataRow) use ($sheet) {
+            if ($maxDataRow < 1) return; // No data to validate against
+            
+            for ($row = 2; $row <= 1000; $row++) {
+                $validation = $sheet->getCell($colLetter . $row)->getDataValidation();
+                $validation->setType(\PhpOffice\PhpSpreadsheet\Cell\DataValidation::TYPE_LIST)
+                           ->setErrorStyle(\PhpOffice\PhpSpreadsheet\Cell\DataValidation::STYLE_INFORMATION)
+                           ->setAllowBlank(true)
+                           ->setShowInputMessage(true)
+                           ->setShowErrorMessage(true)
+                           ->setShowDropDown(true)
+                           ->setErrorTitle('Input error')
+                           ->setError('Value is not in list.')
+                           ->setPromptTitle('Pick from list')
+                           ->setPrompt('Please select a value from the drop-down list.')
+                           ->setFormula1('DataStorage_Hidden!$' . $dataColLetter . '$1:$' . $dataColLetter . '$' . $maxDataRow);
+            }
+        };
+
+        $applyDropdown('G', 'D', $maxGenderRow); // Gender
+        $applyDropdown('H', 'E', $maxMaritalRow); // Marital status
+        $applyDropdown('M', 'A', $maxDeptRow); // Main Dept
+        $applyDropdown('N', 'A', $maxDeptRow); // Sub Dept
+        $applyDropdown('O', 'B', $maxJobRow); // Job Title
+        $applyDropdown('P', 'C', $maxManagerRow); // Manager
+        $applyDropdown('U', 'F', $maxContractRow); // Contract type
+
+        $spreadsheet->setActiveSheetIndex(0);
+
+        $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
+
+        $headersHttp = [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+            'Cache-Control' => 'max-age=0',
+        ];
+
+        return response()->streamDownload(function () use ($writer) {
+            $writer->save('php://output');
+        }, $filename, $headersHttp);
     }
  
     public function downloadDepartmentsCodes()
@@ -1029,6 +1125,13 @@ class Index extends Component
                     }
                 };
 
+                $extractCode = function($val) {
+                    if (preg_match('/\((.*?)\)$/', trim((string)$val), $matches)) {
+                        return trim($matches[1]);
+                    }
+                    return trim((string)$val);
+                };
+
                 // Map columns
               $row = [
                     'name_ar'                    => $clean($data[0] ?? ''),
@@ -1043,10 +1146,10 @@ class Index extends Component
                     'mobile'                     => $clean($data[9] ?? ''),
                     'email_work'                 => $clean($data[10] ?? ''),
                     'email_personal'             => $clean($data[11] ?? ''),
-                    'dept_code'                  => $clean($data[12] ?? ''),
-                    'sub_dept_code'              => $clean($data[13] ?? ''),
-                    'job_code'                   => $clean($data[14] ?? ''),
-                    'manager_emp_no'             => $clean($data[15] ?? ''),
+                    'dept_code'                  => $extractCode($clean($data[12] ?? '')),
+                    'sub_dept_code'              => $extractCode($clean($data[13] ?? '')),
+                    'job_code'                   => $extractCode($clean($data[14] ?? '')),
+                    'manager_emp_no'             => $extractCode($clean($data[15] ?? '')),
                     'hired_at'                   => $parseDate($clean($data[16] ?? '')),
                     'basic_salary'               => (float) ($clean($data[17] ?? 0) ?: 0),
                     'allowances'                 => (float) ($clean($data[18] ?? 0) ?: 0),
@@ -1098,31 +1201,45 @@ class Index extends Component
                 // Find Department
                 $deptId = null;
                 if (!empty($row['dept_code'])) {
-                    $dept = $DepartmentModel::where('saas_company_id', $companyId)->where('code', $row['dept_code'])->first();
+                    $dept = $DepartmentModel::where('saas_company_id', $companyId)
+                        ->where(function($q) use ($row) {
+                            $q->where('code', $row['dept_code'])->orWhere('name', $row['dept_code']);
+                        })->first();
                     if ($dept) $deptId = $dept->id;
-                    else $this->importValidationErrors[] = $this->trp('Row :row: Main Department code ":code" not found.', ['row' => $rowCount, 'code' => $row['dept_code']]);
+                    else $this->importValidationErrors[] = $this->trp('Row :row: Main Department ":code" not found.', ['row' => $rowCount, 'code' => $row['dept_code']]);
                 }
 
                 // Find Sub Department
                 $subDeptId = null;
                 if (!empty($row['sub_dept_code'])) {
-                    $subDept = $DepartmentModel::where('saas_company_id', $companyId)->where('code', $row['sub_dept_code'])->first();
+                    $subDept = $DepartmentModel::where('saas_company_id', $companyId)
+                        ->where(function($q) use ($row) {
+                            $q->where('code', $row['sub_dept_code'])->orWhere('name', $row['sub_dept_code']);
+                        })->first();
                     if ($subDept) $subDeptId = $subDept->id;
-                    else $this->importValidationErrors[] = $this->trp('Row :row: Sub Department code ":code" not found.', ['row' => $rowCount, 'code' => $row['sub_dept_code']]);
+                    else $this->importValidationErrors[] = $this->trp('Row :row: Sub Department ":code" not found.', ['row' => $rowCount, 'code' => $row['sub_dept_code']]);
                 }
 
                 // Find Job Title
                 $jobId = null;
                 if (!empty($row['job_code'])) {
-                    $job = $JobTitleModel::where('saas_company_id', $companyId)->where('code', $row['job_code'])->first();
+                    $job = $JobTitleModel::where('saas_company_id', $companyId)
+                        ->where(function($q) use ($row) {
+                            $q->where('code', $row['job_code'])->orWhere('name', $row['job_code']);
+                        })->first();
                     if ($job) $jobId = $job->id;
-                    else $this->importValidationErrors[] = $this->trp('Row :row: Job code ":code" not found.', ['row' => $rowCount, 'code' => $row['job_code']]);
+                    else $this->importValidationErrors[] = $this->trp('Row :row: Job title ":code" not found.', ['row' => $rowCount, 'code' => $row['job_code']]);
                 }
 
                 // Find Manager
                 $managerId = null;
                 if (!empty($row['manager_emp_no'])) {
-                    $manager = Employee::where('saas_company_id', $companyId)->where('employee_no', $row['manager_emp_no'])->first();
+                    $manager = Employee::where('saas_company_id', $companyId)
+                        ->where(function($q) use ($row) {
+                            $q->where('employee_no', $row['manager_emp_no'])
+                              ->orWhere('name_ar', $row['manager_emp_no'])
+                              ->orWhere('name_en', $row['manager_emp_no']);
+                        })->first();
                     if ($manager) $managerId = $manager->id;
                     else $this->importValidationErrors[] = $this->trp('Row :row: Manager ":no" not found.', ['row' => $rowCount, 'no' => $row['manager_emp_no']]);
                 }
