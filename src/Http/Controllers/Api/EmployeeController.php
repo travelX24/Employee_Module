@@ -164,6 +164,10 @@ class EmployeeController extends Controller
             'roles'       => $roles,
             'permissions' => $permissions,
 
+            'is_approver' => ($employee && (DB::table('employees')->where('manager_id', $employee->id)->exists() 
+                || DB::table('approval_policy_steps')->where('approver_id', $employee->id)->exists()
+                || DB::table('approval_tasks')->where('approver_employee_id', $employee->id)->exists())),
+
             'message' => UiMsg::toText('OK') ?? 'OK',
         ]);
     }
@@ -814,7 +818,6 @@ class EmployeeController extends Controller
             if (isset($arr['start_date'])) $arr['from_date'] = $arr['start_date'];
             if (isset($arr['end_date']))   $arr['to_date']   = $arr['end_date'];
             
-            // Fix for missions explicitly mapping startDate/endDate if they are just start_date/end_date
             if ($table === 'attendance_mission_requests') {
                  $arr['start_date'] = $arr['start_date'] ?? '';
                  $arr['end_date']   = $arr['end_date'] ?? '';
@@ -825,46 +828,27 @@ class EmployeeController extends Controller
                 $arr['to_date']   = $arr['permission_date'];
             }
 
-            // Balance Calculation
+            // Balance Calculation (Including Pending Requests)
             $balanceStr = '';
             if ($table === 'attendance_leave_requests' && !empty($arr['leave_policy_id'])) {
                 $employeeId = $value;
                 $policyId   = $arr['leave_policy_id'];
                 $yearId     = $arr['policy_year_id'] ?? 0;
 
-                $balanceRow = DB::table('attendance_leave_balances')
-                    ->where('employee_id', $employeeId)
-                    ->where('leave_policy_id', $policyId)
-                    ->where('policy_year_id', $yearId)
-                    ->first();
-                
-                if ($balanceRow) {
-                    $total = (float)($balanceRow->entitled_days ?? 0);
-                    $rem   = (float)($balanceRow->remaining_days ?? 0);
+                $policy = DB::table('leave_policies')->where('id', $policyId)->first();
+                if ($policy) {
+                    $total = (float)($policy->days_per_year ?? 0);
+                    $consumed = DB::table('attendance_leave_requests')
+                        ->where('employee_id', $employeeId)
+                        ->where('leave_policy_id', $policyId)
+                        ->where('policy_year_id', $yearId)
+                        ->where('status', 'approved')
+                        ->sum('requested_days');
                     
+                    $rem = max($total - (float)$consumed, 0);
                     $totalStr = ($total == (int)$total) ? (int)$total : $total;
                     $remStr   = ($rem == (int)$rem) ? (int)$rem : $rem;
-                    
                     $balanceStr = $totalStr . ' / ' . $remStr;
-                } else {
-                    // Fallback Calculation
-                    $policy = DB::table('leave_policies')->where('id', $policyId)->first();
-                    if ($policy) {
-                        $total = (float)($policy->days_per_year ?? 0);
-                        $taken = DB::table('attendance_leave_requests')
-                            ->where('employee_id', $employeeId)
-                            ->where('leave_policy_id', $policyId)
-                            ->where('policy_year_id', $yearId)
-                            ->where('status', 'approved')
-                            ->sum('requested_days');
-                        
-                        $rem = max($total - (float)$taken, 0);
-
-                        $totalStr = ($total == (int)$total) ? (int)$total : $total;
-                        $remStr   = ($rem == (int)$rem) ? (int)$rem : $rem;
-
-                        $balanceStr = $totalStr . ' / ' . $remStr;
-                    }
                 }
             }
             $arr['balance'] = $balanceStr;
@@ -873,16 +857,24 @@ class EmployeeController extends Controller
             $arr['monthly_taken_days'] = (float)$monthlyLeaveDays;
             $arr['monthly_taken_minutes'] = (int)$monthlyPermissionMinutes;
 
-            // ✅ Include Approval Tasks
+            // ✅ Include Approval Tasks and Find Current Approver
             $tasks = $groupedTasks->get($arr['id']) ?? collect();
-            $arr['approval_tasks'] = $tasks->map(function($t) use ($approvers) {
+            $currentApproverName = '';
+            
+            $arr['approval_tasks'] = $tasks->map(function($t) use ($approvers, &$currentApproverName, $locale) {
                 $tArr = (array)$t;
                 $approver = $approvers->get($tArr['approver_employee_id']);
                 if ($approver) {
                     $tArr['approver'] = (array)$approver;
+                    // If this task is pending, this is the current approver
+                    if ($tArr['status'] === 'pending' && empty($currentApproverName)) {
+                        $currentApproverName = ($locale === 'ar') ? ($approver->name_ar ?? $approver->name_en) : ($approver->name_en ?? $approver->name_ar);
+                    }
                 }
                 return $tArr;
             })->values()->toArray();
+
+            $arr['current_approver'] = $currentApproverName;
 
             return $arr;
         });
@@ -1061,6 +1053,10 @@ class EmployeeController extends Controller
         if (in_array('updated_at', $cols, true)) $data['updated_at'] = $now;
 
         $id = DB::table($table)->insertGetId($data);
+        if (class_exists(\Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController::class)) {
+            $companyId = $data['company_id'] ?? $user->saas_company_id ?? 1;
+            app(\Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController::class)->ensureTasksForRequest((int)$companyId, 'leaves', $id);
+        }
 
         $row = DB::table($table)->where('id', $id)->first();
 
@@ -1233,6 +1229,10 @@ class EmployeeController extends Controller
         if (in_array('updated_at', $cols, true)) $data['updated_at'] = $now;
 
         $id = DB::table($table)->insertGetId($data);
+        if (class_exists(\Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController::class)) {
+            $companyId = $data['company_id'] ?? $user->saas_company_id ?? 1;
+            app(\Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController::class)->ensureTasksForRequest((int)$companyId, 'permissions', $id);
+        }
 
         $row = DB::table($table)->where('id', $id)->first();
 
