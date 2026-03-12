@@ -208,6 +208,7 @@
             <option value="temporary"  {{ $contract_type == 'temporary' ? 'selected' : '' }}>{{ tr('Temporary') }}</option>
             <option value="probation"  {{ $contract_type == 'probation' ? 'selected' : '' }}>{{ tr('Probation') }}</option>
             <option value="contractor" {{ $contract_type == 'contractor' ? 'selected' : '' }}>{{ tr('Contractor') }}</option>
+            <option value="freelancer" {{ $contract_type == 'freelancer' ? 'selected' : '' }}>{{ tr('Freelancer') }}</option>
         </x-ui.select>
 
         {{-- Contract Duration --}}

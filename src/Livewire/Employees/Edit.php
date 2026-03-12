@@ -564,7 +564,7 @@ if (! empty($allowed)) {
             'grade' => ['required', 'integer', 'min:1', 'max:10'],
            'hired_at' => ['required', 'date'],
 
-            'contract_type' => ['required', Rule::in(['permanent', 'temporary', 'probation', 'contractor'])],
+            'contract_type' => ['required', Rule::in(['permanent', 'temporary', 'probation', 'contractor', 'freelancer'])],
             'contract_duration_months' => Rule::when(
     ($this->contract_type && $this->contract_type !== 'permanent'),
     ['required', 'integer', 'min:1'],

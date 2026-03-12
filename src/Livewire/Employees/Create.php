@@ -368,7 +368,7 @@ class Create extends Component
             'manager_id' => ['nullable', 'exists:employees,id'],
             'hired_at' => ['required', 'date'],
 
-            'contract_type' => ['required', Rule::in(['permanent', 'temporary', 'probation', 'contractor'])],
+            'contract_type' => ['required', Rule::in(['permanent', 'temporary', 'probation', 'contractor', 'freelancer'])],
             'contract_duration_months' => Rule::when(
                 ($this->contract_type !== '' && $this->contract_type !== 'permanent'),
                 ['required', 'integer', 'min:1'],

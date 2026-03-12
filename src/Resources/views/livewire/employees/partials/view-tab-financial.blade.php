@@ -27,6 +27,7 @@
                             'temporary' => tr('Temporary'),
                             'probation' => tr('Probation'),
                             'contractor' => tr('Contractor'),
+                            'freelancer' => tr('Freelancer'),
                             default => $employee->contract_type ?: '—',
                         };
                     @endphp
