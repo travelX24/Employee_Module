@@ -184,7 +184,7 @@ public function subordinates(): HasMany
 
     public function activeWorkSchedule()
     {
-        return $this->hasOne(\App\Modules\Attendance\Models\EmployeeWorkSchedule::class, 'employee_id')
+        return $this->hasOne(\Athka\Attendance\Models\EmployeeWorkSchedule::class, 'employee_id')
             ->where('is_active', true)
             ->with('workSchedule.periods');
     }
