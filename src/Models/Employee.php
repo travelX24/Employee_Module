@@ -161,6 +161,11 @@ class Employee extends Model
         return $this->belongsTo($class, 'job_title_id');
     }
 
+    public function user()
+    {
+        return $this->hasOne(\App\Models\User::class, 'employee_id');
+    }
+
     public function manager(): BelongsTo
 {
     return $this->belongsTo(self::class, 'manager_id');
