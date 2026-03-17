@@ -1750,16 +1750,15 @@ class EmployeeController extends Controller
     protected function ensureTasksForReq(string $type, int $id): void
     {
         try {
-            $ctrl = app(\Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController::class);
-            $method = new \ReflectionMethod(get_class($ctrl), 'requestSource');
-            $method->setAccessible(true);
-            $src = $method->invoke($ctrl, $type);
-            
-            if ($src) {
-                $ctrl->ensureTasksForRequest($src, $id);
+            if (class_exists(\Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController::class)) {
+                $user = auth()->user();
+                $companyId = (int) ($user->saas_company_id ?? 1);
+                
+                app(\Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController::class)
+                    ->ensureTasksForRequest($companyId, $type, $id);
             }
         } catch (\Throwable $e) {
-            // settings module might not be fully available or method missing
+            // Silently fail if module or method is missing
         }
     }
 
