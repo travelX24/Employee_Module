@@ -56,6 +56,20 @@ class DetailModal extends Component
         $this->dispatch('open-view-employee-' . $id);
     }
 
+    #[On('employee-updated')]
+    public function refreshEmployee($employeeId = null): void
+    {
+        if (!$this->employee) return;
+
+        // Only refresh if it's the same employee
+        if ($employeeId && (int) $employeeId !== (int) $this->employee->id) return;
+
+        $this->employee = Employee::query()
+            ->where('id', $this->employee->id)
+            ->with(['department', 'jobTitle', 'documents', 'manager'])
+            ->first();
+    }
+
     public function render()
     {
         return view('employees::livewire.employees.detail-modal');

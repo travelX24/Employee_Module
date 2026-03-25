@@ -21,22 +21,17 @@
 
 <div
     x-data="{
-        open: false,
         activeTab: 1,
         editMode: false,
         employeeId: {{ $employee->id }},
 
         show() {
-            this.open = true;
             this.activeTab = 1;
             this.editMode = false;
-            document.body.style.overflow = 'hidden';
         },
 
         hide() {
-            this.open = false;
-            this.editMode = false;
-            document.body.style.overflow = '';
+            $wire.set('show', false);
         },
 
         enableEdit() {
@@ -50,87 +45,43 @@
         },
 
         reopenAfterSave() {
-            this.hide();
-
-            setTimeout(() => {
-                window.dispatchEvent(new CustomEvent('open-view-employee-{{ $employee->id }}'));
-            }, 250);
+            this.editMode = false;
+            this.activeTab = 1;
         }
     }"
     x-on:open-view-employee-{{ $employee->id }}.window="show()"
-    x-on:keydown.escape.window="hide()"
     x-on:employee-updated.window="
         const updatedId = $event.detail?.employeeId ?? $event.detail?.[0]?.employeeId ?? $event.detail?.[0] ?? null;
         if (updatedId != employeeId) return;
         editMode = false;
         reopenAfterSave();
     "
-    x-show="open"
-    x-transition:enter="transition ease-out duration-300"
-    x-transition:enter-start="opacity-0"
-    x-transition:enter-end="opacity-100"
-    x-transition:leave="transition ease-in duration-200"
-    x-transition:leave-start="opacity-100"
-    x-transition:leave-end="opacity-0"
-    class="fixed inset-0 z-[9999] flex items-center justify-center p-4"
-    style="display: none;"
+    class="flex flex-col h-full overflow-hidden"
 >
-    {{-- Backdrop --}}
-    <div
-        x-show="open"
-        x-transition:enter="transition ease-out duration-300"
-        x-transition:enter-start="opacity-0"
-        x-transition:enter-end="opacity-100"
-        x-transition:leave="transition ease-in duration-200"
-        x-transition:leave-start="opacity-100"
-        x-transition:leave-end="opacity-0"
-        @click="hide()"
-        class="absolute inset-0 bg-gradient-to-br from-black/50 via-black/60 to-black/50 backdrop-blur-md"
-    ></div>
+    <x-slot name="title">
+        <div class="flex items-center justify-between">
+            <div class="min-w-0 flex-1">
+                <h3 class="text-xl font-bold text-gray-900">
+                    <span x-show="!editMode">{{ tr('Employee Details') }}</span>
+                    <span x-show="editMode">{{ tr('Edit Employee') }}</span>
+                </h3>
 
-    {{-- Modal Content --}}
-    <div
-        x-show="open"
-        x-transition:enter="transition ease-out duration-300"
-        x-transition:enter-start="opacity-0 scale-95 translate-y-4"
-        x-transition:enter-end="opacity-100 scale-100 translate-y-0"
-        x-transition:leave="transition ease-in duration-200"
-        x-transition:leave-start="opacity-100 scale-100 translate-y-0"
-        x-transition:leave-end="opacity-0 scale-95 translate-y-4"
-        @click.away="hide()"
-        class="relative bg-white rounded-3xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden ring-1 ring-black/5 flex flex-col"
-    >
-        {{-- Header --}}
-        <div class="px-6 pt-5 pb-4 bg-gradient-to-br from-indigo-50 via-purple-50 to-cyan-50 border-b border-indigo-200/50 relative">
-            <div class="absolute top-0 right-0 w-32 h-32 opacity-10">
-                <div class="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent rounded-full blur-2xl"></div>
-            </div>
-
-            <div class="flex items-center justify-between relative z-10">
-                <div class="min-w-0 flex-1 pr-4">
-                    <h3 class="text-xl font-bold text-gray-900">
-                        <span x-show="!editMode">{{ tr('Employee Details') }}</span>
-                        <span x-show="editMode">{{ tr('Edit Employee') }}</span>
-                    </h3>
-
-                    <p class="text-sm text-gray-600 mt-1 mb-0 leading-normal">
-                        @if($locale === 'ar')
-                            {{ $employee->name_ar }}
-                        @else
-                            {{ $employee->name_en ?: $employee->name_ar }}
-                        @endif
-                    </p>
-                </div>
-
-                <button
-                    type="button"
-                    @click="hide()"
-                    class="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-xl text-gray-400 hover:text-gray-700 hover:bg-white/60 active:scale-95 transition-all duration-200 backdrop-blur-sm"
-                >
-                    <i class="fas fa-times text-lg"></i>
-                </button>
+                <p class="text-xs text-gray-600 mt-1 mb-0 leading-normal font-normal">
+                    @if($locale === 'ar')
+                        {{ $employee->name_ar }}
+                    @else
+                        {{ $employee->name_en ?: $employee->name_ar }}
+                    @endif
+                    <span class="mx-2 text-gray-300">|</span>
+                    <span class="text-gray-400 font-mono">{{ $employee->employee_no }}</span>
+                </p>
             </div>
         </div>
+    </x-slot>
+
+    <x-slot name="icon">
+        <i class="fas fa-user-tie text-white text-xl"></i>
+    </x-slot>
 
         {{-- Stepper (View mode only) --}}
         <div
@@ -278,45 +229,46 @@
                 @livewire('employees.edit', ['employeeId' => $employee->id], key('edit-employee-'.$employee->id))
             </div>
         </div>
+    </div>
 
-        {{-- Footer --}}
-        <div class="px-6 py-4 border-t border-gray-100 bg-white flex justify-between items-center gap-3">
+    <x-slot name="footer">
+        <div class="w-full flex justify-between items-center">
             <div class="flex items-center gap-3">
                 @if(!$readonly)
                     @can('employees.edit')
-                    <button
+                    <x-ui.primary-button
                         type="button"
                         x-show="!editMode"
                         x-transition
                         @click="enableEdit()"
-                        class="inline-flex items-center px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-[color:var(--brand-from)] via-[color:var(--brand-via)] to-[color:var(--brand-to)] rounded-2xl hover:shadow-lg active:scale-[0.97] transition-all duration-200 shadow-sm"
+                        :fullWidth="false"
                     >
                         <i class="fas fa-edit me-2"></i>
                         {{ tr('Edit') }}
-                    </button>
+                    </x-ui.primary-button>
                     @endcan
 
-                    <button
+                    <x-ui.secondary-button
                         type="button"
                         x-show="editMode"
                         x-transition
                         @click="cancelEdit()"
-                        class="px-6 py-3 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-2xl hover:bg-gray-50 hover:border-gray-400 hover:shadow-md active:scale-[0.97] transition-all duration-200 shadow-sm"
+                        :fullWidth="false"
                     >
                         {{ tr('Cancel Edit') }}
-                    </button>
+                    </x-ui.secondary-button>
                 @endif
             </div>
 
             <div class="flex gap-3">
-                <button
+                <x-ui.secondary-button
                     type="button"
                     @click="hide()"
-                    class="px-6 py-3 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-2xl hover:bg-gray-50 hover:border-gray-400 hover:shadow-md active:scale-[0.97] transition-all duration-200 shadow-sm"
+                    :fullWidth="false"
                 >
                     {{ tr('Close') }}
-                </button>
+                </x-ui.secondary-button>
             </div>
         </div>
-    </div>
+    </x-slot>
 </div>

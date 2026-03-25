@@ -1027,8 +1027,7 @@ class Index extends Component
         $this->importValidationErrors = [];
         $companyId = $this->getCompanyId();
 
-        // ✅ تأمين العملية
-        set_time_limit(0); 
+        set_time_limit(0);
         ini_set('memory_limit', '512M');
 
         try {
@@ -1047,93 +1046,68 @@ class Index extends Component
                 $defaultBranchId = $allowedBranchIds[0] ?? null;
             }
 
-            // ✅ حماية ضد Class not found
-            $defaultAnnualLeaveDays = 21; // القيمة الافتراضية
+            $defaultAnnualLeaveDays = 21;
             if (class_exists(\Athka\Saas\Models\SaasCompanyOtherinfo::class)) {
                 $defaultAnnualLeaveDays = (int) (\Athka\Saas\Models\SaasCompanyOtherinfo::where('company_id', $companyId)->value('default_annual_leave_days') ?? 21);
             }
 
             $path = $this->importFile->getRealPath();
-            
-            // قراءة محتوى الملف بالكامل لمعالجة الترميز إذا لزم الأمر
-            $content = file_get_contents($path);
-            
-            // تحويل الترميز إلى UTF-8 إذا كان مختلفاً (مشكلة شائعة في Excel CSV)
-            if (!mb_check_encoding($content, 'UTF-8')) {
-                $content = mb_convert_encoding($content, 'UTF-8', 'UTF-16, ISO-8859-1, Windows-1252');
-            }
-            
-            // كتابة المحتوى المنظف في ملف مؤقت للقراءة
-            $tempFile = fopen('php://temp', 'r+');
-            fwrite($tempFile, $content);
-            rewind($tempFile);
-            
-            // Skip BOM if exists
-            $bom = fread($tempFile, 3);
-            if ($bom !== "\xEF\xBB\xBF") {
-                rewind($tempFile);
-            }
-            
-            // Detect Delimiter
-            $firstLine = fgets($tempFile);
-            $delimiter = (str_contains($firstLine, ';') && !str_contains($firstLine, ',')) ? ';' : ',';
-            rewind($tempFile);
-            if ($bom !== "\xEF\xBB\xBF") {
-                // skip if we rewound but there was no BOM
-            } else {
-                fread($tempFile, 3); // skip BOM again
-            }
+            $extension = strtolower($this->importFile->getClientOriginalExtension());
 
-            // Skip header
-            fgets($tempFile);
-
-            $rowCount = 0;
-            $importedCount = 0;
-            
             $DepartmentModel = $this->departmentModelClass();
             $JobTitleModel = $this->jobTitleModelClass();
 
-            while (($data = fgetcsv($tempFile, 0, $delimiter)) !== FALSE) {
-                $rowCount++;
-                // Skip empty or malformed rows
-                if (count($data) < 4 || empty(array_filter($data))) continue;
+            $rowCount = 0;
+            $importedCount = 0;
 
-                // Clean data helper (handles Scientific Notation from Excel and Null Bytes)
-                $clean = function($val) {
-                    if ($val === null) return null;
-                    // إزالة الرموز الصفرية والرموز غير المرئية التي قد تأتي من ترميز خاطئ
-                    $val = str_replace("\0", "", (string)$val);
-                    $val = trim($val);
-                    
-                    if (empty($val)) return null;
-                    
-                    // Fix scientific notation e.g., 1.23E+09 -> 1230000000 (Very common for National IDs in Excel)
-                    if (stripos((string)$val, 'E+') !== false && is_numeric($val)) {
-                        return sprintf('%.0f', (float)$val);
-                    }
-                    return $val;
-                };
+            // ─────────────────────────────────────────
+            // Helper functions (shared for both formats)
+            // ─────────────────────────────────────────
+            $clean = function($val) {
+                if ($val === null) return null;
+                $val = str_replace("\0", "", (string)$val);
+                $val = trim($val);
+                if (empty($val)) return null;
+                if (stripos((string)$val, 'E+') !== false && is_numeric($val)) {
+                    return sprintf('%.0f', (float)$val);
+                }
+                return $val;
+            };
 
-                // Helper to parse dates correctly from various formats (common in Excel/CSV)
-                $parseDate = function($val) {
-                    if (empty($val)) return null;
+            $parseDate = function($val) {
+                if (empty($val)) return null;
+                // Handle Excel serial date numbers
+                if (is_numeric($val) && $val > 40000 && $val < 100000) {
                     try {
-                        // محاولة التعامل مع Y-m-d أو d/m/Y أو m/d/Y
-                        return \Carbon\Carbon::parse($val)->format('Y-m-d');
-                    } catch (\Exception $e) {
-                        return null;
-                    }
-                };
+                        return \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($val)->format('Y-m-d');
+                    } catch (\Exception $e) {}
+                }
+                try {
+                    return \Carbon\Carbon::parse($val)->format('Y-m-d');
+                } catch (\Exception $e) {
+                    return null;
+                }
+            };
 
-                $extractCode = function($val) {
-                    if (preg_match('/\((.*?)\)$/', trim((string)$val), $matches)) {
-                        return trim($matches[1]);
-                    }
-                    return trim((string)$val);
-                };
+            $extractCode = function($val) {
+                if (preg_match('/\((.*?)\)$/', trim((string)$val), $matches)) {
+                    return trim($matches[1]);
+                }
+                return trim((string)$val);
+            };
 
-                // Map columns
-              $row = [
+            // Function to process a single row array (columns 0-27)
+            $processRow = function(array $data) use (
+                $clean, $parseDate, $extractCode,
+                $companyId, $defaultBranchId, $defaultAnnualLeaveDays,
+                $forcedDeptId, $forcedManagerId,
+                $DepartmentModel, $JobTitleModel,
+                &$rowCount, &$importedCount
+            ) {
+                $rowCount++;
+                if (count($data) < 4 || empty(array_filter($data, fn($v) => !is_null($v) && (string)$v !== ''))) return;
+
+                $row = [
                     'name_ar'                    => $clean($data[0] ?? ''),
                     'name_en'                    => $clean($data[1] ?? ''),
                     'national_id'                => $clean($data[2] ?? ''),
@@ -1164,38 +1138,32 @@ class Index extends Component
                     'emergency_contact_relation' => $clean($data[27] ?? ''),
                 ];
 
-                // Basic Mandatory Validation
+                // Basic validation
                 if (empty($row['name_ar']) || empty($row['national_id'])) {
                     $this->importValidationErrors[] = $this->trp('Row :row: Name AR and National ID are required.', ['row' => $rowCount]);
-                    continue;
+                    return;
                 }
 
-                // Duplicate Check (More granular results)
-               $duplicate = Employee::where('saas_company_id', $companyId)
+                // Duplicate check
+                $duplicate = Employee::where('saas_company_id', $companyId)
                     ->where(function($q) use ($row) {
                         $q->where('national_id', $row['national_id'])
-                        ->when($row['email_work'], fn($qq) => $qq->orWhere('email_work', $row['email_work']))
-                        ->when($row['mobile'], fn($qq) => $qq->orWhere('mobile', $row['mobile']));
+                          ->when($row['email_work'], fn($qq) => $qq->orWhere('email_work', $row['email_work']))
+                          ->when($row['mobile'], fn($qq) => $qq->orWhere('mobile', $row['mobile']));
                     })->first();
 
                 if ($duplicate) {
                     $field = tr('National ID');
                     $value = $row['national_id'];
-
                     if ($row['email_work'] && $duplicate->email_work === $row['email_work']) {
-                        $field = tr('Email');
-                        $value = $row['email_work'];
+                        $field = tr('Email'); $value = $row['email_work'];
                     } elseif ($row['mobile'] && $duplicate->mobile === $row['mobile']) {
-                        $field = tr('Mobile');
-                        $value = $row['mobile'];
+                        $field = tr('Mobile'); $value = $row['mobile'];
                     }
-
                     $this->importValidationErrors[] = $this->trp('Row :row: Employee already exists matching :field (:value).', [
-                        'row' => $rowCount,
-                        'field' => $field,
-                        'value' => $value,
+                        'row' => $rowCount, 'field' => $field, 'value' => $value,
                     ]);
-                    continue;
+                    return;
                 }
 
                 // Find Department
@@ -1244,32 +1212,28 @@ class Index extends Component
                     else $this->importValidationErrors[] = $this->trp('Row :row: Manager ":no" not found.', ['row' => $rowCount, 'no' => $row['manager_emp_no']]);
                 }
 
-                // Fuzzy Matching for Gender and Marital Status (Support Arabic and English)
+                // Gender mapping
                 $genderInput = strtolower((string) $row['gender']);
                 $gender = (in_array($genderInput, ['female', 'f', 'أنثى', 'انثى'], true)) ? 'female' : 'male';
 
+                // Marital status mapping
                 $mStatusInput = strtolower((string) $row['marital_status']);
                 $mStatus = (in_array($mStatusInput, ['married', 'm', 'متزوج', 'متزوجة'], true)) ? 'married' : 'single';
 
+                // Contract type mapping
                 $contractInput = strtolower((string) $row['contract_type']);
                 $contractType = 'permanent';
                 if (in_array($contractInput, ['temporary', 'probation', 'contractor', 'مؤقت', 'تجربة', 'مقاول'], true)) {
-                    // Mapping Arabic to English database values
-                    $map = [
-                        'مؤقت' => 'temporary',
-                        'تجربة' => 'probation',
-                        'مقاول' => 'contractor'
-                    ];
+                    $map = ['مؤقت' => 'temporary', 'تجربة' => 'probation', 'مقاول' => 'contractor'];
                     $contractType = $map[$contractInput] ?? $contractInput;
                 }
 
                 try {
-                  $jobTitleName = $jobId ? ($JobTitleModel::find($jobId)?->name) : null;
+                    $jobTitleName = $jobId ? ($JobTitleModel::find($jobId)?->name) : null;
 
                     Employee::create([
                         'saas_company_id'            => $companyId,
                         'branch_id'                  => $defaultBranchId,
-                        // لا نرسل employee_no هنا -> سيتولد تلقائياً بنفس منطق شاشة الإضافة
                         'name_ar'                    => $row['name_ar'],
                         'name_en'                    => $row['name_en'],
                         'national_id'                => $row['national_id'],
@@ -1313,30 +1277,75 @@ class Index extends Component
                     $importedCount++;
                 } catch (\Exception $e) {
                     $error = $e->getMessage();
-                    
-                    // تحسين رسائل الخطأ للمستخدم
                     if (str_contains($error, 'Data too long')) $error = tr('Some data fields are too long for the database.');
                     elseif (str_contains($error, 'Incorrect date value')) $error = tr('Invalid date format in one of the columns (must be YYYY-MM-DD).');
-                    elseif (str_contains($error, 'doesn\'t have a default value')) {
+                    elseif (str_contains($error, "doesn't have a default value")) {
                         preg_match("/Field '(.+)' doesn't have a default value/", $error, $matches);
                         $field = $matches[1] ?? 'unknown';
                         $error = tr('The following required field is missing: ') . $field;
                     } elseif (str_contains($error, 'integrity constraint violation')) {
                         $error = tr('A database constraint was violated. Check if all codes (Department/Job) are correct.');
                     } else {
-                        // إذا لم يكن من الأخطاء المعروفة، نعرض رسالة مختصرة للخطأ الفني
                         $error = tr('Technical Error: ') . substr($error, 0, 100);
                     }
-                    
                     $this->importValidationErrors[] = $this->trp('Row :row: Failed to save: :error', ['row' => $rowCount, 'error' => $error], 'ui');
                 }
+            };
+
+            // ─────────────────────────────────────────
+            // XLSX / XLS: Use PhpSpreadsheet
+            // ─────────────────────────────────────────
+            if (in_array($extension, ['xlsx', 'xls'])) {
+                $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($path);
+                $sheet = $spreadsheet->getActiveSheet();
+                $rows = $sheet->toArray(null, true, true, false);
+
+                // Skip header row (index 0)
+                $isFirst = true;
+                foreach ($rows as $rowData) {
+                    if ($isFirst) { $isFirst = false; continue; }
+                    // Skip completely empty rows
+                    if (empty(array_filter($rowData, fn($v) => !is_null($v) && (string)$v !== ''))) continue;
+                    $processRow($rowData);
+                }
+
+            // ─────────────────────────────────────────
+            // CSV: Use fgetcsv (original logic)
+            // ─────────────────────────────────────────
+            } else {
+                $content = file_get_contents($path);
+                if (!mb_check_encoding($content, 'UTF-8')) {
+                    $content = mb_convert_encoding($content, 'UTF-8', 'UTF-16, ISO-8859-1, Windows-1252');
+                }
+                $tempFile = fopen('php://temp', 'r+');
+                fwrite($tempFile, $content);
+                rewind($tempFile);
+
+                // Skip BOM
+                $bom = fread($tempFile, 3);
+                if ($bom !== "\xEF\xBB\xBF") {
+                    rewind($tempFile);
+                }
+
+                // Detect delimiter
+                $firstLine = fgets($tempFile);
+                $delimiter = (str_contains($firstLine, ';') && !str_contains($firstLine, ',')) ? ';' : ',';
+                rewind($tempFile);
+                if ($bom === "\xEF\xBB\xBF") fread($tempFile, 3);
+
+                // Skip header row
+                fgets($tempFile);
+
+                while (($data = fgetcsv($tempFile, 0, $delimiter)) !== FALSE) {
+                    $processRow($data);
+                }
+
+                fclose($tempFile);
             }
+
         } catch (\Throwable $th) {
             $this->importValidationErrors[] = tr('Critical error during import: ') . $th->getMessage();
         } finally {
-            if (isset($tempFile) && is_resource($tempFile)) {
-                fclose($tempFile);
-            }
             $this->isImporting = false;
         }
 
@@ -1353,82 +1362,74 @@ class Index extends Component
         }
     }
 
+
     private function branchModelClass(): ?string
-{
-    $candidates = [
-        \App\Models\Branch::class,
-        \Athka\SystemSettings\Models\Branch::class,
-        \Athka\Saas\Models\Branch::class,
-    ];
+    {
+        $candidates = [
+            \App\Models\Branch::class,
+            \Athka\SystemSettings\Models\Branch::class,
+            \Athka\Saas\Models\Branch::class,
+        ];
 
-    foreach ($candidates as $class) {
-        if (class_exists($class)) {
-            return $class;
-        }
-    }
-
-    return null;
-}
-
-private function loadBranchesMap($employees, int $companyId): array
-{
-    $Branch = $this->branchModelClass();
-
-    if (! $Branch) {
-        return [];
-    }
-
-    $collection = method_exists($employees, 'getCollection')
-        ? $employees->getCollection()
-        : collect($employees);
-
-    $branchIds = $collection->pluck('branch_id')->filter()->unique()->values();
-
-    if ($branchIds->isEmpty()) {
-        return [];
-    }
-
-    $query = $Branch::query()->whereIn('id', $branchIds->all());
-
-    //   لو جدول الفروع فيه company_id أو saas_company_id نفلتر حسب الشركة (اختياري وآمن)
-    try {
-        $table = (new $Branch)->getTable();
-
-        if (Schema::hasColumn($table, 'saas_company_id')) {
-            $query->where('saas_company_id', $companyId);
-        } elseif (Schema::hasColumn($table, 'company_id')) {
-            $query->where('company_id', $companyId);
-        }
-
-        //   نختار أعمدة موجودة فقط
-        $cols = ['id'];
-
-        foreach (['name', 'name_ar', 'name_en', 'code'] as $c) {
-            if (Schema::hasColumn($table, $c)) {
-                $cols[] = $c;
+        foreach ($candidates as $class) {
+            if (class_exists($class)) {
+                return $class;
             }
         }
 
-        $branches = $query->get($cols);
-    } catch (\Throwable $e) {
-        // fallback: خذ كل الأعمدة إذا فشل فحص الأعمدة
-        $branches = $query->get();
+        return null;
     }
 
-    return $branches->mapWithKeys(function ($b) {
-        return [
-            (int) $b->id => [
-                'name'    => $b->name    ?? null,
-                'name_ar' => $b->name_ar ?? null,
-                'name_en' => $b->name_en ?? null,
-                'code'    => $b->code    ?? null,
-            ],
-        ];
-    })->toArray();
-}
+    private function loadBranchesMap($employees, int $companyId): array
+    {
+        $Branch = $this->branchModelClass();
+
+        if (! $Branch) {
+            return [];
+        }
+
+        $collection = method_exists($employees, 'getCollection')
+            ? $employees->getCollection()
+            : collect($employees);
+
+        $branchIds = $collection->pluck('branch_id')->filter()->unique()->values();
+
+        if ($branchIds->isEmpty()) {
+            return [];
+        }
+
+        $query = $Branch::query()->whereIn('id', $branchIds->all());
+
+        try {
+            $table = (new $Branch)->getTable();
+
+            if (Schema::hasColumn($table, 'saas_company_id')) {
+                $query->where('saas_company_id', $companyId);
+            } elseif (Schema::hasColumn($table, 'company_id')) {
+                $query->where('company_id', $companyId);
+            }
+
+            $cols = ['id'];
+            foreach (['name', 'name_ar', 'name_en', 'code'] as $c) {
+                if (Schema::hasColumn($table, $c)) {
+                    $cols[] = $c;
+                }
+            }
+            $branches = $query->get($cols);
+        } catch (\Throwable $e) {
+            $branches = $query->get();
+        }
+
+        return $branches->mapWithKeys(function ($b) {
+            return [
+                (int) $b->id => [
+                    'name'    => $b->name    ?? null,
+                    'name_ar' => $b->name_ar ?? null,
+                    'name_en' => $b->name_en ?? null,
+                    'code'    => $b->code    ?? null,
+                ],
+            ];
+        })->toArray();
+    }
 
 }
-
-
-
-
