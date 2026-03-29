@@ -218,18 +218,13 @@
                     <div
                         x-data="{
                             hasFilters() {
-                                const hasSearch = ($wire?.search ?? '').trim() !== '';
-                                const filterSelects = document.querySelectorAll('select.hidden[wire\\:model], select.hidden[wire\\:model\\.defer], select.hidden[wire\\:model\\.live]');
-                                const hasSelect = Array.from(filterSelects).some(el => {
-                                    const value = el.value;
-                                    return value && value !== '' && value !== 'all';
-                                });
-                                return hasSearch || hasSelect;
-                            },
-                            clearAll() {
-                                if ($wire && typeof $wire.clearAllFilters === 'function') {
-                                    $wire.clearAllFilters();
-                                }
+                                return ($wire.search && $wire.search.trim() !== '') ||
+                                       $wire.departmentId !== 'all' ||
+                                       $wire.jobTitleId !== 'all' ||
+                                       $wire.status !== 'all' ||
+                                       $wire.branchFilterId !== 'all' ||
+                                       $wire.contractType !== 'all' ||
+                                       $wire.hiringDateType !== 'all';
                             }
                         }"
                         x-show="hasFilters()"
@@ -238,7 +233,7 @@
                     >
                         <button
                             type="button"
-                            @click="clearAll()"
+                            wire:click="clearAllFilters"
                             wire:loading.attr="disabled"
                             wire:target="clearAllFilters"
                             class="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:text-gray-900 transition-colors disabled:opacity-50"
