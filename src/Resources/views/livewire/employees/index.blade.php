@@ -272,19 +272,27 @@
                     >
                         @foreach($employees as $emp)
                             @php
-                                $statusType = match ($emp->status) {
-                                    'ACTIVE'   => 'success',
-                                    'ENDED'    => 'warning',
-                                    'ARCHIVED' => 'default',
-                                    default    => 'default',
-                                };
+                               $statusType = match ($emp->status) {
+    'ACTIVE'     => 'success',
+    'SUSPENDED'  => 'warning',
+    'RESIGNED'   => 'default',
+    'TERMINATED' => 'danger',
+    'RETIRED'    => 'default',
+    'ENDED'      => 'warning',
+    'ARCHIVED'   => 'default',
+    default      => 'default',
+};
 
-                                $statusText = match ($emp->status) {
-                                    'ACTIVE'   => tr('Active'),
-                                    'ENDED'    => tr('Ended'),
-                                    'ARCHIVED' => tr('Archived'),
-                                    default    => $emp->status ?: '—',
-                                };
+$statusText = match ($emp->status) {
+    'ACTIVE'     => tr('Active'),
+    'SUSPENDED'  => tr('Suspended'),
+    'RESIGNED'   => tr('Resigned'),
+    'TERMINATED' => tr('Terminated'),
+    'RETIRED'    => tr('Retired'),
+    'ENDED'      => tr('Ended'),
+    'ARCHIVED'   => tr('Archived'),
+    default      => $emp->status ?: '—',
+};
 
                                 $primaryName = $isRtl
                                     ? ($emp->name_ar ?: $emp->name_en)
