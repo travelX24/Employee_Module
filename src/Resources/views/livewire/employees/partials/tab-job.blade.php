@@ -110,7 +110,6 @@
         >
             <label class="block text-sm font-semibold text-gray-700">
                 <span>{{ tr('Manager') }}</span>
-                <span class="text-red-500 ms-1">*</span>
             </label>
             
             <div class="relative">
@@ -212,18 +211,18 @@
         </x-ui.select>
 
         {{-- Contract Duration --}}
-        <x-ui.input
-            id="contract_duration_input"
-            type="number"
-            :label="tr('Contract Duration (Months)')"
-            wire:model="contract_duration_months"
-            value="{{ $contract_duration_months }}"
-            error="contract_duration_months"
-            min="1"
-            placeholder="12"
-            :required="($contract_type && $contract_type !== 'permanent')"
-            :disabled="($contract_type === 'permanent')"
-        />
+       <x-ui.input
+    id="contract_duration_input"
+    type="number"
+    :label="tr('Contract Duration (Months)')"
+    wire:model.live="contract_duration_months"
+    value="{{ $contract_duration_months }}"
+    error="contract_duration_months"
+    min="1"
+    :placeholder="($contract_type === 'permanent') ? '' : '12'"
+    :required="($contract_type && $contract_type !== 'permanent')"
+    :disabled="($contract_type === 'permanent')"
+/>
     </div>
 
 
