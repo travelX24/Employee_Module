@@ -7,6 +7,7 @@ use Livewire\WithPagination;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use App\Services\ExcelExportService;
 use Athka\Employees\Models\Employee;
 
 class Index extends Component
@@ -306,60 +307,44 @@ class Index extends Component
         }
 
         if ($this->exportFormat === 'excel') {
-            return $this->exportToCsv($employees, $fieldsToExport);
+            return $this->exportToExcel($employees, $fieldsToExport, app(ExcelExportService::class));
         } else {
             return $this->exportToPdf($employees, $fieldsToExport);
         }
     }
 
-    private function exportToCsv($employees, $fields)
+    private function exportToExcel($employees, $fields, ExcelExportService $exporter)
     {
-        $filename = 'employees_export_' . date('Y-m-d_H-i-s') . '.csv';
+        $filename = 'employees_export_' . date('Y-m-d_H-i-s');
         $available = $this->availableFields;
         
-        $headers = [
-            'Content-Type' => 'text/csv',
-            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
-        ];
+        $headers = [];
+        foreach ($fields as $field) {
+            $headers[] = $available[$field] ?? $field;
+        }
 
-        $callback = function() use ($employees, $fields, $available) {
-            $file = fopen('php://output', 'w');
-            
-            // Add BOM for UTF-8 (Excel friendly)
-            fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
-
-            // Header row
-            $headerRow = [];
+        $data = $employees->map(function ($employee) use ($fields) {
+            $row = [];
             foreach ($fields as $field) {
-                $headerRow[] = $available[$field] ?? $field;
-            }
-            fputcsv($file, $headerRow);
-
-            // Data rows
-            foreach ($employees as $employee) {
-                $row = [];
-                foreach ($fields as $field) {
-                    $value = '';
-                    if ($field === 'department_id') {
-                        $value = $employee->department?->name ?? 'N/A';
-                    } elseif ($field === 'sub_department_id') {
-                        $value = $employee->subDepartment?->name ?? 'N/A';
-                    } elseif ($field === 'job_title_id') {
-                        $value = $employee->jobTitle?->name ?? 'N/A';
-                    } elseif ($field === 'manager_id') {
-                        $value = $employee->manager?->name_ar ?? $employee->manager?->name_en ?? 'N/A';
-                    } else {
-                        $value = $employee->{$field};
-                    }
-                    $row[] = $value;
+                $value = '';
+                if ($field === 'department_id') {
+                    $value = $employee->department?->name ?? 'N/A';
+                } elseif ($field === 'sub_department_id') {
+                    $value = $employee->subDepartment?->name ?? 'N/A';
+                } elseif ($field === 'job_title_id') {
+                    $value = $employee->jobTitle?->name ?? 'N/A';
+                } elseif ($field === 'manager_id') {
+                    $value = $employee->manager?->name_ar ?? $employee->manager?->name_en ?? 'N/A';
+                } else {
+                    $value = $employee->{$field};
                 }
-                fputcsv($file, $row);
+                $row[] = (string) $value;
             }
-            fclose($file);
-        };
+            return $row;
+        })->toArray();
 
         $this->showExportModal = false;
-        return response()->stream($callback, 200, $headers);
+        return $exporter->export($filename, $headers, $data);
     }
 
     private function exportToPdf($employees, $fields)
