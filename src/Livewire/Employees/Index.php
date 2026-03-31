@@ -138,12 +138,31 @@ class Index extends Component
 
     protected $listeners = ['employee-updated' => '$refresh'];
 
-    public function setViewMode(string $mode): void
-    {
-        if (in_array($mode, ['list', 'cards'], true)) {
-            $this->viewMode = $mode;
-        }
+private function isEmployeeLockedStatus(?string $status): bool
+{
+    return in_array((string) $status, [
+        'SUSPENDED',
+        'TERMINATED',
+        'ARCHIVED',
+        'ENDED',
+    ], true);
+}
+
+private function blockLockedEmployeeAction(): void
+{
+    $this->dispatch('toast',
+        type: 'warning',
+        title: tr('Action not allowed'),
+        message: tr('This employee can only be viewed after final suspension or termination.')
+    );
+}
+
+public function setViewMode(string $mode): void
+{
+    if (in_array($mode, ['list', 'cards'], true)) {
+        $this->viewMode = $mode;
     }
+}
 
     public function updatingSearch(): void
     {
@@ -600,37 +619,43 @@ class Index extends Component
     // --- Actions ---
 
     public function openDeactivateModal($employeeId)
-    {
-        $this->authorize('employees.status.manage');
+{
+    $this->authorize('employees.status.manage');
 
-        $companyId = $this->getCompanyId();
+    $companyId = $this->getCompanyId();
 
-        $allowed = DB::table('branch_user_access')
-            ->where('user_id', Auth::id())
-            ->where('saas_company_id', $companyId)
-            ->pluck('branch_id')
-            ->map(fn ($v) => (int) $v)
-            ->unique()
-            ->values()
-            ->all();
+    $allowed = DB::table('branch_user_access')
+        ->where('user_id', Auth::id())
+        ->where('saas_company_id', $companyId)
+        ->pluck('branch_id')
+        ->map(fn ($v) => (int) $v)
+        ->unique()
+        ->values()
+        ->all();
 
-        $this->selectedEmployee = Employee::query()
-            ->where('saas_company_id', $companyId)
-            ->when(! empty($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
-            // ✅ Simplified scoping: if they can't view all, scope by manager/department
-            ->when(!Auth::user()->can('employees.view'), function ($q) {
-                $user = Auth::user();
-                $q->where(function ($qq) use ($user) {
-                    if ($user->employee_id) $qq->where('manager_id', $user->employee_id);
-                    if ($user->department_id) $qq->orWhere('department_id', $user->department_id);
-                });
-            })
-            ->findOrFail($employeeId);
-        $this->deactivateReason = '';
-        $this->deactivateDate = now()->format('Y-m-d');
-        $this->deactivateNotes = '';
-        $this->showDeactivateModal = true;
+    $this->selectedEmployee = Employee::query()
+        ->where('saas_company_id', $companyId)
+        ->when(! empty($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
+        ->when(!Auth::user()->can('employees.view'), function ($q) {
+            $user = Auth::user();
+            $q->where(function ($qq) use ($user) {
+                if ($user->employee_id) $qq->where('manager_id', $user->employee_id);
+                if ($user->department_id) $qq->orWhere('department_id', $user->department_id);
+            });
+        })
+        ->findOrFail($employeeId);
+
+    if ($this->isEmployeeLockedStatus($this->selectedEmployee->status)) {
+        $this->selectedEmployee = null;
+        $this->blockLockedEmployeeAction();
+        return;
     }
+
+    $this->deactivateReason = '';
+    $this->deactivateDate = now()->format('Y-m-d');
+    $this->deactivateNotes = '';
+    $this->showDeactivateModal = true;
+}
  
     public function closeDeactivateModal()
     {
@@ -639,29 +664,85 @@ class Index extends Component
     }
  
     public function deactivateEmployee()
-    {
-        $this->validate([
-            'deactivateReason' => 'required|string',
-            'deactivateDate'   => 'required|date',
-        ]);
- 
-        if ($this->selectedEmployee) {
-            $this->selectedEmployee->update([
-                'status'   => 'SUSPENDED',
-                'ended_at' => $this->deactivateDate,
-            ]);
-        }
- 
-        $this->closeDeactivateModal();
+{
+    $this->validate([
+        'deactivateReason' => 'required|string',
+        'deactivateDate'   => 'required|date',
+    ]);
+
+    if (! $this->selectedEmployee) {
+        return;
     }
+
+    $this->selectedEmployee->refresh();
+
+    if ($this->isEmployeeLockedStatus($this->selectedEmployee->status)) {
+        $this->closeDeactivateModal();
+        $this->blockLockedEmployeeAction();
+        return;
+    }
+
+    $this->selectedEmployee->update([
+        'status'   => 'SUSPENDED',
+        'ended_at' => $this->deactivateDate,
+    ]);
+
+    $this->closeDeactivateModal();
+}
  
     public function activateEmployee($employeeId)
-    {
-        $this->authorize('employees.status.manage');
+{
+    $this->authorize('employees.status.manage');
 
-        $companyId = $this->getCompanyId();
+    $companyId = $this->getCompanyId();
 
-        $allowed = DB::table('branch_user_access')
+    $allowed = DB::table('branch_user_access')
+        ->where('user_id', Auth::id())
+        ->where('saas_company_id', $companyId)
+        ->pluck('branch_id')
+        ->map(fn ($v) => (int) $v)
+        ->unique()
+        ->values()
+        ->all();
+
+    $employee = Employee::query()
+        ->where('saas_company_id', $companyId)
+        ->when(! empty($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
+        ->when(!Auth::user()->can('employees.view.all'), function ($q) {
+            $user = Auth::user();
+            $q->where(function ($qq) use ($user) {
+                if ($user->employee_id) $qq->where('manager_id', $user->employee_id);
+                if ($user->department_id) $qq->orWhere('department_id', $user->department_id);
+            });
+        })
+        ->findOrFail($employeeId);
+
+    if ($this->isEmployeeLockedStatus($employee->status)) {
+        $this->blockLockedEmployeeAction();
+        return;
+    }
+
+    $employee->update([
+        'status'   => 'ACTIVE',
+        'ended_at' => null,
+    ]);
+}
+ 
+    // --- Termination / Offboarding Logic ---
+ 
+    public function openTerminationModal($employeeId)
+{
+    $this->authorize('employees.delete');
+
+    $companyId = $this->getCompanyId();
+
+    $user = Auth::user();
+    $allowed = null;
+
+    if ($user && method_exists($user, 'restrictedBranchIds')) {
+        $allowed = $user->restrictedBranchIds();
+    } else {
+        $tmp = DB::table('branch_user_access')
             ->where('user_id', Auth::id())
             ->where('saas_company_id', $companyId)
             ->pluck('branch_id')
@@ -670,76 +751,40 @@ class Index extends Component
             ->values()
             ->all();
 
-        $employee = Employee::query()
-            ->where('saas_company_id', $companyId)
-            ->when(! empty($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
-            // ✅ NEW: Scoping based on permission
-            ->when(!Auth::user()->can('employees.view.all'), function ($q) {
-                $user = Auth::user();
-                $q->where(function ($qq) use ($user) {
-                    if ($user->employee_id) $qq->where('manager_id', $user->employee_id);
-                    if ($user->department_id) $qq->orWhere('department_id', $user->department_id);
-                });
-            })
-            ->findOrFail($employeeId);
-            $employee->update([
-            'status'   => 'ACTIVE',
-            'ended_at' => null,
-        ]);
+        $allowed = ! empty($tmp) ? $tmp : null;
     }
- 
-    // --- Termination / Offboarding Logic ---
- 
-    public function openTerminationModal($employeeId)
-    {
-        $this->authorize('employees.delete');
 
-        $companyId = $this->getCompanyId();
-
-        $user = Auth::user();
-        $allowed = null;
-
-        if ($user && method_exists($user, 'restrictedBranchIds')) {
-            $allowed = $user->restrictedBranchIds(); // null | [] | [ids]
-        } else {
-            $tmp = DB::table('branch_user_access')
-                ->where('user_id', Auth::id())
-                ->where('saas_company_id', $companyId)
-                ->pluck('branch_id')
-                ->map(fn ($v) => (int) $v)
-                ->unique()
-                ->values()
-                ->all();
-
-            $allowed = ! empty($tmp) ? $tmp : null;
-        }
-
-        if (is_array($allowed) && empty($allowed)) {
-            abort(404);
-        }
-
-        $this->selectedEmployee = Employee::query()
-            ->where('saas_company_id', $companyId)
-            ->when(is_array($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
-            // ✅ NEW: Scoping based on permission
-            ->when(!Auth::user()->can('employees.view.all'), function ($q) {
-                $user = Auth::user();
-                $q->where(function ($qq) use ($user) {
-                    if ($user->employee_id) $qq->where('manager_id', $user->employee_id);
-                    if ($user->department_id) $qq->orWhere('department_id', $user->department_id);
-                });
-            })
-            ->findOrFail($employeeId);
-
-        $this->terminationType = '';
-        $this->terminationDate = now()->format('Y-m-d');
-        $this->terminationReason = '';
-        $this->dueSalary = 0;
-        $this->dueVacation = 0;
-        $this->dueOthers = 0;
-
-        $this->showTerminationModal = true;
+    if (is_array($allowed) && empty($allowed)) {
+        abort(404);
     }
+
+    $this->selectedEmployee = Employee::query()
+        ->where('saas_company_id', $companyId)
+        ->when(is_array($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
+        ->when(!Auth::user()->can('employees.view.all'), function ($q) {
+            $user = Auth::user();
+            $q->where(function ($qq) use ($user) {
+                if ($user->employee_id) $qq->where('manager_id', $user->employee_id);
+                if ($user->department_id) $qq->orWhere('department_id', $user->department_id);
+            });
+        })
+        ->findOrFail($employeeId);
+
+    if ($this->isEmployeeLockedStatus($this->selectedEmployee->status)) {
+        $this->selectedEmployee = null;
+        $this->blockLockedEmployeeAction();
+        return;
+    }
+
+    $this->terminationType = '';
+    $this->terminationDate = now()->format('Y-m-d');
+    $this->terminationReason = '';
+    $this->dueSalary = 0;
+    $this->dueVacation = 0;
+    $this->dueOthers = 0;
+
+    $this->showTerminationModal = true;
+}
  
     public function closeTerminationModal()
     {
@@ -748,26 +793,37 @@ class Index extends Component
     }
  
     public function terminateEmployee()
-    {
-        $this->authorize('employees.delete');
-        $this->validate([
-            'terminationType'   => 'required|string',
-            'terminationDate'   => 'required|date',
-            'terminationReason' => 'nullable|string',
-            'dueSalary'         => 'nullable|numeric|min:0',
-            'dueVacation'       => 'nullable|numeric|min:0',
-            'dueOthers'         => 'nullable|numeric|min:0',
-        ]);
- 
-        if ($this->selectedEmployee) {
-            $this->selectedEmployee->update([
-                'status'   => 'TERMINATED',
-                'ended_at' => $this->terminationDate,
-            ]);
-        }
- 
-        $this->closeTerminationModal();
+{
+    $this->authorize('employees.delete');
+
+    $this->validate([
+        'terminationType'   => 'required|string',
+        'terminationDate'   => 'required|date',
+        'terminationReason' => 'nullable|string',
+        'dueSalary'         => 'nullable|numeric|min:0',
+        'dueVacation'       => 'nullable|numeric|min:0',
+        'dueOthers'         => 'nullable|numeric|min:0',
+    ]);
+
+    if (! $this->selectedEmployee) {
+        return;
     }
+
+    $this->selectedEmployee->refresh();
+
+    if ($this->isEmployeeLockedStatus($this->selectedEmployee->status)) {
+        $this->closeTerminationModal();
+        $this->blockLockedEmployeeAction();
+        return;
+    }
+
+    $this->selectedEmployee->update([
+        'status'   => 'TERMINATED',
+        'ended_at' => $this->terminationDate,
+    ]);
+
+    $this->closeTerminationModal();
+}
  
     // --- Import Actions ---
  

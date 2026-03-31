@@ -271,37 +271,39 @@
                         :perPage="10"
                     >
                         @foreach($employees as $emp)
-                            @php
-                               $statusType = match ($emp->status) {
-    'ACTIVE'     => 'success',
-    'SUSPENDED'  => 'warning',
-    'RESIGNED'   => 'default',
-    'TERMINATED' => 'danger',
-    'RETIRED'    => 'default',
-    'ENDED'      => 'warning',
-    'ARCHIVED'   => 'default',
-    default      => 'default',
-};
+                           @php
+    $statusType = match ($emp->status) {
+        'ACTIVE'     => 'success',
+        'SUSPENDED'  => 'warning',
+        'RESIGNED'   => 'default',
+        'TERMINATED' => 'danger',
+        'RETIRED'    => 'default',
+        'ENDED'      => 'warning',
+        'ARCHIVED'   => 'default',
+        default      => 'default',
+    };
 
-$statusText = match ($emp->status) {
-    'ACTIVE'     => tr('Active'),
-    'SUSPENDED'  => tr('Suspended'),
-    'RESIGNED'   => tr('Resigned'),
-    'TERMINATED' => tr('Terminated'),
-    'RETIRED'    => tr('Retired'),
-    'ENDED'      => tr('Ended'),
-    'ARCHIVED'   => tr('Archived'),
-    default      => $emp->status ?: '—',
-};
+    $statusText = match ($emp->status) {
+        'ACTIVE'     => tr('Active'),
+        'SUSPENDED'  => tr('Suspended'),
+        'RESIGNED'   => tr('Resigned'),
+        'TERMINATED' => tr('Terminated'),
+        'RETIRED'    => tr('Retired'),
+        'ENDED'      => tr('Ended'),
+        'ARCHIVED'   => tr('Archived'),
+        default      => $emp->status ?: '—',
+    };
 
-                                $primaryName = $isRtl
-                                    ? ($emp->name_ar ?: $emp->name_en)
-                                    : ($emp->name_en ?: $emp->name_ar);
+    $primaryName = $isRtl
+        ? ($emp->name_ar ?: $emp->name_en)
+        : ($emp->name_en ?: $emp->name_ar);
 
-                                $secondaryName = $isRtl
-                                    ? ($emp->name_en ?: null)
-                                    : ($emp->name_ar ?: null);
-                            @endphp
+    $secondaryName = $isRtl
+        ? ($emp->name_en ?: null)
+        : ($emp->name_ar ?: null);
+
+    $isLockedEmployee = in_array($emp->status, ['SUSPENDED', 'TERMINATED', 'ARCHIVED', 'ENDED'], true);
+@endphp
 
                             <tr wire:key="emp-row-{{ $emp->id }}" class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                                 <td class="py-3 px-3 font-semibold text-gray-900 whitespace-nowrap">
@@ -371,59 +373,62 @@ $statusText = match ($emp->status) {
                                 </td>
 
                                 <td class="py-3 px-3">
-                                    <x-ui.dropdown-menu>
-                                        @can('employees.edit')
-                                        <x-ui.dropdown-item
-                                            href="#"
-                                            wire:click="$dispatch('open-employee-detail', { id: {{ $emp->id }}, readonly: false })"
-                                        >
-                                            <i class="fas fa-eye w-4 me-2"></i>
-                                            {{ tr('View & Edit') }}
-                                        </x-ui.dropdown-item>
-                                        @elsecan('employees.view')
-                                        <x-ui.dropdown-item
-                                            href="#"
-                                            wire:click="$dispatch('open-employee-detail', { id: {{ $emp->id }}, readonly: true })"
-                                        >
-                                            <i class="fas fa-eye w-4 me-2"></i>
-                                            {{ tr('View Details') }}
-                                        </x-ui.dropdown-item>
-                                        @endcan
-                                        
-                                        @can('employees.status.manage')
-                                        @if($emp->status === 'ACTIVE')
-                                            <x-ui.dropdown-item
-                                                href="#"
-                                                wire:click="openDeactivateModal({{ $emp->id }})"
-                                                class="text-red-600 hover:bg-red-50"
-                                            >
-                                                <i class="fas fa-ban w-4 me-2"></i>
-                                                {{ tr('Deactivate') }}
-                                            </x-ui.dropdown-item>
-                                        @else
-                                            <x-ui.dropdown-item
-                                                href="#"
-                                                wire:click="activateEmployee({{ $emp->id }})"
-                                                class="text-green-600 hover:bg-green-50"
-                                            >
-                                                <i class="fas fa-check-circle w-4 me-2"></i>
-                                                {{ tr('Activate') }}
-                                            </x-ui.dropdown-item>
-                                        @endif
-                                        @endcan
+    <x-ui.dropdown-menu>
+        @if($isLockedEmployee)
+            @can('employees.view')
+                <x-ui.dropdown-item
+                    href="#"
+                    wire:click="$dispatch('open-employee-detail', { id: {{ $emp->id }}, readonly: true })"
+                >
+                    <i class="fas fa-eye w-4 me-2"></i>
+                    {{ tr('View Details') }}
+                </x-ui.dropdown-item>
+            @endcan
+        @else
+            @can('employees.edit')
+                <x-ui.dropdown-item
+                    href="#"
+                    wire:click="$dispatch('open-employee-detail', { id: {{ $emp->id }}, readonly: false })"
+                >
+                    <i class="fas fa-eye w-4 me-2"></i>
+                    {{ tr('View & Edit') }}
+                </x-ui.dropdown-item>
+            @elsecan('employees.view')
+                <x-ui.dropdown-item
+                    href="#"
+                    wire:click="$dispatch('open-employee-detail', { id: {{ $emp->id }}, readonly: true })"
+                >
+                    <i class="fas fa-eye w-4 me-2"></i>
+                    {{ tr('View Details') }}
+                </x-ui.dropdown-item>
+            @endcan
 
-                                        @can('employees.delete') {{-- Termination/Archive treated as soft delete/lifecycle --}}
-                                        <x-ui.dropdown-item
-                                            href="#"
-                                            wire:click="openTerminationModal({{ $emp->id }})"
-                                            class="text-gray-500 hover:bg-gray-50"
-                                        >
-                                            <i class="fas fa-archive w-4 me-2"></i>
-                                            {{ tr('End of Service / Archive') }}
-                                        </x-ui.dropdown-item>
-                                        @endcan
-                                    </x-ui.dropdown-menu>
-                                </td>
+            @can('employees.status.manage')
+                @if($emp->status === 'ACTIVE')
+                    <x-ui.dropdown-item
+                        href="#"
+                        wire:click="openDeactivateModal({{ $emp->id }})"
+                        class="text-red-600 hover:bg-red-50"
+                    >
+                        <i class="fas fa-ban w-4 me-2"></i>
+                        {{ tr('Deactivate') }}
+                    </x-ui.dropdown-item>
+                @endif
+            @endcan
+
+            @can('employees.delete')
+                <x-ui.dropdown-item
+                    href="#"
+                    wire:click="openTerminationModal({{ $emp->id }})"
+                    class="text-gray-500 hover:bg-gray-50"
+                >
+                    <i class="fas fa-archive w-4 me-2"></i>
+                    {{ tr('End of Service / Archive') }}
+                </x-ui.dropdown-item>
+            @endcan
+        @endif
+    </x-ui.dropdown-menu>
+</td>
                             </tr>
                         @endforeach
                     </x-ui.table>
@@ -435,17 +440,25 @@ $statusText = match ($emp->status) {
                     @foreach($employees as $emp)
                         @php
     $statusType = match ($emp->status) {
-        'ACTIVE'   => 'success',
-        'ENDED'    => 'warning',
-        'ARCHIVED' => 'default',
-        default    => 'default',
+        'ACTIVE'     => 'success',
+        'SUSPENDED'  => 'warning',
+        'RESIGNED'   => 'default',
+        'TERMINATED' => 'danger',
+        'RETIRED'    => 'default',
+        'ENDED'      => 'warning',
+        'ARCHIVED'   => 'default',
+        default      => 'default',
     };
 
     $statusText = match ($emp->status) {
-        'ACTIVE'   => tr('Active'),
-        'ENDED'    => tr('Ended'),
-        'ARCHIVED' => tr('Archived'),
-        default    => $emp->status ?: '—',
+        'ACTIVE'     => tr('Active'),
+        'SUSPENDED'  => tr('Suspended'),
+        'RESIGNED'   => tr('Resigned'),
+        'TERMINATED' => tr('Terminated'),
+        'RETIRED'    => tr('Retired'),
+        'ENDED'      => tr('Ended'),
+        'ARCHIVED'   => tr('Archived'),
+        default      => $emp->status ?: '—',
     };
 
     $primaryName = $isRtl
@@ -460,8 +473,9 @@ $statusText = match ($emp->status) {
         : ($branchRow['name_en'] ?? $branchRow['name'] ?? $branchRow['name_ar'] ?? null);
 
     $branchCode = $branchRow['code'] ?? null;
-@endphp
 
+    $isLockedEmployee = in_array($emp->status, ['SUSPENDED', 'TERMINATED', 'ARCHIVED', 'ENDED'], true);
+@endphp
                         <x-ui.card hover="true">
                             <div class="flex items-start justify-between mb-4">
                                 <div class="flex items-start gap-3 flex-1 min-w-0">
