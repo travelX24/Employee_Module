@@ -75,43 +75,40 @@ class Index extends Component
     public function getAvailableFieldsProperty(): array
     {
         return [
-            'employee_no' => tr('Employee Number'),
-            'name_ar' => tr('Arabic Name'),
-            'name_en' => tr('English Name'),
-            'national_id' => tr('National ID'),
-            'national_id_expiry' => tr('National ID Expiry'),
-            'nationality' => tr('Nationality'),
-            'gender' => tr('Gender'),
-            'marital_status' => tr('Social Status'),
-            'birth_date' => tr('Birth Date'),
-            'birth_place' => tr('Birth Place'),
-            'children_count' => tr('Children Count'),
-            'hired_at' => tr('Hire Date'),
-            'procedures_start_at' => tr('Procedures Start At'),
-            'department_id' => tr('Department'),
-            'sub_department_id' => tr('Sub Department'),
-            'job_title_id' => tr('Job Title'),
-            'sector' => tr('Sector'),
-            'grade' => tr('Grade'),
-            'job_function' => tr('Job Function'),
-            'manager_id' => tr('Manager'),
-            'basic_salary' => tr('Basic Salary'),
-            'allowances' => tr('Allowances'),
-            'annual_leave_days' => tr('Annual Leave Days'),
-            'contract_type' => tr('Contract Type'),
+            'employee_no'              => tr('Employee Number'),
+            'name_ar'                  => tr('Arabic Name'),
+            'name_en'                  => tr('English Name'),
+            'national_id_type'         => tr('ID Type'),
+            'national_id'              => tr('National ID'),
+            'national_id_expiry'       => tr('National ID Expiry'),
+            'nationality'              => tr('Nationality'),
+            'gender'                   => tr('Gender'),
+            'birth_date'               => tr('Birth Date'),
+            'birth_place'              => tr('Birth Place'),
+            'marital_status'           => tr('Social Status'),
+            'children_count'           => tr('Children Count'),
+            'branch_id'                => tr('Branch'),
+            'department_id'            => tr('Main Department'),
+            'sub_department_id'        => tr('Sub Department'),
+            'job_title_id'             => tr('Job Title'),
+            'grade'                    => tr('Grade'),
+            'manager_id'               => tr('Direct Manager'),
+            'hired_at'                 => tr('Hire Date'),
+            'contract_type'            => tr('Contract Type'),
             'contract_duration_months' => tr('Contract Duration (Months)'),
-            'status' => tr('Status'),
-            'ended_at' => tr('Ended At'),
-            'mobile' => tr('Mobile'),
-            'mobile_alt' => tr('Alternative Mobile'),
-            'email_work' => tr('Work Email'),
-            'email_personal' => tr('Personal Email'),
-            'emergency_contact_name' => tr('Emergency Name'),
-            'emergency_contact_phone' => tr('Emergency Phone'),
+            'basic_salary'             => tr('Basic Salary'),
+            'allowances'               => tr('Allowances'),
+            'annual_leave_days'        => tr('Annual Leave Days'),
+            'mobile'                   => tr('Mobile'),
+            'mobile_alt'               => tr('Alternative Mobile'),
+            'email_work'               => tr('Work Email'),
+            'email_personal'           => tr('Personal Email'),
+            'city'                     => tr('City'),
+            'district'                 => tr('District'),
+            'address'                  => tr('Address'),
+            'emergency_contact_phone'  => tr('Emergency Phone'),
+            'emergency_contact_name'   => tr('Emergency Name'),
             'emergency_contact_relation' => tr('Emergency Relation'),
-            'city' => tr('City'),
-            'district' => tr('District'),
-            'address' => tr('Address'),
         ];
     }
 
@@ -312,9 +309,10 @@ public function setViewMode(string $mode): void
 
         $employees = $query->with(['department', 'subDepartment', 'jobTitle', 'manager'])->get();
         
+        $allOrderedFields = array_keys($this->availableFields);
         $fieldsToExport = ($this->exportScope === 'all') 
-            ? array_keys($this->availableFields) 
-            : $this->selectedFields;
+            ? $allOrderedFields 
+            : array_values(array_intersect($allOrderedFields, $this->selectedFields));
 
         if (empty($fieldsToExport)) {
             $this->dispatch('toast',
@@ -345,25 +343,70 @@ public function setViewMode(string $mode): void
         $data = $employees->map(function ($employee) use ($fields) {
             $row = [];
             foreach ($fields as $field) {
-                $value = '';
-                if ($field === 'department_id') {
-                    $value = $employee->department?->name ?? 'N/A';
-                } elseif ($field === 'sub_department_id') {
-                    $value = $employee->subDepartment?->name ?? 'N/A';
-                } elseif ($field === 'job_title_id') {
-                    $value = $employee->jobTitle?->name ?? 'N/A';
-                } elseif ($field === 'manager_id') {
-                    $value = $employee->manager?->name_ar ?? $employee->manager?->name_en ?? 'N/A';
-                } else {
-                    $value = $employee->{$field};
-                }
-                $row[] = (string) $value;
+                $row[] = (string) $this->getExportFieldValue($employee, $field);
             }
             return $row;
         })->toArray();
 
         $this->showExportModal = false;
         return $exporter->export($filename, $headers, $data);
+    }
+
+    /**
+     * Shared logic to extract and format field values for export.
+     */
+    private function getExportFieldValue($employee, $field, $isPdf = false)
+    {
+        $val = '';
+        if ($field === 'department_id') {
+            $val = $employee->department?->name ?? 'N/A';
+        } elseif ($field === 'sub_department_id') {
+            $val = $employee->subDepartment?->name ?? 'N/A';
+        } elseif ($field === 'job_title_id') {
+            $val = $employee->jobTitle?->name ?? 'N/A';
+        } elseif ($field === 'manager_id') {
+            $val = $employee->manager?->name_ar ?? $employee->manager?->name_en ?? 'N/A';
+        } elseif ($field === 'branch_id') {
+            // Load from relations if available, or fetch branch name
+            if ($employee->relationLoaded('branch')) {
+                $val = $employee->branch?->name_ar ?? $employee->branch?->name_en ?? 'N/A';
+            } else {
+                $Branch = $this->branchModelClass();
+                if ($Branch) {
+                    $branchObj = $Branch::find($employee->branch_id);
+                    $val = $branchObj->name_ar ?? $branchObj->name_en ?? 'N/A';
+                }
+            }
+        } elseif (in_array($field, ['national_id_expiry', 'birth_date', 'hired_at', 'ended_at'])) {
+            // Use company_date for correct Hijri/Gregorian based on settings
+            $val = $employee->{$field} ? (class_exists('Carbon\Carbon') ? \Carbon\Carbon::parse($employee->{$field})->toDateString() : $employee->{$field}) : '';
+            if (function_exists('company_date')) {
+                $val = company_date($employee->{$field}) ?: '';
+            }
+        } elseif ($field === 'status') {
+            if ($isPdf) {
+                $statusClass = $employee->status === 'ACTIVE' ? 'status-active' : 'status-suspended';
+                $translated = tr($employee->status);
+                $reshaped = class_exists('\Athka\Employees\Support\ArabicHelper') ? \Athka\Employees\Support\ArabicHelper::prepareForPdf($translated) : $translated;
+                $val = '<span class="status-pill '.$statusClass.'">'.$reshaped.'</span>';
+            } else {
+                $val = tr($employee->status);
+            }
+        } elseif (in_array($field, ['basic_salary', 'allowances'])) {
+            $val = number_format((float)$employee->{$field}, 2);
+        } else {
+            $val = $employee->{$field} ?? '';
+        }
+
+        if ($isPdf) {
+            if (class_exists('\Athka\Employees\Support\ArabicHelper')) {
+                if (!in_array($field, ['basic_salary', 'allowances', 'status', 'employee_no'])) {
+                    $val = \Athka\Employees\Support\ArabicHelper::prepareForPdf((string)$val);
+                }
+            }
+        }
+
+        return $val;
     }
 
     private function exportToPdf($employees, $fields)
@@ -397,6 +440,14 @@ public function setViewMode(string $mode): void
         $pdf->setPaper('a4', 'landscape');
         
         $this->showExportModal = false;
+
+        // Ensure we fix values for PDF using the shared logic
+        $employees->each(function($emp) use ($fields) {
+            foreach ($fields as $field) {
+                $emp->{$field.'_fmt'} = $this->getExportFieldValue($emp, $field, true);
+            }
+        });
+
         return response()->streamDownload(function() use ($pdf) {
             echo $pdf->output();
         }, 'employees_report_' . date('Y-m-d') . '.pdf');

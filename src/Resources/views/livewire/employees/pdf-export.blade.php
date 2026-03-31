@@ -206,31 +206,7 @@
                     <tr>
                         @foreach($displayFields as $field)
                             <td>
-                                @php
-                                    $val = '';
-                                    if ($field === 'department_id') {
-                                        $val = $employee->department?->name ?? 'N/A';
-                                    } elseif ($field === 'sub_department_id') {
-                                        $val = $employee->subDepartment?->name ?? 'N/A';
-                                    } elseif ($field === 'job_title_id') {
-                                        $val = $employee->jobTitle?->name ?? 'N/A';
-                                    } elseif ($field === 'manager_id') {
-                                        $val = $employee->manager?->name_ar ?? $employee->manager?->name_en ?? 'N/A';
-                                    } elseif ($field === 'status') {
-                                        $statusClass = $employee->status === 'ACTIVE' ? 'status-active' : 'status-suspended';
-                                        $val = '<span class="status-pill '.$statusClass.'">'.\Athka\Employees\Support\ArabicHelper::prepareForPdf(tr($employee->status)).'</span>';
-                                    } elseif ($field === 'basic_salary' || $field === 'allowances') {
-                                        $val = number_format((float)$employee->{$field}, 2);
-                                    } else {
-                                        $val = $employee->{$field} ?? '-';
-                                    }
-
-                                    // Reshape Arabic text for PDF
-                                    if (!in_array($field, ['basic_salary', 'allowances', 'status', 'employee_number'])) {
-                                        $val = \Athka\Employees\Support\ArabicHelper::prepareForPdf($val);
-                                    }
-                                @endphp
-                                {!! $val !!}
+                                {!! $employee->{$field . '_fmt'} !!}
                             </td>
                         @endforeach
                     </tr>
