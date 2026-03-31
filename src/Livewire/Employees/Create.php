@@ -39,6 +39,7 @@ class Create extends Component
     public string $birth_date = '';
     public ?int $children_count = null;
     public string $national_id_type = 'national_id';
+    public string $national_id_type_note = '';
 
     /* TAB 2: Job */
     public $sector = '';
@@ -300,6 +301,10 @@ class Create extends Component
             'certificates.*.mimes' => $this->txt('ملفات الشهادات يجب أن تكون PDF أو JPG أو PNG.', 'Certificate files must be PDF, JPG, or PNG.'),
             'family_documents.*.mimes' => $this->txt('ملفات الوثائق العائلية يجب أن تكون PDF أو JPG أو PNG.', 'Family document files must be PDF, JPG, or PNG.'),
             'other_documents.*.mimes' => $this->txt('ملفات الوثائق الأخرى يجب أن تكون PDF أو JPG أو PNG.', 'Other document files must be PDF, JPG, or PNG.'),
+            'national_id_type_note.required' => $this->txt(
+    'يرجى توضيح نوع الهوية عند اختيار "أخرى".',
+    'Please specify the ID type when "Other" is selected.'
+),
         ];
     }
 
@@ -426,6 +431,14 @@ class Create extends Component
         $this->validateDocumentField('national_id_photo');
     }
 
+    public function updatedNationalIdType($value): void
+{
+    if ($value !== 'other') {
+        $this->national_id_type_note = '';
+        $this->resetValidation('national_id_type_note');
+    }
+}
+
     public function updatedQualification(): void
     {
         $this->validateDocumentField('qualification');
@@ -452,6 +465,7 @@ class Create extends Component
             'name_ar' => tr('Arabic Name'),
             'name_en' => tr('English Name'),
             'national_id_type' => tr('ID Type'),
+            'national_id_type_note' => tr('ID Type Description'),
             'national_id' => tr('National ID'),
             'national_id_expiry' => tr('National ID Expiry'),
             'nationality' => tr('Nationality'),
@@ -498,20 +512,11 @@ class Create extends Component
    private function rulesTab1(): array
 {
     return [
-        'name_ar' => [
-            'required',
-            'string',
-            'max:255',
-            function ($attribute, $value, $fail) {
-                if (! $this->hasAtLeastThreeNameParts($value)) {
-                    $fail($this->txt(
-                        'يجب إدخال الاسم الثلاثي على الأقل.',
-                        'Please enter at least three names.'
-                    ));
-                }
-            },
-        ],
+        'name_ar' => ['required', 'string', 'max:255'],
         'national_id_type' => ['required', Rule::in(['national_id', 'iqama', 'passport', 'other'])],
+        'national_id_type_note' => $this->national_id_type === 'other'
+            ? ['required', 'string', 'max:255']
+            : ['nullable', 'string', 'max:255'],
         'national_id' => [
             'required',
             'string',
@@ -520,27 +525,16 @@ class Create extends Component
                 ->where('saas_company_id', $this->companyId)
                 ->whereNull('deleted_at'),
         ],
-        
-            'national_id_type' => ['required', Rule::in(['national_id', 'iqama', 'passport', 'other'])],
-            'national_id' => [
-                'required',
-                'string',
-                'max:50',
-                Rule::unique('employees', 'national_id')
-                    ->where('saas_company_id', $this->companyId)
-                    ->whereNull('deleted_at'),
-            ],
-            'national_id_expiry' => ['required', 'date', 'after:today'],
-            'nationality' => ['required', 'string', 'max:100'],
-            'gender' => ['required', Rule::in(['male', 'female'])],
-            'social_status' => ['required', Rule::in(['single', 'married'])],
-            'birth_place' => ['required', 'string', 'max:255'],
-            'birth_date' => ['required', 'date'],
-            'name_en' => ['nullable', 'string', 'max:255'],
-            'children_count' => ['nullable', 'integer', 'min:0'],
-        ];
-    }
-
+        'national_id_expiry' => ['required', 'date', 'after:today'],
+        'nationality' => ['required', 'string', 'max:100'],
+        'gender' => ['required', Rule::in(['male', 'female'])],
+        'social_status' => ['required', Rule::in(['single', 'married'])],
+        'birth_place' => ['required', 'string', 'max:255'],
+        'birth_date' => ['required', 'date'],
+        'name_en' => ['nullable', 'string', 'max:255'],
+        'children_count' => ['nullable', 'integer', 'min:0'],
+    ];
+}
     private function rulesTab2(): array
     {
         return [
@@ -712,6 +706,10 @@ class Create extends Component
                 'branch_id' => $this->branch_id,
                 'name_ar' => $this->name_ar,
                 'name_en' => $this->name_en,
+                'national_id_type' => $this->national_id_type,
+                'national_id_type_note' => $this->national_id_type === 'other'
+                     ? ($this->national_id_type_note ?: null)
+                     : null,
                 'national_id' => $this->national_id,
                 'national_id_expiry' => $this->national_id_expiry,
                 'nationality' => $this->nationality,

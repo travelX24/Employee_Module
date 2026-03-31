@@ -19,34 +19,46 @@
 
       {{-- ID Type + ID Number --}}
     <div class="col-span-1 sm:col-span-2 lg:col-span-2">
-        <div class="grid grid-cols-12 gap-3">
-            <div class="col-span-12 sm:col-span-4">
-                <x-ui.select
-                    :label="tr('ID Type')"
-                    model="national_id_type"
-                    error="national_id_type"
-                    :required="true"
-                >
-                    <option value="">{{ tr('Select ID Type') }}</option>
-                    <option value="national_id" {{ ($national_id_type ?? '') === 'national_id' ? 'selected' : '' }}>{{ tr('National ID') }}</option>
-                    <option value="iqama"       {{ ($national_id_type ?? '') === 'iqama' ? 'selected' : '' }}>{{ tr('Iqama') }}</option>
-                    <option value="passport"    {{ ($national_id_type ?? '') === 'passport' ? 'selected' : '' }}>{{ tr('Passport') }}</option>
-                    <option value="other"       {{ ($national_id_type ?? '') === 'other' ? 'selected' : '' }}>{{ tr('Other') }}</option>
-                </x-ui.select>
-            </div>
+    <div class="grid grid-cols-12 gap-3">
+        <div class="col-span-12 sm:col-span-4">
+            <x-ui.select
+                :label="tr('ID Type')"
+                model="national_id_type"
+                error="national_id_type"
+                :required="true"
+            >
+                <option value="">{{ tr('Select ID Type') }}</option>
+                <option value="national_id" {{ ($national_id_type ?? '') === 'national_id' ? 'selected' : '' }}>{{ tr('National ID') }}</option>
+                <option value="iqama"       {{ ($national_id_type ?? '') === 'iqama' ? 'selected' : '' }}>{{ tr('Iqama') }}</option>
+                <option value="passport"    {{ ($national_id_type ?? '') === 'passport' ? 'selected' : '' }}>{{ tr('Passport') }}</option>
+                <option value="other"       {{ ($national_id_type ?? '') === 'other' ? 'selected' : '' }}>{{ tr('Other') }}</option>
+            </x-ui.select>
+        </div>
 
-            <div class="col-span-12 sm:col-span-8">
+        <div class="col-span-12 sm:col-span-8">
+            <x-ui.input
+                :label="tr('ID Number')"
+                wire:model="national_id"
+                value="{{ $national_id }}"
+                error="national_id"
+                :required="true"
+            />
+        </div>
+
+        @if(($national_id_type ?? '') === 'other')
+            <div class="col-span-12">
                 <x-ui.input
-                    :label="tr('ID Number')"
-                    wire:model="national_id"
-                    value="{{ $national_id }}"
-                    error="national_id"
+                    :label="tr('ID Type Description')"
+                    wire:model="national_id_type_note"
+                    value="{{ $national_id_type_note }}"
+                    error="national_id_type_note"
                     :required="true"
+                    :hint="tr('Example: Union card, university card, etc.')"
                 />
             </div>
-        </div>
+        @endif
     </div>
-
+</div>
         {{-- National ID Expiry --}}
         <x-ui.company-date-picker
             model="national_id_expiry"
