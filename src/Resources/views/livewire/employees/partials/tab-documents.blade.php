@@ -14,6 +14,7 @@
                     :hint="tr('JPG/PNG — max 2MB')"
                     :required="true"
                     :previewSize="160"
+                    :maxKb="2048"
                 />
             </div>
 
@@ -28,6 +29,7 @@
                     accept="image/*"
                     :hint="tr('JPG/PNG — max 2MB')"
                     :required="true"
+                    :maxKb="2048"
                 />
 
                 <x-ui.file
@@ -38,6 +40,7 @@
                     :file="$qualification"
                     accept=".pdf,.jpg,.jpeg,.png"
                     :hint="tr('PDF/JPG/PNG — max 5MB')"
+                    :maxKb="5120"
                 />
             </div>
         </div>
@@ -52,6 +55,7 @@
                 :files="$certificates"
                 accept=".pdf,.jpg,.jpeg,.png"
                 :hint="tr('PDF/JPG/PNG — max 5MB each')"
+                :maxKb="5120"
             />
 
             <x-ui.multiple-files
@@ -62,6 +66,7 @@
                 :files="$family_documents"
                 accept=".pdf,.jpg,.jpeg,.png"
                 :hint="tr('PDF/JPG/PNG — max 5MB each')"
+                :maxKb="5120"
             />
 
             <x-ui.multiple-files
@@ -72,6 +77,7 @@
                 :files="$other_documents"
                 accept=".pdf,.jpg,.jpeg,.png"
                 :hint="tr('PDF/JPG/PNG — max 5MB each')"
+                :maxKb="5120"
             />
         </div>
     </div>
@@ -86,6 +92,3 @@
         </ul>
     </div>
 </div>
-
-
-

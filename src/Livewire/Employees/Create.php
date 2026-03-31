@@ -13,6 +13,8 @@ use Illuminate\Support\Str;
 use Athka\Saas\Models\Branch;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Validator;
+
 class Create extends Component
 {
     use WithFileUploads;
@@ -21,7 +23,7 @@ class Create extends Component
     public ?int $branch_id = null;
 
     public array $branchOptions = [];
-    public array $nationalityOptions = []; 
+    public array $nationalityOptions = [];
 
     public int $tab = 1;
 
@@ -36,7 +38,7 @@ class Create extends Component
     public string $birth_place = '';
     public string $birth_date = '';
     public ?int $children_count = null;
-    public string $national_id_type = 'national_id'; 
+    public string $national_id_type = 'national_id';
 
     /* TAB 2: Job */
     public $sector = '';
@@ -57,7 +59,6 @@ class Create extends Component
     public $hourly_wage = null;
     public $minute_wage = null;
 
-    // الإجازات السنوية المتقدمة
     public bool $is_transferred_employee = false;
     public $opening_leave_balance = null;
     public int $leave_balance_adjustments = 0;
@@ -75,7 +76,6 @@ class Create extends Component
     public string $emergency_contact_name = '';
     public string $emergency_contact_relation = '';
 
-
     /* TAB 5: Documents */
     public $photo = null;
     public $national_id_photo = null;
@@ -85,12 +85,6 @@ class Create extends Component
     public $family_documents = [];
     public $other_documents = [];
 
-
-
-    // ✅ helpers (ليست للعرض)
-    protected array $uploadOld = [];
-    protected array $uploadAppending = [];
-    protected array $skipUploadAppend = [];
     public function mount(): void
     {
         $this->authorize('employees.create');
@@ -103,20 +97,19 @@ class Create extends Component
                 $this->branch_id = $allowed[0] ?? null;
             }
         }
+
         $this->loadBranches();
-        $this->loadNationalities(); 
-        // تعيين تاريخ اليوم لحقل التوظيف
+        $this->loadNationalities();
+
         if (empty($this->hired_at)) {
             $this->hired_at = now()->format('Y-m-d');
         }
 
-        // تعبئة أيام الإجازة السنوية من إعدادات الشركة
         if ($this->annual_leave_days === null) {
             $this->annual_leave_days = $this->getDefaultAnnualLeaveDays();
         }
 
-        // ✅ NEW: Default department and manager for scoped users
-        if (!Auth::user()->can('employees.view.all')) {
+        if (! Auth::user()->can('employees.view.all')) {
             if (Auth::user()->department_id) {
                 $this->department_id = Auth::user()->department_id;
                 $this->loadSubDepartments($this->department_id);
@@ -130,7 +123,7 @@ class Create extends Component
             $this->loadSubDepartments($this->department_id);
             $department = Department::find($this->department_id);
             if ($department && $department->manager_id) {
-                 // manager assignment if needed
+                //
             }
         }
 
@@ -166,7 +159,7 @@ class Create extends Component
             return;
         }
 
-      $this->branchOptions = Branch::query()
+        $this->branchOptions = Branch::query()
             ->where('saas_company_id', $this->companyId)
             ->when(is_array($allowed = $this->getAllowedBranchIds()), fn ($q) => $q->whereIn('id', $allowed))
             ->where('is_active', true)
@@ -201,16 +194,15 @@ class Create extends Component
 
     private function updateLeaveBalancePreview()
     {
-        // إنشاء نموذج مؤقت للحساب مع تنظيف البيانات الرقمية
-            $tempEmployee = new Employee([
-                'saas_company_id' => $this->companyId,
-                'branch_id' => $this->branch_id,
-                'hired_at' => $this->hired_at,
-                'is_transferred_employee' => (bool) $this->is_transferred_employee,
-                'opening_leave_balance' => is_numeric($this->opening_leave_balance) ? $this->opening_leave_balance : 0,
-                'leave_balance_adjustments' => is_numeric($this->leave_balance_adjustments) ? (int) $this->leave_balance_adjustments : 0,
-            ]);
-        
+        $tempEmployee = new Employee([
+            'saas_company_id' => $this->companyId,
+            'branch_id' => $this->branch_id,
+            'hired_at' => $this->hired_at,
+            'is_transferred_employee' => (bool) $this->is_transferred_employee,
+            'opening_leave_balance' => is_numeric($this->opening_leave_balance) ? $this->opening_leave_balance : 0,
+            'leave_balance_adjustments' => is_numeric($this->leave_balance_adjustments) ? (int) $this->leave_balance_adjustments : 0,
+        ]);
+
         $this->calculated_leave_balance = (int) round((float) $tempEmployee->calculateLeaveBalance(), 0, PHP_ROUND_HALF_UP);
     }
 
@@ -221,7 +213,9 @@ class Create extends Component
             'saas_company_id' => $this->companyId,
             'branch_id' => $this->branch_id,
         ]);
+
         $wages = $tempEmployee->calculateWages();
+
         if ($wages) {
             $this->daily_wage = $wages['daily_wage'];
             $this->hourly_wage = $wages['hourly_wage'];
@@ -260,25 +254,183 @@ class Create extends Component
             'file' => $this->txt('يرجى رفع ملف صالح في :attribute.', 'Please upload a valid file for :attribute.'),
             'national_id_expiry.after' => $this->txt('بطاقة الهوية منتهية الصلاحية.', 'The National ID card is expired.'),
 
-            // Custom Document Messages
-            'photo.required' => $this->txt('الصورة الشخصية وصورة الهوية الوطنية مطلوبة.', 'Personal Photo and National ID Photo are required.'),
-            'national_id_photo.required' => $this->txt('الصورة الشخصية وصورة الهوية الوطنية مطلوبة.', 'Personal Photo and National ID Photo are required.'),
-            
-            'photo.max' => $this->txt('الحد الأقصى لحجم الملف: 2 ميجابايت للصور، و 5 ميجابايت للمستندات الأخرى.', 'Maximum file size: 2MB for photos, 5MB for other documents.'),
-            'national_id_photo.max' => $this->txt('الحد الأقصى لحجم الملف: 2 ميجابايت للصور، و 5 ميجابايت للمستندات الأخرى.', 'Maximum file size: 2MB for photos, 5MB for other documents.'),
-            'qualification.max' => $this->txt('الحد الأقصى لحجم الملف: 2 ميجابايت للصور، و 5 ميجابايت للمستندات الأخرى.', 'Maximum file size: 2MB for photos, 5MB for other documents.'),
-            'certificates.*.max' => $this->txt('الحد الأقصى لحجم الملف: 2 ميجابايت للصور، و 5 ميجابايت للمستندات الأخرى.', 'Maximum file size: 2MB for photos, 5MB for other documents.'),
-            'family_documents.*.max' => $this->txt('الحد الأقصى لحجم الملف: 2 ميجابايت للصور، و 5 ميجابايت للمستندات الأخرى.', 'Maximum file size: 2MB for photos, 5MB for other documents.'),
-            'other_documents.*.max' => $this->txt('الحد الأقصى لحجم الملف: 2 ميجابايت للصور، و 5 ميجابايت للمستندات الأخرى.', 'Maximum file size: 2MB for photos, 5MB for other documents.'),
+            'uploaded' => $this->txt(
+                'تعذر رفع الملف. تأكد من نوع الملف وحجمه ثم أعد المحاولة.',
+                'The file could not be uploaded. Please check the file type and size, then try again.'
+            ),
 
-            'photo.image' => $this->txt('الصيغ المقبولة: JPG, PNG, PDF', 'Accepted formats: JPG, PNG, PDF'),
-            'national_id_photo.image' => $this->txt('الصيغ المقبولة: JPG, PNG, PDF', 'Accepted formats: JPG, PNG, PDF'),
-            'qualification.mimes' => $this->txt('الصيغ المقبولة: JPG, PNG, PDF', 'Accepted formats: JPG, PNG, PDF'),
-            'certificates.*.mimes' => $this->txt('الصيغ المقبولة: JPG, PNG, PDF', 'Accepted formats: JPG, PNG, PDF'),
-            'family_documents.*.mimes' => $this->txt('الصيغ المقبولة: JPG, PNG, PDF', 'Accepted formats: JPG, PNG, PDF'),
-            'other_documents.*.mimes' => $this->txt('الصيغ المقبولة: JPG, PNG, PDF', 'Accepted formats: JPG, PNG, PDF'),
-            'regex' => $this->txt('يجب أن يحتوي :attribute على أرقام فقط.', 'The :attribute must contain digits only.'),
+            'photo.required' => $this->txt('الصورة الشخصية مطلوبة.', 'Personal photo is required.'),
+            'national_id_photo.required' => $this->txt('صورة الهوية الوطنية مطلوبة.', 'National ID photo is required.'),
+
+            'photo.max' => $this->txt('حجم الصورة الشخصية يتجاوز 2 ميجابايت.', 'Personal photo size exceeds 2 MB.'),
+            'photo.uploaded' => $this->txt('تعذر رفع الصورة الشخصية. تأكد أن حجمها لا يتجاوز 2 ميجابايت.', 'Personal photo upload failed. Make sure it does not exceed 2 MB.'),
+
+            'national_id_photo.max' => $this->txt('حجم صورة الهوية الوطنية يتجاوز 2 ميجابايت.', 'National ID photo size exceeds 2 MB.'),
+            'national_id_photo.uploaded' => $this->txt('تعذر رفع صورة الهوية الوطنية. تأكد أن حجمها لا يتجاوز 2 ميجابايت.', 'National ID photo upload failed. Make sure it does not exceed 2 MB.'),
+
+            'qualification.max' => $this->txt('حجم ملف المؤهل يتجاوز 5 ميجابايت.', 'Qualification file size exceeds 5 MB.'),
+            'qualification.uploaded' => $this->txt('تعذر رفع ملف المؤهل. تأكد أن حجمه لا يتجاوز 5 ميجابايت.', 'Qualification file upload failed. Make sure it does not exceed 5 MB.'),
+
+            'certificates.*.max' => $this->txt('يوجد ملف في الشهادات يتجاوز 5 ميجابايت.', 'One of the certificate files exceeds 5 MB.'),
+            'certificates.*.uploaded' => $this->txt('يوجد ملف في الشهادات تعذر رفعه أو يتجاوز 5 ميجابايت.', 'One of the certificate files failed to upload or exceeds 5 MB.'),
+
+            'family_documents.*.max' => $this->txt('يوجد ملف في الوثائق العائلية يتجاوز 5 ميجابايت.', 'One of the family document files exceeds 5 MB.'),
+            'family_documents.*.uploaded' => $this->txt('يوجد ملف في الوثائق العائلية تعذر رفعه أو يتجاوز 5 ميجابايت.', 'One of the family document files failed to upload or exceeds 5 MB.'),
+
+            'other_documents.*.max' => $this->txt('يوجد ملف في الوثائق الأخرى يتجاوز 5 ميجابايت.', 'One of the other document files exceeds 5 MB.'),
+            'other_documents.*.uploaded' => $this->txt('يوجد ملف في الوثائق الأخرى تعذر رفعه أو يتجاوز 5 ميجابايت.', 'One of the other document files failed to upload or exceeds 5 MB.'),
+
+            'photo.image' => $this->txt('الصورة الشخصية يجب أن تكون صورة بصيغة JPG أو PNG.', 'Personal photo must be an image in JPG or PNG format.'),
+            'national_id_photo.image' => $this->txt('صورة الهوية الوطنية يجب أن تكون صورة بصيغة JPG أو PNG.', 'National ID photo must be an image in JPG or PNG format.'),
+
+            'qualification.mimes' => $this->txt('ملف المؤهل يجب أن يكون PDF أو JPG أو PNG.', 'Qualification file must be PDF, JPG, or PNG.'),
+            'certificates.*.mimes' => $this->txt('ملفات الشهادات يجب أن تكون PDF أو JPG أو PNG.', 'Certificate files must be PDF, JPG, or PNG.'),
+            'family_documents.*.mimes' => $this->txt('ملفات الوثائق العائلية يجب أن تكون PDF أو JPG أو PNG.', 'Family document files must be PDF, JPG, or PNG.'),
+            'other_documents.*.mimes' => $this->txt('ملفات الوثائق الأخرى يجب أن تكون PDF أو JPG أو PNG.', 'Other document files must be PDF, JPG, or PNG.'),
         ];
+    }
+
+    private function clearFieldErrorsByPrefix(string $field): void
+    {
+        $bag = $this->getErrorBag();
+
+        foreach (array_keys($bag->toArray()) as $key) {
+            if ($key === $field || str_starts_with($key, $field . '.')) {
+                $bag->forget($key);
+            }
+        }
+
+        $this->setErrorBag($bag);
+    }
+
+    public function clearUploadFieldError(string $field): void
+    {
+        $this->clearFieldErrorsByPrefix($field);
+    }
+
+    public function setUploadFieldError(string $field, string $message): void
+    {
+        $this->clearFieldErrorsByPrefix($field);
+
+        if (trim($message) !== '') {
+            $this->addError($field, $message);
+        }
+    }
+
+    public function setUploadFieldErrors(string $field, array $messages): void
+    {
+        $this->clearFieldErrorsByPrefix($field);
+
+        foreach ($messages as $message) {
+            if (is_string($message) && trim($message) !== '') {
+                $this->addError($field, $message);
+            }
+        }
+    }
+
+    private function validateDocumentField(string $field): void
+    {
+        $this->clearFieldErrorsByPrefix($field);
+
+        $rules = $this->rulesTab5();
+
+        if (! isset($rules[$field])) {
+            return;
+        }
+
+        $this->validateOnly(
+            $field,
+            [$field => $rules[$field]],
+            $this->validationMessages(),
+            $this->validationAttributes()
+        );
+    }
+
+    private function validateDocumentArrayField(string $field): void
+    {
+        $this->clearFieldErrorsByPrefix($field);
+
+        $rules = $this->rulesTab5();
+        $ruleKey = $field . '.*';
+
+        if (! isset($rules[$ruleKey])) {
+            return;
+        }
+
+        $validator = Validator::make(
+            [$field => $this->{$field}],
+            [$ruleKey => $rules[$ruleKey]],
+            $this->validationMessages(),
+            $this->validationAttributes()
+        );
+
+        if ($validator->fails()) {
+            foreach ($validator->errors()->messages() as $key => $messages) {
+                foreach ($messages as $message) {
+                    $this->addError($key, $message);
+                }
+            }
+        }
+    }
+
+    private function getBlockingDocumentErrors(): array
+    {
+        $documentFields = [
+            'photo',
+            'national_id_photo',
+            'qualification',
+            'certificates',
+            'family_documents',
+            'other_documents',
+        ];
+
+        $messages = [];
+
+        foreach ($this->getErrorBag()->toArray() as $key => $fieldMessages) {
+            foreach ($documentFields as $field) {
+                if ($key === $field || str_starts_with($key, $field . '.')) {
+                    $messages[$key] = $fieldMessages;
+                    break;
+                }
+            }
+        }
+
+        return $messages;
+    }
+
+    private function hasBlockingDocumentErrors(): bool
+    {
+        return ! empty($this->getBlockingDocumentErrors());
+    }
+
+    public function updatedPhoto(): void
+    {
+        $this->validateDocumentField('photo');
+    }
+
+    public function updatedNationalIdPhoto(): void
+    {
+        $this->validateDocumentField('national_id_photo');
+    }
+
+    public function updatedQualification(): void
+    {
+        $this->validateDocumentField('qualification');
+    }
+
+    public function updatedCertificates(): void
+    {
+        $this->clearFieldErrorsByPrefix('certificates');
+    }
+
+    public function updatedFamilyDocuments(): void
+    {
+        $this->clearFieldErrorsByPrefix('family_documents');
+    }
+
+    public function updatedOtherDocuments(): void
+    {
+        $this->clearFieldErrorsByPrefix('other_documents');
     }
 
     private function validationAttributes(): array
@@ -295,7 +447,7 @@ class Create extends Component
             'birth_place' => tr('Birth Place'),
             'birth_date' => tr('Birth Date'),
             'children_count' => tr('Children Count'),
-            
+
             'sector' => tr('Sector'),
             'department_id' => tr('Main Department'),
             'sub_department_id' => tr('Sub Department'),
@@ -303,13 +455,13 @@ class Create extends Component
             'grade' => tr('Grade'),
             'manager_id' => tr('Manager'),
             'hired_at' => tr('Hire Date'),
-            
+
             'contract_type' => tr('Contract Type'),
             'basic_salary' => tr('Basic Salary'),
             'contract_duration_months' => tr('Contract Duration'),
             'allowance' => tr('Allowance'),
             'annual_leave_days' => tr('Annual Leave Days'),
-            
+
             'mobile' => tr('Mobile'),
             'mobile_alt' => tr('Alternative Mobile'),
             'email_work' => tr('Work Email'),
@@ -320,7 +472,7 @@ class Create extends Component
             'emergency_contact_phone' => tr('Emergency Phone'),
             'emergency_contact_name' => tr('Emergency Name'),
             'emergency_contact_relation' => tr('Relation'),
-            
+
             'photo' => tr('Personal Photo'),
             'national_id_photo' => tr('National ID Photo'),
             'qualification' => tr('Qualification'),
@@ -334,31 +486,27 @@ class Create extends Component
     {
         return [
             'name_ar' => ['required', 'string', 'max:255'],
-
-            'national_id_type' => ['required', Rule::in(['national_id','iqama','passport','other'])],
-
+            'national_id_type' => ['required', Rule::in(['national_id', 'iqama', 'passport', 'other'])],
             'national_id' => [
                 'required',
                 'string',
                 'max:50',
                 Rule::unique('employees', 'national_id')
                     ->where('saas_company_id', $this->companyId)
-                    ->whereNull('deleted_at')
+                    ->whereNull('deleted_at'),
             ],
-
             'national_id_expiry' => ['required', 'date', 'after:today'],
             'nationality' => ['required', 'string', 'max:100'],
             'gender' => ['required', Rule::in(['male', 'female'])],
             'social_status' => ['required', Rule::in(['single', 'married'])],
             'birth_place' => ['required', 'string', 'max:255'],
             'birth_date' => ['required', 'date'],
-
             'name_en' => ['nullable', 'string', 'max:255'],
             'children_count' => ['nullable', 'integer', 'min:0'],
         ];
     }
 
-   private function rulesTab2(): array
+    private function rulesTab2(): array
     {
         return [
             'sector' => ['nullable', 'string', 'max:255'],
@@ -391,7 +539,7 @@ class Create extends Component
     private function rulesTab4(): array
     {
         return [
-           'mobile' => [
+            'mobile' => [
                 'required',
                 'string',
                 'max:20',
@@ -399,7 +547,7 @@ class Create extends Component
                 Rule::unique('employees', 'mobile')
                     ->where('saas_company_id', $this->companyId)
                     ->where('status', 'ACTIVE')
-                    ->whereNull('deleted_at')
+                    ->whereNull('deleted_at'),
             ],
             'email_work' => [
                 'required',
@@ -407,7 +555,7 @@ class Create extends Component
                 Rule::unique('employees', 'email_work')
                     ->where('saas_company_id', $this->companyId)
                     ->where('status', 'ACTIVE')
-                    ->whereNull('deleted_at')
+                    ->whereNull('deleted_at'),
             ],
             'city' => ['required', 'string', 'max:100'],
             'district' => ['required', 'string', 'max:100'],
@@ -419,22 +567,16 @@ class Create extends Component
                 'regex:/^\d+$/',
             ],
             'emergency_contact_name' => ['required', 'string', 'max:100'],
-            'emergency_contact_relation' => ['required', Rule::in(['أب','أم','أخ','أخت','زوج','زوجة','ابن','بنت','أخرى'])],            
-            'mobile_alt' => [
-                'nullable',
-                'string',
-                'max:20',
-                'regex:/^\d+$/',
-            ],  
+            'emergency_contact_relation' => ['required', Rule::in(['أب', 'أم', 'أخ', 'أخت', 'زوج', 'زوجة', 'ابن', 'بنت', 'أخرى'])],
+            'mobile_alt' => ['nullable', 'string', 'max:20', 'regex:/^\d+$/'],
             'email_personal' => [
                 'nullable',
                 'email',
                 Rule::unique('employees', 'email_personal')
                     ->where('saas_company_id', $this->companyId)
                     ->where('status', 'ACTIVE')
-                    ->whereNull('deleted_at')
+                    ->whereNull('deleted_at'),
             ],
-
         ];
     }
 
@@ -505,14 +647,19 @@ class Create extends Component
         $this->authorize('employees.create');
 
         try {
-            // ✅ NEW: Ensure department enforcement for scoped users during save
-            if (!Auth::user()->can('employees.view.all')) {
+            if (! Auth::user()->can('employees.view.all')) {
                 if (Auth::user()->department_id) {
                     $this->department_id = Auth::user()->department_id;
                 }
                 if (Auth::user()->employee_id) {
                     $this->manager_id = Auth::user()->employee_id;
                 }
+            }
+
+            if ($this->hasBlockingDocumentErrors()) {
+                throw \Illuminate\Validation\ValidationException::withMessages(
+                    $this->getBlockingDocumentErrors()
+                );
             }
 
             $this->validate(array_merge(
@@ -523,10 +670,9 @@ class Create extends Component
                 $this->rulesTab5(),
             ), $this->validationMessages(), $this->validationAttributes());
 
-            // Prepare correct mapping for DB
             $jobTitle = JobTitle::find($this->job_title_id);
- 
-                $data = [
+
+            $data = [
                 'saas_company_id' => $this->companyId,
                 'branch_id' => $this->branch_id,
                 'name_ar' => $this->name_ar,
@@ -539,7 +685,7 @@ class Create extends Component
                 'marital_status' => $this->social_status,
                 'birth_place' => $this->birth_place,
                 'children_count' => $this->children_count,
-                
+
                 'sector' => $this->sector ?: 'Staff',
                 'department_id' => $this->department_id,
                 'sub_department_id' => $this->sub_department_id,
@@ -548,14 +694,14 @@ class Create extends Component
                 'job_function' => $jobTitle ? $jobTitle->name : 'Staff',
                 'manager_id' => $this->manager_id,
                 'hired_at' => $this->hired_at,
-                
+
                 'status' => 'ACTIVE',
                 'contract_type' => $this->contract_type,
                 'basic_salary' => $this->basic_salary,
                 'allowances' => $this->allowance ?: 0,
                 'annual_leave_days' => $this->annual_leave_days ?: 0,
                 'contract_duration_months' => $this->contract_duration_months ?: 0,
-                
+
                 'mobile' => $this->mobile,
                 'mobile_alt' => $this->mobile_alt,
                 'email_work' => $this->email_work ?: null,
@@ -573,12 +719,11 @@ class Create extends Component
             }
 
             $employee = Employee::create($data);
-            // حفظ الصور والملفات
+
             $this->saveFile($employee, 'photo', 'personal_photo');
             $this->saveFile($employee, 'national_id_photo', 'national_id_photo');
             $this->saveFile($employee, 'qualification', 'qualification');
 
-            // حفظ الملفات المتعددة
             $this->saveMultipleFiles($employee, 'certificates', 'certificates');
             $this->saveMultipleFiles($employee, 'family_documents', 'family_documents');
             $this->saveMultipleFiles($employee, 'other_documents', 'other_documents');
@@ -587,12 +732,10 @@ class Create extends Component
             session()->flash('employee_id', $employee->id);
 
             return $this->redirectRoute('company-admin.employees.index', navigate: true);
-
         } catch (\Illuminate\Validation\ValidationException $e) {
             throw $e;
         } catch (\Throwable $e) {
             report($e);
-            session()->flash('error', tr('Failed to create employee. Please try again. Error: ') . $e->getMessage());
             session()->flash('error', tr('Failed to create employee. Please try again. Error: ') . $e->getMessage());
             return $this->redirectRoute('company-admin.employees.create', navigate: true);
         }
@@ -600,12 +743,12 @@ class Create extends Component
 
     private function saveFile($employee, $property, $type): void
     {
-        if (!$this->$property) {
+        if (! $this->$property) {
             return;
         }
 
         $path = $this->$property->store("employees/{$employee->id}/documents", 'public');
-        
+
         $employee->documents()->create([
             'type' => $type,
             'file_path' => $path,
@@ -621,7 +764,7 @@ class Create extends Component
 
         foreach ($this->$property as $file) {
             $path = $file->store("employees/{$employee->id}/documents", 'public');
-            
+
             $employee->documents()->create([
                 'type' => $type,
                 'file_path' => $path,
@@ -632,23 +775,22 @@ class Create extends Component
 
     public function getDepartmentsProperty()
     {
-        if (!$this->companyId) {
+        if (! $this->companyId) {
             return [];
         }
 
         return Department::forCompany($this->companyId)
             ->active()
             ->whereNull('parent_id')
-            // ✅ NEW: Scoping based on permission
-            ->when(!Auth::user()->can('employees.view.all'), function ($q) {
+            ->when(! Auth::user()->can('employees.view.all'), function ($q) {
                 if ($deptId = Auth::user()->department_id) {
                     $q->where('id', $deptId);
                 } else {
-                    $q->where('id', 0); // No assigned department = see nothing
+                    $q->where('id', 0);
                 }
             })
             ->get()
-            ->map(function($department) {
+            ->map(function ($department) {
                 return [
                     'value' => $department->id,
                     'label' => $department->name,
@@ -663,8 +805,8 @@ class Create extends Component
         $this->sub_department_id = null;
         $this->manager_id = null;
         $this->sub_departments = [];
-        
-        if (!$value) {
+
+        if (! $value) {
             return;
         }
 
@@ -683,7 +825,7 @@ class Create extends Component
             ->where('parent_id', $departmentId)
             ->active()
             ->get()
-            ->map(function($department) {
+            ->map(function ($department) {
                 return [
                     'value' => $department->id,
                     'label' => $department->name,
@@ -693,46 +835,45 @@ class Create extends Component
 
     public function getJobTitlesProperty()
     {
-        if (!$this->companyId) {
+        if (! $this->companyId) {
             return [];
         }
 
         return JobTitle::where('saas_company_id', $this->companyId)
             ->get()
-            ->map(function($jobTitle) {
-            return [
-                'value' => $jobTitle->id,
-                'label' => $jobTitle->name,
-            ];
-        })->toArray();
+            ->map(function ($jobTitle) {
+                return [
+                    'value' => $jobTitle->id,
+                    'label' => $jobTitle->name,
+                ];
+            })->toArray();
     }
 
     public function getManagersProperty()
     {
-        if (!$this->companyId) {
+        if (! $this->companyId) {
             return [];
         }
 
         return Employee::where('saas_company_id', $this->companyId)
             ->where('id', '!=', $this->employee_id ?? 0)
-            // ✅ NEW: Scoping based on permission
-            ->when(!Auth::user()->can('employees.view.all'), function ($q) {
+            ->when(! Auth::user()->can('employees.view.all'), function ($q) {
                 $user = Auth::user();
                 $q->where(function ($qq) use ($user) {
                     if ($user->employee_id) {
                         $qq->where('manager_id', $user->employee_id)
-                           ->orWhere('id', $user->employee_id);
+                            ->orWhere('id', $user->employee_id);
                     }
                     if ($user->department_id) {
                         $qq->orWhere('department_id', $user->department_id);
                     }
-                    if (!$user->employee_id && !$user->department_id) {
+                    if (! $user->employee_id && ! $user->department_id) {
                         $qq->where('id', 0);
                     }
                 });
             })
             ->get()
-            ->map(function($employee) {
+            ->map(function ($employee) {
                 return [
                     'id' => $employee->id,
                     'name' => $employee->name_ar ?: $employee->name_en,
@@ -748,13 +889,10 @@ class Create extends Component
 
         $units = ['B', 'KB', 'MB', 'GB', 'TB'];
         $power = $bytes > 0 ? floor(log($bytes, 1024)) : 0;
-        
+
         return number_format($bytes / pow(1024, $power), 2, '.', ',') . ' ' . $units[$power];
     }
 
-    /**
-     * جلب عدد أيام الإجازة السنوية الافتراضية من إعدادات الشركة
-     */
     private function getDefaultAnnualLeaveDays(): int
     {
         $settings = \Athka\Saas\Models\SaasCompanyOtherinfo::where('company_id', $this->companyId)->first();
@@ -772,120 +910,52 @@ class Create extends Component
         return $this->branchOptions;
     }
 
-private function getAllowedBranchIds(): ?array
-{
-    $user = Auth::user();
-    if (! $user) return null;
+    private function getAllowedBranchIds(): ?array
+    {
+        $user = Auth::user();
+        if (! $user) return null;
 
-    $companyId = (int) ($user->saas_company_id ?? 0);
-    if (! $companyId) return null;
+        $companyId = (int) ($user->saas_company_id ?? 0);
+        if (! $companyId) return null;
 
-    $ids = DB::table('branch_user_access')
-        ->where('user_id', $user->id)
-        ->where('saas_company_id', $companyId)
-        ->pluck('branch_id')
-        ->map(fn ($v) => (int) $v)
-        ->unique()
-        ->values()
-        ->all();
+        $ids = DB::table('branch_user_access')
+            ->where('user_id', $user->id)
+            ->where('saas_company_id', $companyId)
+            ->pluck('branch_id')
+            ->map(fn ($v) => (int) $v)
+            ->unique()
+            ->values()
+            ->all();
 
-    // ✅ إذا فيه قيود فعلية
-    if (! empty($ids)) return $ids;
+        if (! empty($ids)) return $ids;
 
-    // ✅ لا قيود => كل فروع الشركة (بدون فلترة)
-    return null;
-}
-
-public function updating($name, $value): void
-{
-    $fields = ['certificates', 'family_documents', 'other_documents'];
-
-    if (! in_array($name, $fields, true)) {
-        return;
+        return null;
     }
 
-    // ✅ إذا هذا تغيير داخلي (حذف/تنظيف) لا تعمل append
-    if (($this->skipUploadAppend[$name] ?? false) === true) {
-        return;
+    public function removeUploadItem(string $field, int $index): void
+    {
+        $allowed = ['certificates', 'family_documents', 'other_documents'];
+
+        if (! in_array($field, $allowed, true)) {
+            return;
+        }
+
+        $current = $this->{$field};
+
+        if (! is_array($current)) {
+            $this->{$field} = [];
+            $this->clearFieldErrorsByPrefix($field);
+            return;
+        }
+
+        if (array_key_exists($index, $current)) {
+            unset($current[$index]);
+            $this->{$field} = array_values($current);
+        }
+
+        $this->clearFieldErrorsByPrefix($field);
     }
 
-    // ✅ إذا الاختيار فاضي/تنظيف
-    if (! is_array($value) || count($value) === 0) {
-        return;
-    }
-
-    // ✅ منع حلقات التحديث
-    if (! empty($this->uploadAppending[$name])) {
-        return;
-    }
-
-    // خزّن القديم قبل الاستبدال
-    $this->uploadOld[$name] = is_array($this->{$name}) ? $this->{$name} : [];
-}
-
-public function updated($name, $value): void
-{
-    $fields = ['certificates', 'family_documents', 'other_documents'];
-
-    if (! in_array($name, $fields, true)) {
-        return;
-    }
-
-    // ✅ إذا كان التغيير حذف/تنظيف، اخرج بدون merge
-    if (($this->skipUploadAppend[$name] ?? false) === true) {
-        unset($this->skipUploadAppend[$name], $this->uploadOld[$name]);
-        return;
-    }
-
-    // ✅ إذا الاختيار فاضي/تنظيف
-    if (! is_array($value) || count($value) === 0) {
-        unset($this->uploadOld[$name]);
-        return;
-    }
-
-    // ✅ منع حلقات التحديث
-    if (! empty($this->uploadAppending[$name])) {
-        return;
-    }
-
-    $old = $this->uploadOld[$name] ?? [];
-
-    // أول مرة ما في شيء قديم
-    if (count($old) === 0) {
-        unset($this->uploadOld[$name]);
-        return;
-    }
-
-    $this->uploadAppending[$name] = true;
-
-    $current = is_array($this->{$name}) ? $this->{$name} : [];
-    $this->{$name} = array_values(array_merge($old, $current));
-
-    unset($this->uploadAppending[$name], $this->uploadOld[$name]);
-}
-public function removeUploadItem(string $field, int $index): void
-{
-    $allowed = ['certificates', 'family_documents', 'other_documents'];
-
-    if (! in_array($field, $allowed, true)) {
-        return;
-    }
-
-    // ✅ علّم أن هذا تعديل داخلي (لا نريد append)
-    $this->skipUploadAppend[$field] = true;
-
-    $current = $this->{$field};
-
-    if (! is_array($current)) {
-        $this->{$field} = [];
-        return;
-    }
-
-    if (array_key_exists($index, $current)) {
-        unset($current[$index]);
-        $this->{$field} = array_values($current);
-    }
-}
     public function updatedContractType($value): void
     {
         if ($value === 'permanent') {
@@ -912,28 +982,36 @@ public function removeUploadItem(string $field, int $index): void
         elseif (Schema::hasTable('countries')) $table = 'countries';
 
         if (! $table) {
-            $fallback = ['Yemen','Saudi Arabia','United Arab Emirates','Qatar','Kuwait','Oman','Bahrain','Egypt','Jordan','Iraq','Syria','Lebanon','Sudan','Morocco','Tunisia','Algeria'];
-            $this->nationalityOptions = collect($fallback)->map(fn ($v) => ['value'=>$v,'label'=>$v])->all();
+            $fallback = ['Yemen', 'Saudi Arabia', 'United Arab Emirates', 'Qatar', 'Kuwait', 'Oman', 'Bahrain', 'Egypt', 'Jordan', 'Iraq', 'Syria', 'Lebanon', 'Sudan', 'Morocco', 'Tunisia', 'Algeria'];
+            $this->nationalityOptions = collect($fallback)->map(fn ($v) => ['value' => $v, 'label' => $v])->all();
             return;
         }
 
         $cols = Schema::getColumnListing($table);
-
         $labelCol = null;
 
         if ($this->isAr()) {
-            foreach (['nationality_ar','name_ar','arabic_name','name_arabic'] as $c) {
-                if (in_array($c, $cols, true)) { $labelCol = $c; break; }
+            foreach (['nationality_ar', 'name_ar', 'arabic_name', 'name_arabic'] as $c) {
+                if (in_array($c, $cols, true)) {
+                    $labelCol = $c;
+                    break;
+                }
             }
         } else {
-            foreach (['nationality_en','name_en','english_name','name_english'] as $c) {
-                if (in_array($c, $cols, true)) { $labelCol = $c; break; }
+            foreach (['nationality_en', 'name_en', 'english_name', 'name_english'] as $c) {
+                if (in_array($c, $cols, true)) {
+                    $labelCol = $c;
+                    break;
+                }
             }
         }
 
         if (! $labelCol) {
-            foreach (['nationality','name','title'] as $c) {
-                if (in_array($c, $cols, true)) { $labelCol = $c; break; }
+            foreach (['nationality', 'name', 'title'] as $c) {
+                if (in_array($c, $cols, true)) {
+                    $labelCol = $c;
+                    break;
+                }
             }
         }
 
@@ -957,6 +1035,3 @@ public function removeUploadItem(string $field, int $index): void
         })->values()->all();
     }
 }
-
-
-
