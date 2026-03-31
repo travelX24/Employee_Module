@@ -2,6 +2,14 @@
 
 @php
     $locale = app()->getLocale();
+
+    $nationalIdTypeText = match ($employee->national_id_type ?? null) {
+        'national_id' => tr('National ID'),
+        'iqama' => tr('Iqama'),
+        'passport' => tr('Passport'),
+        'other' => tr('Other'),
+        default => '—',
+    };
 @endphp
 
 <div class="space-y-6">
@@ -23,6 +31,16 @@
             </label>
             <div class="px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 text-gray-900">
                 {{ $employee->name_en ?: '—' }}
+            </div>
+        </div>
+
+        {{-- ID Type --}}
+        <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-2">
+                {{ tr('ID Type') }}
+            </label>
+            <div class="px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 text-gray-900">
+                {{ $nationalIdTypeText }}
             </div>
         </div>
 
@@ -119,7 +137,3 @@
         </div>
     </div>
 </div>
-
-
-
-

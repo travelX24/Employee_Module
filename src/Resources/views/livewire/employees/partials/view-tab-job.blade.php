@@ -3,7 +3,6 @@
 <div class="space-y-6">
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         {{-- Employee No --}}
-         {{-- Employee No --}}
         <div>
             <label class="block text-sm font-semibold text-gray-700 mb-2">
                 {{ tr('Employee No') }}
@@ -22,11 +21,9 @@
                 @php
                     $branchText = '—';
 
-                    // 1) لو relation branch محمّلة استخدمها (بدون lazy load)
                     if (method_exists($employee, 'relationLoaded') && $employee->relationLoaded('branch') && $employee->branch) {
                         $branchText = $employee->branch->name_ar ?? $employee->branch->name ?? $employee->branch->name_en ?? '—';
                     } else {
-                        // 2) fallback: جيب الاسم بالاستعلام (safe حتى لو lazy loading disabled)
                         try {
                             if (!empty($employee->branch_id)) {
                                 $b = \App\Models\Branch::query()->find((int) $employee->branch_id);
@@ -54,7 +51,6 @@
                 {{ $employee->department?->name ?: '—' }}
             </div>
         </div>
-
 
         {{-- Sub Department --}}
         <div>
@@ -106,6 +102,40 @@
             </div>
         </div>
 
+        {{-- Contract Type --}}
+        <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-2">
+                {{ tr('Contract Type') }}
+            </label>
+            <div class="px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 text-gray-900">
+                @php
+                    $contractText = match ($employee->contract_type) {
+                        'permanent' => tr('Permanent'),
+                        'temporary' => tr('Temporary'),
+                        'probation' => tr('Probation'),
+                        'contractor' => tr('Contractor'),
+                        'freelancer' => tr('Freelancer'),
+                        default => $employee->contract_type ?: '—',
+                    };
+                @endphp
+                {{ $contractText }}
+            </div>
+        </div>
+
+        {{-- Contract Duration --}}
+        <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-2">
+                {{ tr('Contract Duration (Months)') }}
+            </label>
+            <div class="px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 text-gray-900">
+                @if(($employee->contract_type ?? null) === 'permanent')
+                    —
+                @else
+                    {{ $employee->contract_duration_months ?: '—' }}
+                @endif
+            </div>
+        </div>
+
         {{-- Status --}}
         <div>
             <label class="block text-sm font-semibold text-gray-700 mb-2">
@@ -117,6 +147,10 @@
                         'ACTIVE' => tr('Active'),
                         'ENDED' => tr('Ended'),
                         'ARCHIVED' => tr('Archived'),
+                        'SUSPENDED' => tr('Suspended'),
+                        'TERMINATED' => tr('Terminated'),
+                        'RESIGNED' => tr('Resigned'),
+                        'RETIRED' => tr('Retired'),
                         default => $employee->status ?: '—',
                     };
                 @endphp

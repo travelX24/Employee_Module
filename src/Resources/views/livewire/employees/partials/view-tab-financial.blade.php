@@ -1,40 +1,19 @@
 @props(['employee'])
 
 @php
-    // حساب الأجور المشتقة
     $wages = $employee->calculateWages();
-    // حساب رصيد الإجازات
     $leaveBalance = $employee->calculateLeaveBalance();
 @endphp
 
 <div class="space-y-6">
-    {{-- قسم المعلومات الأساسية --}}
+    {{-- قسم المعلومات المالية --}}
     <div>
         <h4 class="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
             <i class="fas fa-file-contract text-[color:var(--brand-via)]"></i>
-            {{ tr('Contract & Salary Information') }}
+            {{ tr('Financial Information') }}
         </h4>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {{-- Contract Type --}}
-            <div>
-                <label class="block text-xs font-semibold text-gray-600 mb-1.5">
-                    {{ tr('Contract Type') }}
-                </label>
-                <div class="px-4 py-2.5 bg-gray-50 rounded-lg border border-gray-200 text-gray-900 text-sm">
-                    @php
-                        $contractText = match ($employee->contract_type) {
-                            'permanent' => tr('Permanent'),
-                            'temporary' => tr('Temporary'),
-                            'probation' => tr('Probation'),
-                            'contractor' => tr('Contractor'),
-                            'freelancer' => tr('Freelancer'),
-                            default => $employee->contract_type ?: '—',
-                        };
-                    @endphp
-                    {{ $contractText }}
-                </div>
-            </div>
 
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {{-- Basic Salary --}}
             <div>
                 <label class="block text-xs font-semibold text-gray-600 mb-1.5">
@@ -54,17 +33,6 @@
                     {{ $employee->allowances ? number_format($employee->allowances, 2) : '—' }}
                 </div>
             </div>
-
-            {{-- Contract Duration --}}
-            <div>
-                <label class="block text-xs font-semibold text-gray-600 mb-1.5">
-                    {{ tr('Contract Duration (Months)') }}
-                </label>
-                <div class="px-4 py-2.5 bg-gray-50 rounded-lg border border-gray-200 text-gray-900 text-sm">
-                    {{ $employee->contract_duration_months ?: '—' }}
-                </div>
-            </div>
-
         </div>
     </div>
 
@@ -77,7 +45,7 @@
                 <span class="text-xs text-gray-500 font-normal">({{ tr('Based on work schedule') }})</span>
             </h4>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-xl border-2 border-gray-200">
-                {{-- الأجر اليومي --}}
+                {{-- Daily Wage --}}
                 <div class="text-center">
                     <div class="text-xs font-semibold text-gray-600 mb-2">{{ tr('Daily Wage') }}</div>
                     <div class="p-3 bg-white rounded-lg shadow-sm border border-gray-200">
@@ -86,7 +54,7 @@
                     </div>
                 </div>
 
-                {{-- الأجر بالساعة --}}
+                {{-- Hourly Wage --}}
                 <div class="text-center">
                     <div class="text-xs font-semibold text-gray-600 mb-2">{{ tr('Hourly Wage') }}</div>
                     <div class="p-3 bg-white rounded-lg shadow-sm border border-gray-200">
@@ -95,7 +63,7 @@
                     </div>
                 </div>
 
-                {{-- الأجر بالدقيقة --}}
+                {{-- Minute Wage --}}
                 <div class="text-center">
                     <div class="text-xs font-semibold text-gray-600 mb-2">{{ tr('Minute Wage') }}</div>
                     <div class="p-3 bg-white rounded-lg shadow-sm border border-gray-200">
