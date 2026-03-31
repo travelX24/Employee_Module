@@ -911,35 +911,18 @@
                     <h4 class="font-bold text-gray-800">{{ tr('Download Templates & Data Reference') }}</h4>
                 </div>
                 
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 ms-11">
+                <div class="grid grid-cols-1 sm:grid-cols-1 gap-4 ms-11">
                     <button 
                         wire:click="downloadTemplate"
-                        class="flex flex-col items-center gap-3 p-4 rounded-2xl border border-dashed border-[color:var(--brand-via)]/30 bg-[color:var(--brand-via)]/5 hover:bg-[color:var(--brand-via)]/10 hover:border-[color:var(--brand-via)] transition-all group cursor-pointer"
+                        class="flex cursor-pointer items-center gap-4 p-4 rounded-2xl border border-dashed border-[color:var(--brand-via)]/30 bg-[color:var(--brand-via)]/5 hover:bg-[color:var(--brand-via)]/10 hover:border-[color:var(--brand-via)] transition-all group"
                     >
                         <div class="w-12 h-12 rounded-xl bg-white flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
                             <i class="fas fa-file-excel text-[color:var(--brand-via)] text-xl"></i>
                         </div>
-                        <span class="text-xs font-bold text-gray-700 text-center">{{ tr('Employee Template') }}</span>
-                    </button>
- 
-                    <button 
-                        wire:click="downloadDepartmentsCodes"
-                        class="flex flex-col items-center gap-3 p-4 rounded-2xl border border-dashed border-blue-200 bg-blue-50/30 hover:bg-blue-50 hover:border-blue-400 transition-all group cursor-pointer"
-                    >
-                        <div class="w-12 h-12 rounded-xl bg-white flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
-                            <i class="fas fa-sitemap text-blue-600 text-xl"></i>
+                        <div class="flex flex-col text-start">
+                            <span class="text-sm font-bold text-gray-800">{{ tr('Download Management Template') }}</span>
+                            <span class="text-xs text-gray-500">{{ tr('The template includes pre-validated dropdowns for all categories.') }}</span>
                         </div>
-                        <span class="text-xs font-bold text-gray-700 text-center">{{ tr('Departments Codes') }}</span>
-                    </button>
- 
-                    <button 
-                        wire:click="downloadJobTitlesCodes"
-                        class="flex flex-col items-center gap-3 p-4 rounded-2xl border border-dashed border-teal-200 bg-teal-50/30 hover:bg-teal-50 hover:border-teal-400 transition-all group cursor-pointer"
-                    >
-                        <div class="w-12 h-12 rounded-xl bg-white flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
-                            <i class="fas fa-briefcase text-teal-600 text-xl"></i>
-                        </div>
-                        <span class="text-xs font-bold text-gray-700 text-center">{{ tr('Job Titles Codes') }}</span>
                     </button>
                 </div>
             </div>
@@ -959,12 +942,12 @@
                         @dragleave.prevent="isDragging = false"
                         @drop.prevent="isDragging = false"
                     >
-                        <input type="file" wire:model="importFile" class="hidden" accept=".csv" />
+                        <input type="file" wire:model="importFile" class="hidden" accept=".xlsx, .xls, .csv" />
                         
                         <div class="flex flex-col items-center text-center">
                             @if($importFile)
                                 <div class="w-20 h-20 rounded-2xl bg-[color:var(--brand-via)]/10 flex items-center justify-center mb-4 border border-[color:var(--brand-via)]/20 shadow-sm">
-                                    <i class="fas fa-file-csv text-[color:var(--brand-via)] text-3xl"></i>
+                                    <i class="fas fa-file-excel text-[color:var(--brand-via)] text-3xl"></i>
                                 </div>
                                 <span class="text-sm font-bold text-gray-900">{{ $importFile->getClientOriginalName() }}</span>
                                 <span class="text-xs text-gray-500 mt-1.5 px-3 py-1 bg-gray-100 rounded-full font-medium">{{ number_format($importFile->getSize() / 1024, 2) }} KB</span>
@@ -977,7 +960,7 @@
                                     <i class="fas fa-cloud-upload-alt text-[color:var(--brand-via)] text-3xl"></i>
                                 </div>
                                 <p class="text-sm font-bold text-gray-900">{{ tr('Drop your file here or click to browse') }}</p>
-                                <p class="text-xs text-gray-500 mt-1.5">{{ tr('Only .csv files are supported') }}</p>
+                                <p class="text-xs text-gray-500 mt-1.5">{{ tr('Excel (.xlsx, .xls) and CSV files are supported') }}</p>
                             @endif
                         </div>
 
@@ -1007,20 +990,20 @@
             </div>
 
             {{-- Validation Errors --}}
-            @if(!empty($importValidationErrors))
-                <div class="ms-11 rounded-2xl bg-red-50 border border-red-100 overflow-hidden animate-shake">
-                    <div class="px-4 py-3 bg-red-100/50 flex items-center justify-between">
-                        <span class="text-xs font-bold text-red-800 flex items-center gap-2">
+            @if(!empty($importValidationErrors) && count($importValidationErrors) > 0)
+                <div class="mt-8 p-6 bg-red-50/50 border border-red-100 rounded-3xl space-y-3 ms-11">
+                    <div class="flex items-center justify-between gap-2 text-red-700 mb-2 border-b border-red-100/50 pb-3">
+                        <div class="flex items-center gap-2">
                             <i class="fas fa-exclamation-triangle"></i>
-                            {{ tr('Data Validation Issues') }}
-                        </span>
+                            <h5 class="font-bold text-sm">{{ tr('Import Validation Errors') }}</h5>
+                        </div>
                         <span class="bg-red-200 text-red-800 text-[10px] font-extrabold px-1.5 py-0.5 rounded">
                             {{ count($importValidationErrors) }} {{ tr('Issues') }}
                         </span>
                     </div>
-                    <ul class="p-4 space-y-1.5 max-h-[160px] overflow-y-auto custom-scrollbar">
+                    <ul class="p-0 space-y-1.5 max-h-[160px] overflow-y-auto custom-scrollbar">
                         @foreach($importValidationErrors as $error)
-                            <li class="text-xs text-red-700 flex items-start gap-2">
+                            <li class="text-[11px] font-medium text-red-600 bg-white/60 p-2.5 rounded-xl border border-red-50/50 flex items-start gap-2 shadow-sm">
                                 <span class="inline-block w-1.5 h-1.5 rounded-full bg-red-400 mt-1 flex-shrink-0"></span>
                                 {{ $error }}
                             </li>

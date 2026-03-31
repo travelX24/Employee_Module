@@ -895,7 +895,7 @@ public function setViewMode(string $mode): void
         $sampleData = [
             'أحمد محمد', 'Ahmed Mohamed', '1234567890', '2030-01-01', 'Saudi Arabia', '1990-05-15', 'male', 'married', '2',
             '0500000000', 'ahmed@company.com', 'ahmed@personal.com', 'DEPT-001', 'SUB-001', 'JOB-001', '', '2024-01-01',
-            '8000', '2000', '30', 'permanent', '', 'Riyadh', 'Al-Malqa', 'King Saud St', 'Ali Mohamed', '0511111111', 'أخ'
+            '8000', '2000', '30', 'permanent', '', 'Riyadh', 'Al-Malqa', 'King Saud St', 'Ali Mohamed', '0511111111', 'Brother'
         ];
         $col = 'A';
         foreach ($sampleData as $dataItem) {
@@ -911,8 +911,13 @@ public function setViewMode(string $mode): void
 
         // Departments
         $Department = $this->departmentModelClass();
-        $departments = $Department::forCompany($companyId)->get(['code', 'name']);
-        $deptCodes = $departments->map(fn($d) => $d->code ? ($d->name . ' (' . $d->code . ')') : $d->name)->filter()->values()->toArray();
+        $allDepts = $Department::forCompany($companyId)->get(['id', 'code', 'name', 'parent_id']);
+        
+        $mainDepts = $allDepts->whereNull('parent_id');
+        $subDepts = $allDepts->whereNotNull('parent_id');
+
+        $deptCodes = $mainDepts->map(fn($d) => $d->code ? ($d->name . ' (' . $d->code . ')') : $d->name)->filter()->values()->toArray();
+        $subDeptCodes = $subDepts->map(fn($d) => $d->code ? ($d->name . ' (' . $d->code . ')') : $d->name)->filter()->values()->toArray();
 
         // Job Titles
         $JobTitle = $this->jobTitleModelClass();
@@ -927,9 +932,23 @@ public function setViewMode(string $mode): void
         })->filter()->values()->toArray();
 
         // Static Lists
-        $genderList = ['male', 'female', 'ذكر', 'أنثى'];
-        $maritalList = ['single', 'married', 'أعزب', 'متزوج'];
-        $contractList = ['permanent', 'temporary', 'probation', 'contractor', 'دائم', 'مؤقت', 'تجربة', 'مقاول'];
+        $isAr = app()->getLocale() === 'ar';
+        $genderList = $isAr ? ['ذكر', 'أنثى'] : ['Male', 'Female'];
+        $maritalList = $isAr ? ['أعزب', 'متزوج', 'مطلق', 'أرمل'] : ['Single', 'Married', 'Divorced', 'Widowed'];
+        $contractList = $isAr ? ['دائم', 'مؤقت', 'تجربة', 'مقاول'] : ['Permanent', 'Temporary', 'Probation', 'Contractor'];
+        $relationList = $isAr ? ['أب', 'أم', 'أخ', 'أخت', 'زوج', 'زوجة', 'ابن', 'ابنة', 'صديق', 'أخرى'] 
+                             : ['Father', 'Mother', 'Brother', 'Sister', 'Husband', 'Wife', 'Son', 'Daughter', 'Friend', 'Other'];
+        
+        $nationalityList = [
+            'Saudi Arabia', 'Egypt', 'Jordan', 'India', 'Pakistan', 'Philippines', 'Suriya', 'Lebanon', 'Yemen', 'Sudan',
+            'United Arab Emirates', 'Kuwait', 'Oman', 'Bahrain', 'Qatar', 'Morocco', 'Algeria', 'Tunisia', 'Libya'
+        ];
+        if ($isAr) {
+            $nationalityList = [
+                'المملكة العربية السعودية', 'مصر', 'الأردن', 'الهند', 'باكستان', 'الفلبين', 'سوريا', 'لبنان', 'اليمن', 'السودان',
+                'الإمارات العربية المتحدة', 'الكويت', 'عمان', 'البحرين', 'قطر', 'المغرب', 'الجزائر', 'تونس', 'ليبيا'
+            ];
+        }
 
         $writeCol = function ($colLetter, $list) use ($dataSheet) {
             $row = 1;
@@ -947,6 +966,9 @@ public function setViewMode(string $mode): void
         $maxGenderRow = $writeCol('D', $genderList);
         $maxMaritalRow = $writeCol('E', $maritalList);
         $maxContractRow = $writeCol('F', $contractList);
+        $maxNationRow = $writeCol('G', $nationalityList);
+        $maxSubDeptRow = $writeCol('H', $subDeptCodes);
+        $maxRelationRow = $writeCol('I', $relationList);
 
         // Hide data sheet
         $dataSheet->setSheetState(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet::SHEETSTATE_HIDDEN);
@@ -963,21 +985,23 @@ public function setViewMode(string $mode): void
                            ->setShowInputMessage(true)
                            ->setShowErrorMessage(true)
                            ->setShowDropDown(true)
-                           ->setErrorTitle('Input error')
-                           ->setError('Value is not in list.')
-                           ->setPromptTitle('Pick from list')
-                           ->setPrompt('Please select a value from the drop-down list.')
+                           ->setErrorTitle(tr('Input error'))
+                           ->setError(tr('Value is not in list.'))
+                           ->setPromptTitle(tr('Pick from list'))
+                           ->setPrompt(tr('Please select a value from the drop-down list.'))
                            ->setFormula1('DataStorage_Hidden!$' . $dataColLetter . '$1:$' . $dataColLetter . '$' . $maxDataRow);
             }
         };
 
-        $applyDropdown('G', 'D', $maxGenderRow); // Gender
-        $applyDropdown('H', 'E', $maxMaritalRow); // Marital status
-        $applyDropdown('M', 'A', $maxDeptRow); // Main Dept
-        $applyDropdown('N', 'A', $maxDeptRow); // Sub Dept
-        $applyDropdown('O', 'B', $maxJobRow); // Job Title
-        $applyDropdown('P', 'C', $maxManagerRow); // Manager
+        $applyDropdown('E', 'G', $maxNationRow);   // Nationality
+        $applyDropdown('G', 'D', $maxGenderRow);   // Gender
+        $applyDropdown('H', 'E', $maxMaritalRow);  // Marital status
+        $applyDropdown('M', 'A', $maxDeptRow);     // Main Dept
+        $applyDropdown('N', 'H', $maxSubDeptRow);  // Sub Dept
+        $applyDropdown('O', 'B', $maxJobRow);      // Job Title
+        $applyDropdown('P', 'C', $maxManagerRow);  // Manager
         $applyDropdown('U', 'F', $maxContractRow); // Contract type
+        $applyDropdown('AB', 'I', $maxRelationRow); // Emergency Relation
 
         $spreadsheet->setActiveSheetIndex(0);
 
@@ -1056,37 +1080,61 @@ public function setViewMode(string $mode): void
             'importFile.max'      => $this->trp('The file size must not exceed 5MB.', [], 'ui'),
         ]);
 
-        // ✅ NEW: Scoping for import
-        $forcedDeptId = null;
-        $forcedManagerId = null;
-        if (!Auth::user()->can('employees.view.all')) {
-            $forcedDeptId = Auth::user()->department_id;
-            $forcedManagerId = Auth::user()->employee_id;
-        }
-
         $this->isImporting = true;
         $this->importValidationErrors = [];
         $companyId = $this->getCompanyId();
 
         set_time_limit(0);
-        ini_set('memory_limit', '512M');
+        ini_set('memory_limit', '1024M');
 
         try {
-            $allowedBranchIds = DB::table('branch_user_access')
-                ->where('user_id', Auth::id())
-                ->where('saas_company_id', $companyId)
-                ->pluck('branch_id')
-                ->map(fn ($v) => (int) $v)
-                ->unique()
-                ->values()
-                ->all();
+            // --- Pre-fetch Data for Optimization ---
+            $DepartmentModel = $this->departmentModelClass();
+            $JobTitleModel = $this->jobTitleModelClass();
 
-            $defaultBranchId = (int) (Auth::user()?->branch_id ?? 0) ?: null;
-
-            if (! empty($allowedBranchIds) && ! in_array((int) $defaultBranchId, $allowedBranchIds, true)) {
-                $defaultBranchId = $allowedBranchIds[0] ?? null;
+            // Load Departments Map
+            $allDepts = $DepartmentModel::where('saas_company_id', $companyId)->get(['id', 'code', 'name']);
+            $deptMap = [];
+            foreach ($allDepts as $d) {
+                if ($d->code) $deptMap[strtolower(trim($d->code))] = $d->id;
+                $deptMap[strtolower(trim($d->name))] = $d->id;
             }
 
+            // Load Job Titles Map
+            $allJobTitles = $JobTitleModel::where('saas_company_id', $companyId)->get(['id', 'code', 'name']);
+            $jobMap = [];
+            foreach ($allJobTitles as $jt) {
+                if ($jt->code) $jobMap[strtolower(trim($jt->code))] = $jt->id;
+                $jobMap[strtolower(trim($jt->name))] = $jt->id;
+            }
+
+            // Load Managers Map
+            $allEmployees = Employee::where('saas_company_id', $companyId)->get(['id', 'employee_no', 'name_ar', 'name_en']);
+            $managerMap = [];
+            $existingDataMap = [
+                'national_ids' => [],
+                'emails' => [],
+                'mobiles' => [],
+            ];
+            foreach ($allEmployees as $e) {
+                if ($e->employee_no) $managerMap[strtolower(trim($e->employee_no))] = $e->id;
+                $managerMap[strtolower(trim($e->name_ar))] = $e->id;
+                $managerMap[strtolower(trim($e->name_en))] = $e->id;
+               
+                // Duplicate detection maps
+                $existingDataMap['national_ids'][$e->national_id] = $e->id;
+                if ($e->email_work) $existingDataMap['emails'][strtolower($e->email_work)] = $e->id;
+                if ($e->mobile) $existingDataMap['mobiles'][$e->mobile] = $e->id;
+            }
+
+            $forcedDeptId = null;
+            $forcedManagerId = null;
+            if (!Auth::user()->can('employees.view.all')) {
+                $forcedDeptId = Auth::user()->department_id;
+                $forcedManagerId = Auth::user()->employee_id;
+            }
+
+            $defaultBranchId = (int) (Auth::user()?->branch_id ?? 0) ?: null;
             $defaultAnnualLeaveDays = 21;
             if (class_exists(\Athka\Saas\Models\SaasCompanyOtherinfo::class)) {
                 $defaultAnnualLeaveDays = (int) (\Athka\Saas\Models\SaasCompanyOtherinfo::where('company_id', $companyId)->value('default_annual_leave_days') ?? 21);
@@ -1095,14 +1143,11 @@ public function setViewMode(string $mode): void
             $path = $this->importFile->getRealPath();
             $extension = strtolower($this->importFile->getClientOriginalExtension());
 
-            $DepartmentModel = $this->departmentModelClass();
-            $JobTitleModel = $this->jobTitleModelClass();
-
             $rowCount = 0;
             $importedCount = 0;
 
             // ─────────────────────────────────────────
-            // Helper functions (shared for both formats)
+            // Helper functions
             // ─────────────────────────────────────────
             $clean = function($val) {
                 if ($val === null) return null;
@@ -1117,7 +1162,6 @@ public function setViewMode(string $mode): void
 
             $parseDate = function($val) {
                 if (empty($val)) return null;
-                // Handle Excel serial date numbers
                 if (is_numeric($val) && $val > 40000 && $val < 100000) {
                     try {
                         return \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($val)->format('Y-m-d');
@@ -1137,265 +1181,175 @@ public function setViewMode(string $mode): void
                 return trim((string)$val);
             };
 
-            // Function to process a single row array (columns 0-27)
             $processRow = function(array $data) use (
                 $clean, $parseDate, $extractCode,
                 $companyId, $defaultBranchId, $defaultAnnualLeaveDays,
                 $forcedDeptId, $forcedManagerId,
-                $DepartmentModel, $JobTitleModel,
+                $deptMap, $jobMap, $managerMap, $existingDataMap,
                 &$rowCount, &$importedCount
             ) {
                 $rowCount++;
                 if (count($data) < 4 || empty(array_filter($data, fn($v) => !is_null($v) && (string)$v !== ''))) return;
 
-                $row = [
+                $rowRaw = [
                     'name_ar'                    => $clean($data[0] ?? ''),
                     'name_en'                    => $clean($data[1] ?? ''),
                     'national_id'                => $clean($data[2] ?? ''),
                     'national_id_expiry'         => $parseDate($clean($data[3] ?? '')),
                     'nationality'                => $clean($data[4] ?? ''),
                     'birth_date'                 => $parseDate($clean($data[5] ?? '')),
-                    'gender'                     => strtolower((string) $clean($data[6] ?? '')),
-                    'marital_status'             => strtolower((string) $clean($data[7] ?? '')),
+                    'gender_input'               => $clean($data[6] ?? ''),
+                    'marital_input'              => $clean($data[7] ?? ''),
                     'children_count'             => (int) ($clean($data[8] ?? 0) ?: 0),
                     'mobile'                     => $clean($data[9] ?? ''),
                     'email_work'                 => $clean($data[10] ?? ''),
                     'email_personal'             => $clean($data[11] ?? ''),
-                    'dept_code'                  => $extractCode($clean($data[12] ?? '')),
-                    'sub_dept_code'              => $extractCode($clean($data[13] ?? '')),
-                    'job_code'                   => $extractCode($clean($data[14] ?? '')),
-                    'manager_emp_no'             => $extractCode($clean($data[15] ?? '')),
+                    'dept_code_raw'              => $clean($data[12] ?? ''),
+                    'sub_dept_code_raw'          => $clean($data[13] ?? ''),
+                    'job_code_raw'               => $clean($data[14] ?? ''),
+                    'manager_raw'                => $clean($data[15] ?? ''),
                     'hired_at'                   => $parseDate($clean($data[16] ?? '')),
                     'basic_salary'               => (float) ($clean($data[17] ?? 0) ?: 0),
                     'allowances'                 => (float) ($clean($data[18] ?? 0) ?: 0),
                     'annual_leave_days'          => (int) ($clean($data[19] ?? $defaultAnnualLeaveDays) ?: $defaultAnnualLeaveDays),
-                    'contract_type'              => strtolower((string) $clean($data[20] ?? '')),
-                    'contract_duration_months'   => (int) ($clean($data[21] ?? 0) ?: 0),
+                    'contract_input'             => $clean($data[20] ?? ''),
+                    'contract_duration'          => (int) ($clean($data[21] ?? 0) ?: 0),
                     'city'                       => $clean($data[22] ?? ''),
                     'district'                   => $clean($data[23] ?? ''),
                     'address'                    => $clean($data[24] ?? ''),
-                    'emergency_contact_name'     => $clean($data[25] ?? ''),
-                    'emergency_contact_phone'    => $clean($data[26] ?? ''),
-                    'emergency_contact_relation' => $clean($data[27] ?? ''),
+                    'emergency_name'             => $clean($data[25] ?? ''),
+                    'emergency_phone'            => $clean($data[26] ?? ''),
+                    'emergency_relation'         => $clean($data[27] ?? ''),
                 ];
 
-                // Basic validation
-                if (empty($row['name_ar']) || empty($row['national_id'])) {
-                    $this->importValidationErrors[] = $this->trp('Row :row: Name AR and National ID are required.', ['row' => $rowCount]);
+                // --- Validations ---
+                if (empty($rowRaw['name_ar'])) {
+                    $this->importValidationErrors[] = $this->trp('Row :row: Name AR is required.', ['row' => $rowCount]);
+                    return;
+                }
+                if (empty($rowRaw['national_id'])) {
+                    $this->importValidationErrors[] = $this->trp('Row :row: National ID is required.', ['row' => $rowCount]);
                     return;
                 }
 
-                // Duplicate check
-                $duplicate = Employee::where('saas_company_id', $companyId)
-                    ->where(function($q) use ($row) {
-                        $q->where('national_id', $row['national_id'])
-                          ->when($row['email_work'], fn($qq) => $qq->orWhere('email_work', $row['email_work']))
-                          ->when($row['mobile'], fn($qq) => $qq->orWhere('mobile', $row['mobile']));
-                    })->first();
-
-                if ($duplicate) {
-                    $field = tr('National ID');
-                    $value = $row['national_id'];
-                    if ($row['email_work'] && $duplicate->email_work === $row['email_work']) {
-                        $field = tr('Email'); $value = $row['email_work'];
-                    } elseif ($row['mobile'] && $duplicate->mobile === $row['mobile']) {
-                        $field = tr('Mobile'); $value = $row['mobile'];
-                    }
-                    $this->importValidationErrors[] = $this->trp('Row :row: Employee already exists matching :field (:value).', [
-                        'row' => $rowCount, 'field' => $field, 'value' => $value,
-                    ]);
+                // Check Duplicates
+                if (isset($existingDataMap['national_ids'][$rowRaw['national_id']])) {
+                    $this->importValidationErrors[] = $this->trp('Row :row: Duplicate National ID (:val).', ['row' => $rowCount, 'val' => $rowRaw['national_id']]);
+                    return;
+                }
+                if ($rowRaw['email_work'] && isset($existingDataMap['emails'][strtolower($rowRaw['email_work'])])) {
+                    $this->importValidationErrors[] = $this->trp('Row :row: Email already exists (:val).', ['row' => $rowCount, 'val' => $rowRaw['email_work']]);
+                    return;
+                }
+                if ($rowRaw['mobile'] && isset($existingDataMap['mobiles'][$rowRaw['mobile']])) {
+                    $this->importValidationErrors[] = $this->trp('Row :row: Mobile already exists (:val).', ['row' => $rowCount, 'val' => $rowRaw['mobile']]);
                     return;
                 }
 
-                // Find Department
-                $deptId = null;
-                if (!empty($row['dept_code'])) {
-                    $dept = $DepartmentModel::where('saas_company_id', $companyId)
-                        ->where(function($q) use ($row) {
-                            $q->where('code', $row['dept_code'])->orWhere('name', $row['dept_code']);
-                        })->first();
-                    if ($dept) $deptId = $dept->id;
-                    else $this->importValidationErrors[] = $this->trp('Row :row: Main Department ":code" not found.', ['row' => $rowCount, 'code' => $row['dept_code']]);
+                // Resolve Maps
+                $getMappedId = function($val, $map) use ($extractCode) {
+                    if (empty($val)) return null;
+                    $code = strtolower($extractCode($val));
+                    return $map[$code] ?? null;
+                };
+
+                $deptId = $getMappedId($rowRaw['dept_code_raw'], $deptMap);
+                $subDeptId = $getMappedId($rowRaw['sub_dept_code_raw'], $deptMap);
+                $jobId = $getMappedId($rowRaw['job_code_raw'], $jobMap);
+                $managerId = $getMappedId($rowRaw['manager_raw'], $managerMap);
+
+                if (!empty($rowRaw['dept_code_raw']) && !$deptId) {
+                    $this->importValidationErrors[] = $this->trp('Row :row: Main Department ":val" not found.', ['row' => $rowCount, 'val' => $rowRaw['dept_code_raw']]);
+                }
+                if (!empty($rowRaw['sub_dept_code_raw']) && !$subDeptId) {
+                    $this->importValidationErrors[] = $this->trp('Row :row: Sub Department ":val" not found.', ['row' => $rowCount, 'val' => $rowRaw['sub_dept_code_raw']]);
+                }
+                if (!empty($rowRaw['job_code_raw']) && !$jobId) {
+                    $this->importValidationErrors[] = $this->trp('Row :row: Job Title ":val" not found.', ['row' => $rowCount, 'val' => $rowRaw['job_code_raw']]);
+                    if (empty($this->importValidationErrors)) return; // Stop if errors
                 }
 
-                // Find Sub Department
-                $subDeptId = null;
-                if (!empty($row['sub_dept_code'])) {
-                    $subDept = $DepartmentModel::where('saas_company_id', $companyId)
-                        ->where(function($q) use ($row) {
-                            $q->where('code', $row['sub_dept_code'])->orWhere('name', $row['sub_dept_code']);
-                        })->first();
-                    if ($subDept) $subDeptId = $subDept->id;
-                    else $this->importValidationErrors[] = $this->trp('Row :row: Sub Department ":code" not found.', ['row' => $rowCount, 'code' => $row['sub_dept_code']]);
-                }
-
-                // Find Job Title
-                $jobId = null;
-                if (!empty($row['job_code'])) {
-                    $job = $JobTitleModel::where('saas_company_id', $companyId)
-                        ->where(function($q) use ($row) {
-                            $q->where('code', $row['job_code'])->orWhere('name', $row['job_code']);
-                        })->first();
-                    if ($job) $jobId = $job->id;
-                    else $this->importValidationErrors[] = $this->trp('Row :row: Job title ":code" not found.', ['row' => $rowCount, 'code' => $row['job_code']]);
-                }
-
-                // Find Manager
-                $managerId = null;
-                if (!empty($row['manager_emp_no'])) {
-                    $manager = Employee::where('saas_company_id', $companyId)
-                        ->where(function($q) use ($row) {
-                            $q->where('employee_no', $row['manager_emp_no'])
-                              ->orWhere('name_ar', $row['manager_emp_no'])
-                              ->orWhere('name_en', $row['manager_emp_no']);
-                        })->first();
-                    if ($manager) $managerId = $manager->id;
-                    else $this->importValidationErrors[] = $this->trp('Row :row: Manager ":no" not found.', ['row' => $rowCount, 'no' => $row['manager_emp_no']]);
-                }
-
-                // Gender mapping
-                $genderInput = strtolower((string) $row['gender']);
-                $gender = (in_array($genderInput, ['female', 'f', 'أنثى', 'انثى'], true)) ? 'female' : 'male';
-
-                // Marital status mapping
-                $mStatusInput = strtolower((string) $row['marital_status']);
-                $mStatus = (in_array($mStatusInput, ['married', 'm', 'متزوج', 'متزوجة'], true)) ? 'married' : 'single';
-
-                // Contract type mapping
-                $contractInput = strtolower((string) $row['contract_type']);
+                // Field Mappings
+                $gender = (in_array(strtolower($rowRaw['gender_input']), ['female', 'f', 'أنثى', 'انثى'], true)) ? 'female' : 'male';
+                $mStatus = (in_array(strtolower($rowRaw['marital_input']), ['married', 'm', 'متزوج', 'متزوجة'], true)) ? 'married' : 'single';
+                
+                $cInput = strtolower($rowRaw['contract_input']);
                 $contractType = 'permanent';
-                if (in_array($contractInput, ['temporary', 'probation', 'contractor', 'مؤقت', 'تجربة', 'مقاول'], true)) {
+                if (in_array($cInput, ['temporary', 'probation', 'contractor', 'مؤقت', 'تجربة', 'مقاول'], true)) {
                     $map = ['مؤقت' => 'temporary', 'تجربة' => 'probation', 'مقاول' => 'contractor'];
-                    $contractType = $map[$contractInput] ?? $contractInput;
+                    $contractType = $map[$cInput] ?? $cInput;
                 }
 
                 try {
-                    $jobTitleName = $jobId ? ($JobTitleModel::find($jobId)?->name) : null;
-
                     Employee::create([
                         'saas_company_id'            => $companyId,
                         'branch_id'                  => $defaultBranchId,
-                        'name_ar'                    => $row['name_ar'],
-                        'name_en'                    => $row['name_en'],
-                        'national_id'                => $row['national_id'],
-                        'national_id_expiry'         => (empty($row['national_id_expiry']) || str_contains((string)$row['national_id_expiry'], '#'))
-                            ? now()->addYear()->format('Y-m-d')
-                            : $row['national_id_expiry'],
-                        'nationality'                => $row['nationality'] ?: tr('Unknown'),
-                        'birth_date'                 => (empty($row['birth_date']) || str_contains((string)$row['birth_date'], '#'))
-                            ? '1990-01-01'
-                            : $row['birth_date'],
-                        'birth_place'                => $row['city'] ?: tr('Unknown'),
+                        'name_ar'                    => $rowRaw['name_ar'],
+                        'name_en'                    => $rowRaw['name_en'],
+                        'national_id'                => $rowRaw['national_id'],
+                        'national_id_expiry'         => $rowRaw['national_id_expiry'] ?: now()->addYear()->format('Y-m-d'),
+                        'nationality'                => $rowRaw['nationality'] ?: tr('Unknown'),
+                        'birth_date'                 => $rowRaw['birth_date'] ?: '1990-01-01',
+                        'birth_place'                => $rowRaw['city'] ?: tr('Unknown'),
                         'gender'                     => $gender,
                         'marital_status'             => $mStatus,
-                        'children_count'             => $row['children_count'] ?: 0,
-                        'mobile'                     => $row['mobile'],
-                        'email_work'                 => $row['email_work'] ?: null,
-                        'email_personal'             => $row['email_personal'] ?: null,
+                        'children_count'             => $rowRaw['children_count'],
+                        'mobile'                     => $rowRaw['mobile'],
+                        'email_work'                 => $rowRaw['email_work'],
+                        'email_personal'             => $rowRaw['email_personal'],
                         'department_id'              => $forcedDeptId ?: $deptId,
                         'sub_department_id'          => $subDeptId,
                         'job_title_id'               => $jobId,
                         'manager_id'                 => $forcedManagerId ?: $managerId,
                         'sector'                     => 'Staff',
                         'grade'                      => 1,
-                        'job_function'               => $jobTitleName ?: 'Staff',
-                        'hired_at'                   => (empty($row['hired_at']) || str_contains((string)$row['hired_at'], '#'))
-                            ? now()->format('Y-m-d')
-                            : $row['hired_at'],
-                        'basic_salary'               => $row['basic_salary'] ?: 0,
-                        'allowances'                 => $row['allowances'] ?: 0,
-                        'annual_leave_days'          => $row['annual_leave_days'] ?: $defaultAnnualLeaveDays,
+                        'job_function'               => 'Staff',
+                        'hired_at'                   => $rowRaw['hired_at'] ?: now()->format('Y-m-d'),
+                        'basic_salary'               => $rowRaw['basic_salary'],
+                        'allowances'                 => $rowRaw['allowances'],
+                        'annual_leave_days'          => $rowRaw['annual_leave_days'],
                         'contract_type'              => $contractType,
-                        'contract_duration_months'   => $contractType === 'permanent' ? 0 : ($row['contract_duration_months'] ?: 0),
-                        'city'                       => $row['city'] ?: tr('Unknown'),
-                        'district'                   => $row['district'] ?: tr('Unknown'),
-                        'address'                    => $row['address'] ?: tr('Unknown'),
-                        'emergency_contact_name'     => $row['emergency_contact_name'] ?: tr('Unknown'),
-                        'emergency_contact_phone'    => $row['emergency_contact_phone'] ?: '0000000000',
-                        'emergency_contact_relation' => $row['emergency_contact_relation'] ?: 'أخرى',
+                        'contract_duration_months'   => $rowRaw['contract_duration'],
+                        'city'                       => $rowRaw['city'] ?: tr('Unknown'),
+                        'district'                   => $rowRaw['district'] ?: tr('Unknown'),
+                        'address'                    => $rowRaw['address'] ?: tr('Unknown'),
+                        'emergency_contact_name'     => $rowRaw['emergency_name'] ?: tr('Unknown'),
+                        'emergency_contact_phone'    => $rowRaw['emergency_phone'] ?: '0000000000',
+                        'emergency_contact_relation' => $rowRaw['emergency_relation'] ?: 'أخرى',
                         'status'                     => 'ACTIVE',
                     ]);
                     $importedCount++;
                 } catch (\Exception $e) {
-                    $error = $e->getMessage();
-                    if (str_contains($error, 'Data too long')) $error = tr('Some data fields are too long for the database.');
-                    elseif (str_contains($error, 'Incorrect date value')) $error = tr('Invalid date format in one of the columns (must be YYYY-MM-DD).');
-                    elseif (str_contains($error, "doesn't have a default value")) {
-                        preg_match("/Field '(.+)' doesn't have a default value/", $error, $matches);
-                        $field = $matches[1] ?? 'unknown';
-                        $error = tr('The following required field is missing: ') . $field;
-                    } elseif (str_contains($error, 'integrity constraint violation')) {
-                        $error = tr('A database constraint was violated. Check if all codes (Department/Job) are correct.');
-                    } else {
-                        $error = tr('Technical Error: ') . substr($error, 0, 100);
-                    }
-                    $this->importValidationErrors[] = $this->trp('Row :row: Failed to save: :error', ['row' => $rowCount, 'error' => $error], 'ui');
+                    $this->importValidationErrors[] = $this->trp('Row :row: Failed to save. Error: :err', ['row' => $rowCount, 'err' => substr($e->getMessage(), 0, 80)]);
                 }
             };
 
-            // ─────────────────────────────────────────
-            // XLSX / XLS: Use PhpSpreadsheet
-            // ─────────────────────────────────────────
-            if (in_array($extension, ['xlsx', 'xls'])) {
-                $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($path);
-                $sheet = $spreadsheet->getActiveSheet();
-                $rows = $sheet->toArray(null, true, true, false);
-
-                // Skip header row (index 0)
-                $isFirst = true;
-                foreach ($rows as $rowData) {
-                    if ($isFirst) { $isFirst = false; continue; }
-                    // Skip completely empty rows
-                    if (empty(array_filter($rowData, fn($v) => !is_null($v) && (string)$v !== ''))) continue;
-                    $processRow($rowData);
+            DB::transaction(function() use ($extension, $path, $processRow) {
+                if (in_array($extension, ['xlsx', 'xls'])) {
+                    $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($path);
+                    $rows = $spreadsheet->getActiveSheet()->toArray(null, true, true, false);
+                    array_shift($rows); // Header
+                    foreach ($rows as $rowData) {
+                        $processRow($rowData);
+                    }
+                } else {
+                    $tempFile = fopen($path, 'r');
+                    fgetcsv($tempFile); // Skip header
+                    while (($data = fgetcsv($tempFile)) !== FALSE) {
+                        $processRow($data);
+                    }
+                    fclose($tempFile);
                 }
-
-            // ─────────────────────────────────────────
-            // CSV: Use fgetcsv (original logic)
-            // ─────────────────────────────────────────
-            } else {
-                $content = file_get_contents($path);
-                if (!mb_check_encoding($content, 'UTF-8')) {
-                    $content = mb_convert_encoding($content, 'UTF-8', 'UTF-16, ISO-8859-1, Windows-1252');
-                }
-                $tempFile = fopen('php://temp', 'r+');
-                fwrite($tempFile, $content);
-                rewind($tempFile);
-
-                // Skip BOM
-                $bom = fread($tempFile, 3);
-                if ($bom !== "\xEF\xBB\xBF") {
-                    rewind($tempFile);
-                }
-
-                // Detect delimiter
-                $firstLine = fgets($tempFile);
-                $delimiter = (str_contains($firstLine, ';') && !str_contains($firstLine, ',')) ? ';' : ',';
-                rewind($tempFile);
-                if ($bom === "\xEF\xBB\xBF") fread($tempFile, 3);
-
-                // Skip header row
-                fgets($tempFile);
-
-                while (($data = fgetcsv($tempFile, 0, $delimiter)) !== FALSE) {
-                    $processRow($data);
-                }
-
-                fclose($tempFile);
-            }
+            });
 
         } catch (\Throwable $th) {
-            $this->importValidationErrors[] = tr('Critical error during import: ') . $th->getMessage();
+            $this->importValidationErrors[] = tr('Critical error: ') . $th->getMessage();
         } finally {
             $this->isImporting = false;
         }
 
         if ($importedCount > 0) {
-            $this->dispatch('toast',
-                type: 'success',
-                title: tr('Import Successful'),
-                message: $this->trp(':count employees imported.', ['count' => $importedCount])
-            );
+            $this->dispatch('toast', type: 'success', title: tr('Success'), message: $this->trp(':count employees imported.', ['count' => $importedCount]));
         }
 
         if (empty($this->importValidationErrors)) {
@@ -1407,9 +1361,9 @@ public function setViewMode(string $mode): void
     private function branchModelClass(): ?string
     {
         $candidates = [
-            \App\Models\Branch::class,
-            \Athka\SystemSettings\Models\Branch::class,
-            \Athka\Saas\Models\Branch::class,
+            'App\Models\Branch',
+            'Athka\SystemSettings\Models\Branch',
+            'Athka\Saas\Models\Branch',
         ];
 
         foreach ($candidates as $class) {
