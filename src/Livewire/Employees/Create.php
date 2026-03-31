@@ -238,6 +238,19 @@ class Create extends Component
         return $this->isAr() ? $ar : $en;
     }
 
+    private function hasAtLeastThreeNameParts(?string $value): bool
+{
+    $value = trim((string) $value);
+
+    if ($value === '') {
+        return false;
+    }
+
+    $parts = preg_split('/\s+/u', $value, -1, PREG_SPLIT_NO_EMPTY);
+
+    return count($parts) >= 3;
+}
+
     private function validationMessages(): array
     {
         return [
@@ -482,10 +495,32 @@ class Create extends Component
         ];
     }
 
-    private function rulesTab1(): array
-    {
-        return [
-            'name_ar' => ['required', 'string', 'max:255'],
+   private function rulesTab1(): array
+{
+    return [
+        'name_ar' => [
+            'required',
+            'string',
+            'max:255',
+            function ($attribute, $value, $fail) {
+                if (! $this->hasAtLeastThreeNameParts($value)) {
+                    $fail($this->txt(
+                        'يجب إدخال الاسم الثلاثي على الأقل.',
+                        'Please enter at least three names.'
+                    ));
+                }
+            },
+        ],
+        'national_id_type' => ['required', Rule::in(['national_id', 'iqama', 'passport', 'other'])],
+        'national_id' => [
+            'required',
+            'string',
+            'max:50',
+            Rule::unique('employees', 'national_id')
+                ->where('saas_company_id', $this->companyId)
+                ->whereNull('deleted_at'),
+        ],
+        
             'national_id_type' => ['required', Rule::in(['national_id', 'iqama', 'passport', 'other'])],
             'national_id' => [
                 'required',
