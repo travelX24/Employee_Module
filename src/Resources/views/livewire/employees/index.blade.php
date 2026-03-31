@@ -434,24 +434,33 @@ $statusText = match ($emp->status) {
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                     @foreach($employees as $emp)
                         @php
-                            $statusType = match ($emp->status) {
-                                'ACTIVE'   => 'success',
-                                'ENDED'    => 'warning',
-                                'ARCHIVED' => 'default',
-                                default    => 'default',
-                            };
+    $statusType = match ($emp->status) {
+        'ACTIVE'   => 'success',
+        'ENDED'    => 'warning',
+        'ARCHIVED' => 'default',
+        default    => 'default',
+    };
 
-                            $statusText = match ($emp->status) {
-                                'ACTIVE'   => tr('Active'),
-                                'ENDED'    => tr('Ended'),
-                                'ARCHIVED' => tr('Archived'),
-                                default    => $emp->status ?: '—',
-                            };
+    $statusText = match ($emp->status) {
+        'ACTIVE'   => tr('Active'),
+        'ENDED'    => tr('Ended'),
+        'ARCHIVED' => tr('Archived'),
+        default    => $emp->status ?: '—',
+    };
 
-                            $primaryName = $isRtl
-                                ? ($emp->name_ar ?: $emp->name_en)
-                                : ($emp->name_en ?: $emp->name_ar);
-                        @endphp
+    $primaryName = $isRtl
+        ? ($emp->name_ar ?: $emp->name_en)
+        : ($emp->name_en ?: $emp->name_ar);
+
+    $branchesMapLocal = $branchesMap ?? [];
+    $branchRow = $emp->branch_id ? ($branchesMapLocal[(int) $emp->branch_id] ?? null) : null;
+
+    $branchName = $isRtl
+        ? ($branchRow['name_ar'] ?? $branchRow['name'] ?? $branchRow['name_en'] ?? null)
+        : ($branchRow['name_en'] ?? $branchRow['name'] ?? $branchRow['name_ar'] ?? null);
+
+    $branchCode = $branchRow['code'] ?? null;
+@endphp
 
                         <x-ui.card hover="true">
                             <div class="flex items-start justify-between mb-4">
@@ -538,19 +547,28 @@ $statusText = match ($emp->status) {
                                 </div>
 
                                 <div class="flex items-center justify-between">
-                                    <span class="text-xs text-gray-500">{{ tr('Department') }}</span>
-                                    <span class="text-xs font-medium text-gray-700 truncate ms-2">
-                                        {{ $emp->department?->name ?? '—' }}
-                                    </span>
-                                </div>
+    <span class="text-xs text-gray-500">{{ tr('Department') }}</span>
+    <span class="text-xs font-medium text-gray-700 truncate ms-2">
+        {{ $emp->department?->name ?? '—' }}
+    </span>
+</div>
 
-                                <div class="flex items-center justify-between">
-                                    <span class="text-xs text-gray-500">{{ tr('Job Title') }}</span>
-                                    <span class="text-xs font-medium text-gray-700 truncate ms-2">
-                                        {{ $emp->jobTitle?->name ?? '—' }}
-                                    </span>
-                                </div>
+<div class="flex items-center justify-between">
+    <span class="text-xs text-gray-500">{{ tr('Branch') }}</span>
+    <span class="text-xs font-medium text-gray-700 truncate ms-2" title="{{ $branchName ?: '' }}">
+        {{ $branchName ?: ($emp->branch_id ? ('#' . $emp->branch_id) : '—') }}
+        @if($branchCode)
+            <span class="text-gray-400">- {{ $branchCode }}</span>
+        @endif
+    </span>
+</div>
 
+<div class="flex items-center justify-between">
+    <span class="text-xs text-gray-500">{{ tr('Job Title') }}</span>
+    <span class="text-xs font-medium text-gray-700 truncate ms-2">
+        {{ $emp->jobTitle?->name ?? '—' }}
+    </span>
+</div>
                                 <div class="flex items-center gap-2 text-xs text-gray-500">
                                     <i class="fas fa-phone"></i>
                                     <span class="truncate">{{ $emp->mobile ?? '—' }}</span>
