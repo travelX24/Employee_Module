@@ -170,7 +170,7 @@
                                 :placeholder="tr('All Status')"
                                 :options="[
                                     ['value' => 'ACTIVE', 'label' => tr('Active')],
-                                    ['value' => 'SUSPENDED', 'label' => tr('Suspended')],
+                                    ['value' => 'SUSPENDED', 'label' => tr('Not Active')],
                                     ['value' => 'RESIGNED', 'label' => tr('Resigned')],
                                     ['value' => 'TERMINATED', 'label' => tr('Terminated')],
                                     ['value' => 'RETIRED', 'label' => tr('Retired')],
