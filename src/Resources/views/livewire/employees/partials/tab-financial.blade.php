@@ -138,8 +138,128 @@
                             {{ tr('Adjustments') }}: <span class="font-bold {{ $leave_balance_adjustments >= 0 ? 'text-green-500' : 'text-red-500' }}">{{ $leave_balance_adjustments > 0 ? '+' : '' }}{{ $leave_balance_adjustments }}</span>
                         </div>
                     </div>
+                    </div>
                 </div>
             </div>
+
+            {{-- Adjustment History List --}}
+            @if($employee->leaveAdjustments && $employee->leaveAdjustments->count() > 0)
+                <div class="mt-6 pt-6 border-t border-gray-100">
+                    <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <i class="fas fa-history"></i>
+                        {{ tr('Manual Adjustments History') }}
+                    </h4>
+                    <div class="space-y-2 max-h-[250px] overflow-y-auto no-scrollbar pr-1">
+                        @foreach($employee->leaveAdjustments as $adj)
+                            <div class="flex items-start gap-3 p-3 bg-white border border-gray-100 rounded-xl hover:border-gray-200 transition-colors group">
+                                <div @class([
+                                    'w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 shadow-sm',
+                                    'bg-green-50 text-green-600' => $adj->amount > 0,
+                                    'bg-red-50 text-red-600' => $adj->amount < 0,
+                                ])>
+                                    <i class="fas {{ $adj->amount > 0 ? 'fa-plus' : 'fa-minus' }} text-[10px]"></i>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <span class="text-[11px] font-bold text-gray-800">{{ $adj->amount > 0 ? '+' : '' }}{{ number_format($adj->amount, 0) }} {{ tr('Days') }}</span>
+                                        <span class="text-[10px] text-gray-400 font-medium">{{ $adj->created_at->format('Y-m-d H:i') }}</span>
+                                    </div>
+                                    <p class="text-[11px] text-gray-600 mt-1 leading-relaxed">{{ $adj->reason }}</p>
+                                    <div class="flex items-center justify-between mt-2">
+                                        <div class="flex items-center gap-1.5">
+                                            <div class="w-5 h-5 rounded-full bg-gray-50 border border-gray-100 flex items-center justify-center group-hover:bg-indigo-50 group-hover:border-indigo-100 transition-colors">
+                                                <i class="fas fa-user-shield text-[9px] text-gray-400 group-hover:text-indigo-500"></i>
+                                            </div>
+                                            <span class="text-[10px] text-gray-500 font-medium">{{ $adj->performer?->name ?? tr('System') }}</span>
+                                        </div>
+                                        @if($adj->file_path)
+                                            <a href="{{ asset('storage/'.$adj->file_path) }}" target="_blank" class="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 bg-indigo-50 group-hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition-colors">
+                                                <i class="fas fa-file-download text-[11px]"></i>
+                                                {{ tr('View File') }}
+                                            </a>
+                                        @endif
+                                    </div>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
         </div>
     @endif
+
+    {{-- Leave Adjustment Modal --}}
+    <x-ui.modal wire:model="showingAdjustmentModal" maxWidth="md">
+        <x-slot name="title">
+            <div class="flex items-center gap-2">
+                @if($adjustmentType === 'add')
+                    <div class="w-8 h-8 rounded-lg bg-green-100 text-green-600 flex items-center justify-center">
+                        <i class="fas fa-plus-circle"></i>
+                    </div>
+                    <span class="text-gray-800">{{ tr('Increase Leave Balance') }}</span>
+                @else
+                    <div class="w-8 h-8 rounded-lg bg-red-100 text-red-600 flex items-center justify-center">
+                        <i class="fas fa-minus-circle"></i>
+                    </div>
+                    <span class="text-gray-800">{{ tr('Decrease Leave Balance') }}</span>
+                @endif
+            </div>
+        </x-slot>
+
+        <div class="space-y-4 p-5">
+            <div class="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 flex items-start gap-3">
+                <i class="fas fa-info-circle text-indigo-500 mt-1"></i>
+                <div class="text-xs text-indigo-800 leading-relaxed">
+                    {{ tr('You are about to') }} 
+                    <span class="font-bold {{ $adjustmentType === 'add' ? 'text-green-600' : 'text-red-600' }}">
+                        {{ $adjustmentType === 'add' ? tr('ADD 1 day') : tr('SUBTRACT 1 day') }}
+                    </span>
+                    {{ tr('from the employee balance. Correcting or adjusting balances requires documentation for audit purposes.') }}
+                </div>
+            </div>
+
+            <x-ui.textarea 
+                id="adjustment_reason"
+                :label="tr('Adjustment Reason')" 
+                wire:model="adjustmentReason" 
+                error="adjustmentReason"
+                :required="true"
+                rows="3"
+                placeholder="{{ tr('Write a detailed reason for this adjustment (e.g. Compensation for weekend work, administrative decision #123)...') }}"
+            />
+
+            <x-ui.input 
+                id="adjustment_file"
+                type="file"
+                :label="tr('Attachment (PDF/Image)')" 
+                wire:model="adjustmentFile" 
+                error="adjustmentFile"
+                :required="true"
+                class="file:bg-indigo-50 file:text-indigo-600 file:border-0 file:rounded-lg file:px-3 file:py-1.5 file:mr-4 file:font-bold hover:file:bg-indigo-100 cursor-pointer"
+            />
+            
+            <div wire:loading wire:target="adjustmentFile" class="flex items-center gap-2 text-xs text-indigo-600 font-bold bg-indigo-50 px-3 py-2 rounded-lg">
+                <i class="fas fa-spinner fa-spin"></i> {{ tr('Uploading attachment...') }}
+            </div>
+
+            @if($adjustmentFile && $adjustmentFile instanceof \Livewire\Features\SupportFileUploads\TemporaryUploadedFile)
+                <div class="flex items-center gap-2 text-[10px] text-green-600 font-bold bg-green-50 px-3 py-1.5 rounded-lg border border-green-100">
+                    <i class="fas fa-check-circle"></i>
+                    {{ $adjustmentFile->getClientOriginalName() }}
+                </div>
+            @endif
+        </div>
+
+        <x-slot name="footer">
+            <div class="flex justify-end gap-3 w-full">
+                <x-ui.secondary-button type="button" @click="$wire.set('showingAdjustmentModal', false)">
+                    {{ tr('Cancel') }}
+                </x-ui.secondary-button>
+                <x-ui.primary-button type="button" wire:click="confirmLeaveAdjustment" wire:loading.attr="disabled">
+                    <i class="fas fa-save mr-2"></i>
+                    {{ tr('Confirm Adjustment') }}
+                </x-ui.primary-button>
+            </div>
+        </x-slot>
+    </x-ui.modal>
 </div>

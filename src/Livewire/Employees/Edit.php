@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Schema;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Illuminate\Support\Facades\DB;
 use Athka\Employees\Models\Employee;
+use Athka\Employees\Models\EmployeeLeaveAdjustment;
 
 class Edit extends Component
 {
@@ -70,6 +71,12 @@ class Edit extends Component
     public $opening_leave_balance = null;
     public int $leave_balance_adjustments = 0;
     public $calculated_leave_balance = 0;
+
+    // Leave Adjustment Modal
+    public bool $showingAdjustmentModal = false;
+    public string $adjustmentType = 'add';
+    public string $adjustmentReason = '';
+    public $adjustmentFile = null;
 
     /* TAB 4: Personal */
     public string $mobile = '';
@@ -420,14 +427,63 @@ if (! empty($allowed)) {
 
     public function addLeaveDay()
     {
-        $this->leave_balance_adjustments++;
-        $this->recalculateLeaveBalance();
+        $this->adjustmentType = 'add';
+        $this->resetAdjustmentForm();
+        $this->showingAdjustmentModal = true;
     }
 
     public function subtractLeaveDay()
     {
-        $this->leave_balance_adjustments--;
+        $this->adjustmentType = 'subtract';
+        $this->resetAdjustmentForm();
+        $this->showingAdjustmentModal = true;
+    }
+
+    private function resetAdjustmentForm()
+    {
+        $this->adjustmentReason = '';
+        $this->adjustmentFile = null;
+        $this->resetErrorBag(['adjustmentReason', 'adjustmentFile']);
+    }
+
+    public function confirmLeaveAdjustment()
+    {
+        $this->validate([
+            'adjustmentReason' => 'required|string|min:4',
+            'adjustmentFile' => 'required|file|max:5120',
+        ], [
+            'adjustmentReason.required' => $this->txt('يجب ذكر سبب التعديل.', 'Adjustment reason is required.'),
+            'adjustmentReason.min' => $this->txt('السبب قصير جداً.', 'Reason is too short.'),
+            'adjustmentFile.required' => $this->txt('يجب رفع ملف مرفق (قرار/طلب).', 'Attachment file is required.'),
+        ]);
+
+        $amount = ($this->adjustmentType === 'add') ? 1 : -1;
+
+        // 1. Upload File
+        $path = $this->adjustmentFile->store("employees/{$this->employee->id}/leave_adjustments", 'public');
+        $fileName = $this->adjustmentFile->getClientOriginalName();
+
+        // 2. Create History Record
+        EmployeeLeaveAdjustment::create([
+            'employee_id' => $this->employee->id,
+            'amount' => $amount,
+            'reason' => $this->adjustmentReason,
+            'file_path' => $path,
+            'file_name' => $fileName,
+            'performer_id' => Auth::id(),
+        ]);
+
+        // 3. Update Balance
+        $this->leave_balance_adjustments += $amount;
         $this->recalculateLeaveBalance();
+
+        // Sync with database immediately for this specific change
+        $this->employee->update([
+            'leave_balance_adjustments' => $this->leave_balance_adjustments
+        ]);
+
+        $this->showingAdjustmentModal = false;
+        $this->dispatch('toast', type: 'success', title: tr('Success'), message: tr('Leave balance adjusted successfully'));
     }
 
     public function updatedHiredAt($value)

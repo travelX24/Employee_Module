@@ -66,7 +66,7 @@ class DetailModal extends Component
 
         $this->employee = Employee::query()
             ->where('id', $this->employee->id)
-            ->with(['department', 'jobTitle', 'documents', 'manager'])
+            ->with(['department', 'jobTitle', 'documents', 'manager', 'statusLogs.performer'])
             ->first();
     }
 

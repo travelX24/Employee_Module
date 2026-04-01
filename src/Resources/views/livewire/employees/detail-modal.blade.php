@@ -8,6 +8,7 @@
         3 => tr('Financial Information'),
         4 => tr('Personal Information'),
         5 => tr('Documents'),
+        6 => tr('Status History'),
     ];
     $locale = app()->getLocale();
 @endphp
@@ -19,11 +20,12 @@
             employeeId: {{ $employee->id }},
 
             show() {
-                this.activeTab = 1;
                 this.editMode = false;
+                this.activeTab = 1;
             },
 
             hide() {
+                this.editMode = false;
                 $wire.set('show', false);
             },
 
@@ -138,8 +140,8 @@
 
                 <div class="text-center mt-4">
                     <span class="text-sm font-bold text-[color:var(--brand-via)] bg-white/60 px-4 py-1.5 rounded-full inline-block shadow-sm">
-                        {{ tr('Step') }} <span x-text="activeTab"></span> {{ tr('of') }} 5:
-                        <span x-text="['{{ $steps[1] }}', '{{ $steps[2] }}', '{{ $steps[3] }}', '{{ $steps[4] }}', '{{ $steps[5] }}'][activeTab - 1]"></span>
+                        {{ tr('Step') }} <span x-text="activeTab"></span> {{ tr('of') }} 6:
+                        <span x-text="['{{ $steps[1] }}', '{{ $steps[2] }}', '{{ $steps[3] }}', '{{ $steps[4] }}', '{{ $steps[5] }}', '{{ $steps[6] }}'][activeTab - 1]"></span>
                     </span>
                 </div>
             </div>
@@ -190,8 +192,8 @@
 
                 <div class="text-center mt-3">
                     <span class="text-xs font-bold text-[color:var(--brand-via)] bg-white/60 px-3 py-1 rounded-full inline-block">
-                        {{ tr('Step') }} <span x-text="activeTab"></span> / 5 —
-                        <span x-text="['{{ $steps[1] }}', '{{ $steps[2] }}', '{{ $steps[3] }}', '{{ $steps[4] }}', '{{ $steps[5] }}'][activeTab - 1]"></span>
+                        {{ tr('Step') }} <span x-text="activeTab"></span> / 6 —
+                        <span x-text="['{{ $steps[1] }}', '{{ $steps[2] }}', '{{ $steps[3] }}', '{{ $steps[4] }}', '{{ $steps[5] }}', '{{ $steps[6] }}'][activeTab - 1]"></span>
                     </span>
                 </div>
             </div>
@@ -220,54 +222,54 @@
                 <div x-show="activeTab === 5" x-transition>
                     @include('employees::livewire.employees.partials.view-tab-documents', ['employee' => $employee])
                 </div>
+
+                <div x-show="activeTab === 6" x-transition>
+                    @include('employees::livewire.employees.partials.view-tab-history', ['employee' => $employee])
+                </div>
             </div>
 
             {{-- Edit Mode --}}
             <div x-show="editMode" x-transition class="w-full">
-                @livewire('employees.edit', ['employeeId' => $employee->id], key('edit-employee-'.$employee->id))
+                @livewire('employees.edit', ['employeeId' => $employee->id], 'edit-employee-'.$employee->id)
             </div>
 </div>
 </div>
 
             <x-slot name="footer">
-<div class="w-full flex justify-between items-center">
-            <div class="flex items-center gap-3">
-                @if(!$readonly)
-                    @can('employees.edit')
-                    <x-ui.primary-button
-                        type="button"
-                        x-show="!editMode"
-                        x-transition
-                        @click="enableEdit()"
-                        :fullWidth="false"
-                    >
-                        <i class="fas fa-edit me-2"></i>
-                        {{ tr('Edit') }}
-                    </x-ui.primary-button>
-                    @endcan
-
+                <div class="w-full flex justify-end items-center gap-3">
                     <x-ui.secondary-button
                         type="button"
-                        x-show="editMode"
-                        x-transition
-                        @click="cancelEdit()"
+                        @click="hide()"
                         :fullWidth="false"
                     >
-                        {{ tr('Cancel Edit') }}
+                        {{ tr('Close') }}
                     </x-ui.secondary-button>
-                @endif
-            </div>
 
-            <div class="flex gap-3">
-                <x-ui.secondary-button
-                    type="button"
-                    @click="hide()"
-                    :fullWidth="false"
-                >
-                    {{ tr('Close') }}
-                </x-ui.secondary-button>
-            </div>
-        </div>
+                    @if(!$readonly)
+                        @can('employees.edit')
+                        <x-ui.primary-button
+                            type="button"
+                            x-show="!editMode"
+                            x-transition
+                            @click="enableEdit()"
+                            :fullWidth="false"
+                        >
+                            <i class="fas fa-edit me-2"></i>
+                            {{ tr('Edit') }}
+                        </x-ui.primary-button>
+                        @endcan
+
+                        <x-ui.secondary-button
+                            type="button"
+                            x-show="editMode"
+                            x-transition
+                            @click="cancelEdit()"
+                            :fullWidth="false"
+                        >
+                            {{ tr('Cancel Edit') }}
+                        </x-ui.secondary-button>
+                    @endif
+                </div>
             </x-slot>
         </x-ui.modal>
     </div>

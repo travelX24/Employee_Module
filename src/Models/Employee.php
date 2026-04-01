@@ -187,6 +187,16 @@ public function subordinates(): HasMany
         return $this->hasMany(EmployeeDocument::class, 'employee_id');
     }
 
+    public function statusLogs(): HasMany
+    {
+        return $this->hasMany(EmployeeStatusLog::class, 'employee_id');
+    }
+
+    public function leaveAdjustments(): HasMany
+    {
+        return $this->hasMany(EmployeeLeaveAdjustment::class, 'employee_id')->latest();
+    }
+
     public function activeWorkSchedule()
     {
         return $this->hasOne(\Athka\Attendance\Models\EmployeeWorkSchedule::class, 'employee_id')

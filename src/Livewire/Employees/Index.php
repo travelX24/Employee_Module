@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 use App\Services\ExcelExportService;
 use Athka\Employees\Models\Employee;
+use Athka\Employees\Models\EmployeeStatusLog;
 
 class Index extends Component
 {
@@ -738,6 +739,26 @@ public function setViewMode(string $mode): void
         'ended_at' => $this->deactivateDate,
     ]);
 
+    // Deactivate linked user account if the date is today or past
+    $user = $this->selectedEmployee->user;
+    if ($user) {
+        $isImmediate = now()->startOfDay()->gte(\Carbon\Carbon::parse($this->deactivateDate)->startOfDay());
+        if ($isImmediate) {
+            $user->update(['is_active' => false]);
+        }
+    }
+
+    // Log the deactivation
+    EmployeeStatusLog::create([
+        'saas_company_id' => $this->getCompanyId(),
+        'employee_id'     => $this->selectedEmployee->id,
+        'performer_id'    => Auth::id(),
+        'action_type'     => 'SUSPENDED',
+        'effective_date'  => $this->deactivateDate,
+        'reason'          => $this->deactivateReason,
+        'notes'           => $this->deactivateNotes,
+    ]);
+
     $this->closeDeactivateModal();
 }
  
@@ -776,6 +797,22 @@ public function setViewMode(string $mode): void
     $employee->update([
         'status'   => 'ACTIVE',
         'ended_at' => null,
+    ]);
+
+    // Reactivate linked user account
+    $user = $employee->user;
+    if ($user) {
+        $user->update(['is_active' => true]);
+    }
+
+    // Log the reactivation
+    EmployeeStatusLog::create([
+        'saas_company_id' => $companyId,
+        'employee_id' => $employee->id,
+        'performer_id' => Auth::id(),
+        'action_type' => 'ACTIVATED',
+        'effective_date' => now()->format('Y-m-d'),
+        'reason' => tr('Employee Reactivated'),
     ]);
 }
  
@@ -871,6 +908,30 @@ public function setViewMode(string $mode): void
     $this->selectedEmployee->update([
         'status'   => 'TERMINATED',
         'ended_at' => $this->terminationDate,
+    ]);
+
+    // Deactivate linked user account if it happens today or earlier
+    $user = $this->selectedEmployee->user;
+    if ($user) {
+        $isImmediate = now()->startOfDay()->gte(\Carbon\Carbon::parse($this->terminationDate)->startOfDay());
+        if ($isImmediate) {
+            $user->update(['is_active' => false]);
+        }
+    }
+
+    // Log the termination
+    EmployeeStatusLog::create([
+        'saas_company_id' => $this->getCompanyId(),
+        'employee_id'     => $this->selectedEmployee->id,
+        'performer_id'    => Auth::id(),
+        'action_type'     => 'TERMINATED',
+        'effective_date'  => $this->terminationDate,
+        'reason'          => $this->terminationType . ': ' . $this->terminationReason,
+        'notes'           => $this->trp('Salary: :salary, Vacation: :vacation, Others: :others', [
+            'salary'   => $this->dueSalary,
+            'vacation' => $this->dueVacation,
+            'others'   => $this->dueOthers,
+        ]),
     ]);
 
     $this->closeTerminationModal();
