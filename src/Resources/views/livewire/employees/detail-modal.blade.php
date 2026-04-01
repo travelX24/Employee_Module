@@ -78,7 +78,7 @@
 <i class="fas fa-user-tie text-white text-xl"></i>
             </x-slot>
 
-            <div class="flex flex-col h-full overflow-hidden">
+            <div class="flex flex-col min-h-0">
                 {{-- Stepper (View mode only) --}}
         <div
             class="px-6 py-5 bg-gradient-to-br from-gray-50 via-gray-50/80 to-gray-50/60 border-b border-gray-200/50"
@@ -200,7 +200,7 @@
         </div>
 
         {{-- Content --}}
-        <div class="flex-1 overflow-y-auto p-6">
+        <div class="p-6 pb-32">
             {{-- View Mode --}}
             <div x-show="!editMode" x-transition>
                 <div x-show="activeTab === 1" x-transition>
@@ -232,45 +232,46 @@
             <div x-show="editMode" x-transition class="w-full">
                 @livewire('employees.edit', ['employeeId' => $employee->id], 'edit-employee-'.$employee->id)
             </div>
-</div>
-</div>
+        </div>
+        <div class="sticky bottom-0 px-6 py-4 border-t border-gray-200 bg-white shadow-[0_-8px_20px_rgba(0,0,0,0.06)] z-20 rounded-b-2xl">
+            <div class="w-full flex justify-end items-center gap-3">
+                <x-ui.secondary-button
+                    type="button"
+                    @click="hide()"
+                    :fullWidth="false"
+                >
+                    {{ tr('Close') }}
+                </x-ui.secondary-button>
 
-            <x-slot name="footer">
-                <div class="w-full flex justify-end items-center gap-3">
-                    <x-ui.secondary-button
+                @if(!$readonly)
+                    @can('employees.edit')
+                    <x-ui.primary-button
                         type="button"
-                        @click="hide()"
+                        x-show="!editMode"
+                        x-transition
+                        x-cloak
+                        @click="enableEdit()"
                         :fullWidth="false"
                     >
-                        {{ tr('Close') }}
+                        <i class="fas fa-edit me-2"></i>
+                        {{ tr('Edit') }}
+                    </x-ui.primary-button>
+                    @endcan
+
+                    <x-ui.secondary-button
+                        type="button"
+                        x-show="editMode"
+                        x-transition
+                        x-cloak
+                        @click="cancelEdit()"
+                        :fullWidth="false"
+                    >
+                        {{ tr('Cancel Edit') }}
                     </x-ui.secondary-button>
-
-                    @if(!$readonly)
-                        @can('employees.edit')
-                        <x-ui.primary-button
-                            type="button"
-                            x-show="!editMode"
-                            x-transition
-                            @click="enableEdit()"
-                            :fullWidth="false"
-                        >
-                            <i class="fas fa-edit me-2"></i>
-                            {{ tr('Edit') }}
-                        </x-ui.primary-button>
-                        @endcan
-
-                        <x-ui.secondary-button
-                            type="button"
-                            x-show="editMode"
-                            x-transition
-                            @click="cancelEdit()"
-                            :fullWidth="false"
-                        >
-                            {{ tr('Cancel Edit') }}
-                        </x-ui.secondary-button>
-                    @endif
-                </div>
-            </x-slot>
+                @endif
+            </div>
+        </div>
+        </div>
         </x-ui.modal>
     </div>
     @endif

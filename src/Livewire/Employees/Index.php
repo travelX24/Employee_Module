@@ -1207,6 +1207,14 @@ public function setViewMode(string $mode): void
         ini_set('memory_limit', '1024M');
 
         try {
+            // Check for ZipArchive extension if it's an Excel file
+            $extension = strtolower($this->importFile->getClientOriginalExtension());
+            if (in_array($extension, ['xlsx', 'xls']) && !class_exists('ZipArchive')) {
+                $this->importValidationErrors[] = $this->trp('PHP ZipArchive extension is not enabled on this server. Please enable it in PHP settings to import Excel files.', [], 'ui');
+                $this->isImporting = false;
+                return;
+            }
+
             // --- Pre-fetch Data for Optimization ---
             $DepartmentModel = $this->departmentModelClass();
             $JobTitleModel = $this->jobTitleModelClass();
