@@ -914,13 +914,15 @@
                 <div class="grid grid-cols-1 sm:grid-cols-1 gap-4 ms-11">
                     <button 
                         wire:click="downloadTemplate"
-                        class="flex cursor-pointer items-center gap-4 p-4 rounded-2xl border border-dashed border-[color:var(--brand-via)]/30 bg-[color:var(--brand-via)]/5 hover:bg-[color:var(--brand-via)]/10 hover:border-[color:var(--brand-via)] transition-all group"
+                        wire:loading.attr="disabled"
+                        class="flex cursor-pointer items-center gap-4 p-4 rounded-2xl border border-dashed border-[color:var(--brand-via)]/30 bg-[color:var(--brand-via)]/5 hover:bg-[color:var(--brand-via)]/10 hover:border-[color:var(--brand-via)] transition-all group disabled:opacity-75 disabled:cursor-wait"
                     >
                         <div class="w-12 h-12 rounded-xl bg-white flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
-                            <i class="fas fa-file-excel text-[color:var(--brand-via)] text-xl"></i>
+                            <div wire:loading wire:target="downloadTemplate" class="w-6 h-6 border-2 border-[color:var(--brand-via)]/30 border-t-[color:var(--brand-via)] animate-spin rounded-full"></div>
+                            <i wire:loading.remove wire:target="downloadTemplate" class="fas fa-file-excel text-[color:var(--brand-via)] text-xl"></i>
                         </div>
                         <div class="flex flex-col text-start">
-                            <span class="text-sm font-bold text-gray-800">{{ tr('Download Management Template') }}</span>
+                            <span class="text-sm font-bold text-gray-800">{{ tr('Download Employees Template') }}</span>
                             <span class="text-xs text-gray-500">{{ tr('The template includes pre-validated dropdowns for all categories.') }}</span>
                         </div>
                     </button>

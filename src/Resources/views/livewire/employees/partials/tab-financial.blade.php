@@ -143,7 +143,7 @@
             </div>
 
             {{-- Adjustment History List --}}
-            @if($employee->leaveAdjustments && $employee->leaveAdjustments->count() > 0)
+            @if(isset($employee) && $employee->leaveAdjustments && $employee->leaveAdjustments->count() > 0)
                 <div class="mt-6 pt-6 border-t border-gray-100">
                     <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
                         <i class="fas fa-history"></i>
@@ -189,77 +189,79 @@
     @endif
 
     {{-- Leave Adjustment Modal --}}
-    <x-ui.modal wire:model="showingAdjustmentModal" maxWidth="md">
-        <x-slot name="title">
-            <div class="flex items-center gap-2">
-                @if($adjustmentType === 'add')
-                    <div class="w-8 h-8 rounded-lg bg-green-100 text-green-600 flex items-center justify-center">
-                        <i class="fas fa-plus-circle"></i>
+    @if(isset($employee))
+        <x-ui.modal wire:model="showingAdjustmentModal" maxWidth="md">
+            <x-slot name="title">
+                <div class="flex items-center gap-2">
+                    @if($adjustmentType === 'add')
+                        <div class="w-8 h-8 rounded-lg bg-green-100 text-green-600 flex items-center justify-center">
+                            <i class="fas fa-plus-circle"></i>
+                        </div>
+                        <span class="text-gray-800">{{ tr('Increase Leave Balance') }}</span>
+                    @else
+                        <div class="w-8 h-8 rounded-lg bg-red-100 text-red-600 flex items-center justify-center">
+                            <i class="fas fa-minus-circle"></i>
+                        </div>
+                        <span class="text-gray-800">{{ tr('Decrease Leave Balance') }}</span>
+                    @endif
+                </div>
+            </x-slot>
+    
+            <div class="space-y-4 p-5">
+                <div class="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 flex items-start gap-3">
+                    <i class="fas fa-info-circle text-indigo-500 mt-1"></i>
+                    <div class="text-xs text-indigo-800 leading-relaxed">
+                        {{ tr('You are about to') }} 
+                        <span class="font-bold {{ $adjustmentType === 'add' ? 'text-green-600' : 'text-red-600' }}">
+                            {{ $adjustmentType === 'add' ? tr('ADD 1 day') : tr('SUBTRACT 1 day') }}
+                        </span>
+                        {{ tr('from the employee balance. Correcting or adjusting balances requires documentation for audit purposes.') }}
                     </div>
-                    <span class="text-gray-800">{{ tr('Increase Leave Balance') }}</span>
-                @else
-                    <div class="w-8 h-8 rounded-lg bg-red-100 text-red-600 flex items-center justify-center">
-                        <i class="fas fa-minus-circle"></i>
+                </div>
+    
+                <x-ui.textarea 
+                    id="adjustment_reason"
+                    :label="tr('Adjustment Reason')" 
+                    wire:model="adjustmentReason" 
+                    error="adjustmentReason"
+                    :required="true"
+                    rows="3"
+                    placeholder="{{ tr('Write a detailed reason for this adjustment (e.g. Compensation for weekend work, administrative decision #123)...') }}"
+                />
+    
+                <x-ui.input 
+                    id="adjustment_file"
+                    type="file"
+                    :label="tr('Attachment (PDF/Image)')" 
+                    wire:model="adjustmentFile" 
+                    error="adjustmentFile"
+                    :required="true"
+                    class="file:bg-indigo-50 file:text-indigo-600 file:border-0 file:rounded-lg file:px-3 file:py-1.5 file:mr-4 file:font-bold hover:file:bg-indigo-100 cursor-pointer"
+                />
+                
+                <div wire:loading wire:target="adjustmentFile" class="flex items-center gap-2 text-xs text-indigo-600 font-bold bg-indigo-50 px-3 py-2 rounded-lg">
+                    <i class="fas fa-spinner fa-spin"></i> {{ tr('Uploading attachment...') }}
+                </div>
+    
+                @if($adjustmentFile && $adjustmentFile instanceof \Livewire\Features\SupportFileUploads\TemporaryUploadedFile)
+                    <div class="flex items-center gap-2 text-[10px] text-green-600 font-bold bg-green-50 px-3 py-1.5 rounded-lg border border-green-100">
+                        <i class="fas fa-check-circle"></i>
+                        {{ $adjustmentFile->getClientOriginalName() }}
                     </div>
-                    <span class="text-gray-800">{{ tr('Decrease Leave Balance') }}</span>
                 @endif
             </div>
-        </x-slot>
-
-        <div class="space-y-4 p-5">
-            <div class="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 flex items-start gap-3">
-                <i class="fas fa-info-circle text-indigo-500 mt-1"></i>
-                <div class="text-xs text-indigo-800 leading-relaxed">
-                    {{ tr('You are about to') }} 
-                    <span class="font-bold {{ $adjustmentType === 'add' ? 'text-green-600' : 'text-red-600' }}">
-                        {{ $adjustmentType === 'add' ? tr('ADD 1 day') : tr('SUBTRACT 1 day') }}
-                    </span>
-                    {{ tr('from the employee balance. Correcting or adjusting balances requires documentation for audit purposes.') }}
+    
+            <x-slot name="footer">
+                <div class="flex justify-end gap-3 w-full">
+                    <x-ui.secondary-button type="button" @click="$wire.set('showingAdjustmentModal', false)">
+                        {{ tr('Cancel') }}
+                    </x-ui.secondary-button>
+                    <x-ui.primary-button type="button" wire:click="confirmLeaveAdjustment" wire:loading.attr="disabled">
+                        <i class="fas fa-save mr-2"></i>
+                        {{ tr('Confirm Adjustment') }}
+                    </x-ui.primary-button>
                 </div>
-            </div>
-
-            <x-ui.textarea 
-                id="adjustment_reason"
-                :label="tr('Adjustment Reason')" 
-                wire:model="adjustmentReason" 
-                error="adjustmentReason"
-                :required="true"
-                rows="3"
-                placeholder="{{ tr('Write a detailed reason for this adjustment (e.g. Compensation for weekend work, administrative decision #123)...') }}"
-            />
-
-            <x-ui.input 
-                id="adjustment_file"
-                type="file"
-                :label="tr('Attachment (PDF/Image)')" 
-                wire:model="adjustmentFile" 
-                error="adjustmentFile"
-                :required="true"
-                class="file:bg-indigo-50 file:text-indigo-600 file:border-0 file:rounded-lg file:px-3 file:py-1.5 file:mr-4 file:font-bold hover:file:bg-indigo-100 cursor-pointer"
-            />
-            
-            <div wire:loading wire:target="adjustmentFile" class="flex items-center gap-2 text-xs text-indigo-600 font-bold bg-indigo-50 px-3 py-2 rounded-lg">
-                <i class="fas fa-spinner fa-spin"></i> {{ tr('Uploading attachment...') }}
-            </div>
-
-            @if($adjustmentFile && $adjustmentFile instanceof \Livewire\Features\SupportFileUploads\TemporaryUploadedFile)
-                <div class="flex items-center gap-2 text-[10px] text-green-600 font-bold bg-green-50 px-3 py-1.5 rounded-lg border border-green-100">
-                    <i class="fas fa-check-circle"></i>
-                    {{ $adjustmentFile->getClientOriginalName() }}
-                </div>
-            @endif
-        </div>
-
-        <x-slot name="footer">
-            <div class="flex justify-end gap-3 w-full">
-                <x-ui.secondary-button type="button" @click="$wire.set('showingAdjustmentModal', false)">
-                    {{ tr('Cancel') }}
-                </x-ui.secondary-button>
-                <x-ui.primary-button type="button" wire:click="confirmLeaveAdjustment" wire:loading.attr="disabled">
-                    <i class="fas fa-save mr-2"></i>
-                    {{ tr('Confirm Adjustment') }}
-                </x-ui.primary-button>
-            </div>
-        </x-slot>
-    </x-ui.modal>
+            </x-slot>
+        </x-ui.modal>
+    @endif
 </div>

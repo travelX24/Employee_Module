@@ -956,7 +956,10 @@ public function setViewMode(string $mode): void
  
     public function downloadTemplate()
     {
-        $filename = 'employee_import_full_template.xlsx';
+        set_time_limit(0);
+        ini_set('memory_limit', '1024M');
+
+        $filename = 'employee_import_template_' . date('Y-m-d') . '.xlsx';
         
         $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
@@ -998,7 +1001,8 @@ public function setViewMode(string $mode): void
         $col = 'A';
         foreach ($headings as $header) {
             $sheet->setCellValue($col . '1', $header);
-            $sheet->getColumnDimension($col)->setAutoSize(true);
+            // Optimization: Use fixed widths instead of slow setAutoSize(true)
+            $sheet->getColumnDimension($col)->setWidth(20); 
             $sheet->getStyle($col . '1')->getFont()->setBold(true);
             $col++;
         }
@@ -1085,23 +1089,26 @@ public function setViewMode(string $mode): void
         // Hide data sheet
         $dataSheet->setSheetState(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet::SHEETSTATE_HIDDEN);
 
-        // --- Apply Validation to the Main Sheet ---
+        // --- Apply Validation to the Main Sheet (Optimized) ---
         $applyDropdown = function ($colLetter, $dataColLetter, $maxDataRow) use ($sheet) {
             if ($maxDataRow < 1) return; // No data to validate against
             
-            for ($row = 2; $row <= 1000; $row++) {
-                $validation = $sheet->getCell($colLetter . $row)->getDataValidation();
-                $validation->setType(\PhpOffice\PhpSpreadsheet\Cell\DataValidation::TYPE_LIST)
-                           ->setErrorStyle(\PhpOffice\PhpSpreadsheet\Cell\DataValidation::STYLE_INFORMATION)
-                           ->setAllowBlank(true)
-                           ->setShowInputMessage(true)
-                           ->setShowErrorMessage(true)
-                           ->setShowDropDown(true)
-                           ->setErrorTitle(tr('Input error'))
-                           ->setError(tr('Value is not in list.'))
-                           ->setPromptTitle(tr('Pick from list'))
-                           ->setPrompt(tr('Please select a value from the drop-down list.'))
-                           ->setFormula1('DataStorage_Hidden!$' . $dataColLetter . '$1:$' . $dataColLetter . '$' . $maxDataRow);
+            // Create validation object once and reuse (clone) for speed
+            $validation = new \PhpOffice\PhpSpreadsheet\Cell\DataValidation();
+            $validation->setType(\PhpOffice\PhpSpreadsheet\Cell\DataValidation::TYPE_LIST)
+                       ->setErrorStyle(\PhpOffice\PhpSpreadsheet\Cell\DataValidation::STYLE_INFORMATION)
+                       ->setAllowBlank(true)
+                       ->setShowInputMessage(true)
+                       ->setShowErrorMessage(true)
+                       ->setShowDropDown(true)
+                       ->setErrorTitle(tr('Input error'))
+                       ->setError(tr('Value is not in list.'))
+                       ->setPromptTitle(tr('Pick from list'))
+                       ->setPrompt(tr('Please select a value from the drop-down list.'))
+                       ->setFormula1('DataStorage_Hidden!$' . $dataColLetter . '$1:$' . $dataColLetter . '$' . $maxDataRow);
+
+            for ($row = 2; $row <= 500; $row++) { // Reduced to 500 rows for better performance on Plesk
+                $sheet->getCell($colLetter . $row)->setDataValidation(clone $validation);
             }
         };
 
