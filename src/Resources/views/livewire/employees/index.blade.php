@@ -135,6 +135,18 @@
                                 allValue="all"
                             />
 
+                            {{-- ✅ NEW: Direct Manager Filter --}}
+                            <x-ui.filter-select
+                                model="managerId"
+                                :label="tr('Direct Manager')"
+                                :placeholder="tr('All Managers')"
+                                :options="array_merge([['value' => 'none', 'label' => tr('No Direct Manager')]], $managersOptions)"
+                                width="full"
+                                :defer="false"
+                                :applyOnChange="true"
+                                allValue="all"
+                            />
+
                             {{-- ✅ NEW: Branch Filter --}}
                             <x-ui.filter-select
                                 model="branchFilterId"
@@ -224,6 +236,7 @@
                                        $wire.status !== 'all' ||
                                        $wire.branchFilterId !== 'all' ||
                                        $wire.contractType !== 'all' ||
+                                       $wire.managerId !== 'all' ||
                                        $wire.hiringDateType !== 'all';
                             }
                         }"
@@ -261,6 +274,7 @@
                                 tr('Department'),
                                 tr('Branch'),
                                 tr('Job Title'),
+                                tr('Direct Manager'),
                                 tr('Mobile'),
                                 tr('Email'),
                                 tr('Status'),
@@ -302,7 +316,7 @@
         ? ($emp->name_en ?: null)
         : ($emp->name_ar ?: null);
 
-    $isLockedEmployee = in_array($emp->status, ['SUSPENDED', 'TERMINATED', 'ARCHIVED', 'ENDED'], true);
+    $isLockedEmployee = in_array($emp->status, ['TERMINATED', 'ARCHIVED', 'ENDED'], true);
 @endphp
 
                             <tr wire:key="emp-row-{{ $emp->id }}" class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
@@ -351,6 +365,18 @@
                                     <span class="text-sm text-gray-700">
                                         {{ $emp->jobTitle?->name ?? '—' }}
                                     </span>
+                                </td>
+
+                                <td class="py-3 px-3">
+                                    @if($emp->manager)
+                                        <span class="text-sm font-medium text-gray-900" title="{{ $isRtl ? ($emp->manager->name_ar ?: $emp->manager->name_en) : ($emp->manager->name_en ?: $emp->manager->name_ar) }}">
+                                            {{ $isRtl ? ($emp->manager->name_ar ?: $emp->manager->name_en) : ($emp->manager->name_en ?: $emp->manager->name_ar) }}
+                                        </span>
+                                    @else
+                                        <span class="text-xs text-gray-400 font-medium">
+                                            {{ tr('No direct manager') }}
+                                        </span>
+                                    @endif
                                 </td>
 
 
@@ -413,6 +439,15 @@
                         <i class="fas fa-ban w-4 me-2"></i>
                         {{ tr('Deactivate') }}
                     </x-ui.dropdown-item>
+                @else
+                    <x-ui.dropdown-item
+                        href="#"
+                        wire:click="activateEmployee({{ $emp->id }})"
+                        class="text-green-600 hover:bg-green-50"
+                    >
+                        <i class="fas fa-check-circle w-4 me-2"></i>
+                        {{ tr('Activate') }}
+                    </x-ui.dropdown-item>
                 @endif
             @endcan
 
@@ -474,7 +509,7 @@
 
     $branchCode = $branchRow['code'] ?? null;
 
-    $isLockedEmployee = in_array($emp->status, ['SUSPENDED', 'TERMINATED', 'ARCHIVED', 'ENDED'], true);
+    $isLockedEmployee = in_array($emp->status, ['TERMINATED', 'ARCHIVED', 'ENDED'], true);
 @endphp
                         <x-ui.card hover="true">
                             <div class="flex items-start justify-between mb-4">
@@ -582,6 +617,19 @@
     <span class="text-xs font-medium text-gray-700 truncate ms-2">
         {{ $emp->jobTitle?->name ?? '—' }}
     </span>
+</div>
+
+<div class="flex items-center justify-between">
+    <span class="text-xs text-gray-500">{{ tr('Direct Manager') }}</span>
+    @if($emp->manager)
+        <span class="text-xs font-medium text-gray-700 truncate ms-2" title="{{ $isRtl ? ($emp->manager->name_ar ?: $emp->manager->name_en) : ($emp->manager->name_en ?: $emp->manager->name_ar) }}">
+            {{ $isRtl ? ($emp->manager->name_ar ?: $emp->manager->name_en) : ($emp->manager->name_en ?: $emp->manager->name_ar) }}
+        </span>
+    @else
+        <span class="text-xs text-gray-400 font-medium ms-2">
+            {{ tr('No direct manager') }}
+        </span>
+    @endif
 </div>
                                 <div class="flex items-center gap-2 text-xs text-gray-500">
                                     <i class="fas fa-phone"></i>

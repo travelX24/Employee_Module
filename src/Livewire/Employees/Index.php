@@ -25,6 +25,7 @@ class Index extends Component
 
     public string $branchFilterId = 'all';
     public string $contractType   = 'all'; 
+    public string $managerId      = 'all'; 
 
 
  
@@ -127,6 +128,7 @@ class Index extends Component
         'status'          => ['except' => 'all'],
         'branchFilterId'  => ['except' => 'all'], 
         'contractType'    => ['except' => 'all'], 
+        'managerId'       => ['except' => 'all'],
         'hiringDateType'  => ['except' => 'all'],
         'hiringDateStart' => ['except' => null],
         'hiringDateEnd'   => ['except' => null],
@@ -139,7 +141,6 @@ class Index extends Component
 private function isEmployeeLockedStatus(?string $status): bool
 {
     return in_array((string) $status, [
-        'SUSPENDED',
         'TERMINATED',
         'ARCHIVED',
         'ENDED',
@@ -173,6 +174,11 @@ public function setViewMode(string $mode): void
     }
 
     public function updatingStatus(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatingManagerId(): void
     {
         $this->resetPage();
     }
@@ -214,6 +220,7 @@ public function setViewMode(string $mode): void
 
         $this->branchFilterId = 'all'; 
         $this->contractType   = 'all'; 
+        $this->managerId      = 'all'; 
 
         $this->hiringDateType = 'all';
         $this->hiringDateStart = null;
@@ -232,6 +239,7 @@ public function setViewMode(string $mode): void
             'status',
             'branchFilterId', 
             'contractType', 
+            'managerId',
             'hiringDateType',
             'hiringDateStart',
             'hiringDateEnd',
@@ -588,6 +596,17 @@ public function setViewMode(string $mode): void
             })->toArray();
         }
 
+        $isAr = substr((string) app()->getLocale(), 0, 2) === 'ar';
+        $managersOptions = Employee::query()
+            ->forCompany($companyId)
+            ->where('status', 'ACTIVE')
+            ->orderBy('name_ar')
+            ->get(['id', 'name_ar', 'name_en'])
+            ->map(function ($m) use ($isAr) {
+                return ['value' => (string) $m->id, 'label' => $isAr ? ($m->name_ar ?? $m->name_en) : ($m->name_en ?? $m->name_ar)];
+            })
+            ->toArray();
+
         // Query الموظفين
         $allowed = DB::table('branch_user_access')
             ->where('user_id', Auth::id())
@@ -644,6 +663,14 @@ public function setViewMode(string $mode): void
                 });
             })
 
+            ->when($this->managerId !== 'all', function ($q) {
+                if ($this->managerId === 'none') {
+                    $q->whereNull('manager_id');
+                } else {
+                    $q->where('manager_id', (int) $this->managerId);
+                }
+            })
+
             ->when($this->status !== 'all', fn ($q) => $q->where('status', $this->status))
             ->when($this->hiringDateType !== 'all', function ($q) {
                 if ($this->hiringDateStart) {
@@ -664,6 +691,7 @@ public function setViewMode(string $mode): void
             'jobTitlesOptions'   => $jobTitlesOptions,
             'branchesOptions'    => $branchesOptions,
             'branchesMap'        => $branchesMap,
+            'managersOptions'    => $managersOptions,
         ])->layout('layouts.company-admin');
             
     }
