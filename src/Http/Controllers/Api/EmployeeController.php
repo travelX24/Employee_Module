@@ -1359,7 +1359,26 @@ class EmployeeController extends Controller
             $data['saas_company_id'] = (int) ($user->saas_company_id ?? null);
         }
 
-        if (in_array('status', $cols, true))   $data['status'] = 'pending';
+        // ✅ Status depends on approval_required setting
+        $approvalRequired = true;
+        if ($companyId > 0 && Schema::hasTable('permission_policies')) {
+            $permCols = Schema::getColumnListing('permission_policies');
+            $yearId = 0;
+            if (in_array('policy_year_id', $permCols, true) && class_exists(\Athka\SystemSettings\Models\LeavePolicyYear::class)) {
+                $yearId = (int) \Athka\SystemSettings\Models\LeavePolicyYear::query()
+                    ->where('company_id', $companyId)
+                    ->where('is_active', true)
+                    ->value('id');
+            }
+            $approvalRequired = (bool) DB::table('permission_policies')
+                ->where('company_id', $companyId)
+                ->when($yearId > 0, fn($q) => $q->where('policy_year_id', $yearId))
+                ->value('approval_required') ?? true;
+        }
+
+        if (in_array('status', $cols, true)) {
+            $data['status'] = $approvalRequired ? 'pending' : 'approved';
+        }
 
         if (in_array('reason', $cols, true))   $data['reason'] = $validated['reason'] ?? '';
 
@@ -1398,18 +1417,18 @@ class EmployeeController extends Controller
             return response()->json([
                 'ok'      => false,
                 'error'   => 'no_permission_policy',
-                'message' => 'لم يتم تهيئة إعدادات الأذونات من النظام بعد، يرجى التواصل مع الإدارة',
+                'message' => function_exists('tr') ? tr('Permission settings are not configured yet, please contact administration.') : 'لم يتم تهيئة إعدادات الأذونات من النظام بعد، يرجى التواصل مع الإدارة',
             ], 422);
         }
 
-        // ✅ Check Workflow existence
-        if (class_exists(\Athka\SystemSettings\Services\Approvals\ApprovalService::class)) {
+        // ✅ Check Workflow existence (only if approval is required)
+        if ($approvalRequired && class_exists(\Athka\SystemSettings\Services\Approvals\ApprovalService::class)) {
             $approvalService = app(\Athka\SystemSettings\Services\Approvals\ApprovalService::class);
             if (!$approvalService->hasApproversForEmployee('permissions', (int)($user->employee_id ?? 0), $companyId)) {
                 return response()->json([
                     'ok'      => false,
                     'error'   => 'no_approval_workflow',
-                    'message' => 'لا يمكن تقديم الطلب، يرجى التواصل مع الإدارة لتعيين تسلسل موافقات (سير عمل) خاص بك.',
+                    'message' => function_exists('tr') ? tr('Cannot submit request, please contact administration to assign an approval workflow.') : 'لا يمكن تقديم الطلب، يرجى التواصل مع الإدارة لتعيين تسلسل موافقات (سير عمل) خاص بك.',
                 ], 422);
             }
         }
@@ -1419,7 +1438,7 @@ class EmployeeController extends Controller
             return response()->json([
                 'ok'      => false,
                 'error'   => 'permission_policy_not_configured',
-                'message' => 'لم يتم تهيئة إعدادات الأذونات من النظام بعد، يرجى التواصل مع الإدارة',
+                'message' => function_exists('tr') ? tr('Permission settings are not configured yet, please contact administration.') : 'لم يتم تهيئة إعدادات الأذونات من النظام بعد، يرجى التواصل مع الإدارة',
             ], 422);
         }
 
@@ -1428,17 +1447,44 @@ class EmployeeController extends Controller
             return response()->json([
                 'ok'      => false,
                 'error'   => 'permission_policy_inactive',
-                'message' => 'إعدادات الأذونات غير نشطة حالياً، يرجى التواصل مع الإدارة',
+                'message' => function_exists('tr') ? tr('Permission settings are currently inactive, please contact administration.') : 'إعدادات الأذونات غير نشطة حالياً، يرجى التواصل مع الإدارة',
             ], 422);
         }
 
         if ($policy) {
+            $deductionPolicy = strtolower(trim((string)($policy->deduction_policy ?? 'not_allowed_after_limit')));
+            $isAllowedAfterLimit = $deductionPolicy !== 'not_allowed_after_limit' && $deductionPolicy !== 'not_allowed';
+
             if ($policy->max_request_minutes > 0 && $minutes > $policy->max_request_minutes) {
-                return response()->json([
-                    'ok'      => false,
-                    'error'   => 'limit_exceeded',
-                    'message' => 'لا يمكن تجاوز الحد الأقصى للطلب الواحد، يرجى تعديل الوقت المطلوب',
-                ], 422);
+                if (!$isAllowedAfterLimit) {
+                    return response()->json([
+                        'ok'      => false,
+                        'error'   => 'limit_exceeded',
+                        'message' => function_exists('tr') ? tr('Cannot exceed the maximum limit per request, please adjust the requested time.') : 'لا يمكن تجاوز الحد الأقصى للطلب الواحد، يرجى تعديل الوقت المطلوب',
+                    ], 422);
+                }
+            }
+
+            // 1.5 Daily Limit (Same as max_request_minutes)
+            if ($policy->max_request_minutes > 0) {
+                $dateCol = in_array('permission_date', $cols, true) ? 'permission_date' : (in_array('date', $cols, true) ? 'date' : null);
+                if ($dateCol) {
+                    $usedDailyMinutes = DB::table($table)
+                        ->where($key, $value)
+                        ->whereDate($dateCol, $dateVal)
+                        ->whereIn('status', ['approved', 'pending'])
+                        ->sum('minutes');
+
+                    if (($usedDailyMinutes + $minutes) > $policy->max_request_minutes) {
+                        if (!$isAllowedAfterLimit) {
+                            return response()->json([
+                                'ok'      => false,
+                                'error'   => 'daily_limit_exceeded',
+                                'message' => function_exists('tr') ? tr('Daily permission limit exceeded, please contact administration.') : 'Daily permission limit exceeded, please contact administration.',
+                            ], 422);
+                        }
+                    }
+                }
             }
 
             // 2. Monthly limit
@@ -1453,15 +1499,11 @@ class EmployeeController extends Controller
                     ->sum('minutes');
 
                 if (($usedMinutes + $minutes) > $policy->monthly_limit_minutes) {
-                    // Check if policy allows exceeding
-                    $settings = is_string($policy->settings) ? json_decode($policy->settings, true) : ($policy->settings ?? []);
-                    $allowExceed = (bool)($settings['allow_exceed_monthly_limit'] ?? false);
-
-                    if (!$allowExceed) {
+                    if (!$isAllowedAfterLimit) {
                         return response()->json([
                             'ok'      => false,
                             'error'   => 'monthly_limit_exceeded',
-                            'message' => 'لا يمكن تجاوز الحد الشهري للأذونات، يرجى مراجعة الإدارة',
+                            'message' => function_exists('tr') ? tr('Cannot exceed the monthly permissions limit, please contact administration.') : 'لا يمكن تجاوز الحد الشهري للأذونات، يرجى مراجعة الإدارة',
                         ], 422);
                     }
                 }
@@ -1485,9 +1527,26 @@ class EmployeeController extends Controller
         }
 
         $id = DB::table($table)->insertGetId($data);
-        if (class_exists(\Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController::class)) {
+        if ($approvalRequired && class_exists(\Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController::class)) {
             $companyId = $data['company_id'] ?? $user->saas_company_id ?? 1;
             app(\Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController::class)->ensureTasksForRequest((int)$companyId, 'permissions', $id);
+        } elseif (!$approvalRequired) {
+            try {
+                if (class_exists(\App\Notifications\ApprovalTaskNotification::class)) {
+                    $dummyTask = new \Athka\SystemSettings\Models\ApprovalTask([
+                        'operation_key' => 'permissions',
+                        'approvable_type' => 'permissions',
+                        'approvable_id' => $id,
+                        'request_employee_id' => $user->employee_id ?? $user->id,
+                        'status' => 'approved',
+                    ]);
+                    $dummyTask->id = 0; // Prevent null ID issue
+                    $user->notify(new \App\Notifications\ApprovalTaskNotification($dummyTask, 'submitted'));
+                    $user->notify(new \App\Notifications\ApprovalTaskNotification($dummyTask, 'resolution'));
+                }
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error("Auto-approval notification failed (Permission API): " . $e->getMessage());
+            }
         }
 
         $row = DB::table($table)->where('id', $id)->first();
