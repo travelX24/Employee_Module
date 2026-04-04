@@ -6,8 +6,9 @@ use Athka\AuthKit\Support\UiMsg;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Illuminate\Support\Facades\DB;      // ✅ NEW
-use Illuminate\Support\Facades\Schema;  // ✅ NEW
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 
 class EmployeeController extends Controller
 {
@@ -205,9 +206,12 @@ class EmployeeController extends Controller
             $query->where('leave_policy_years.company_id', $user->saas_company_id);
         }
 
-        // Filter by gender if the column exists
         $cols = Schema::getColumnListing('leave_policies');
         $employee = $user->employee ?? null;
+        if (!$employee && !empty($user->employee_id)) {
+            $employee = DB::table('employees')->where('id', (int)$user->employee_id)->first();
+        }
+
         if (in_array('gender', $cols) && $employee && !empty($employee->gender)) {
             $gender = strtolower($employee->gender); // male / female
             $query->where(function($q) use ($gender) {
@@ -216,24 +220,52 @@ class EmployeeController extends Controller
             });
         }
 
-        $types = $query->get([
+        $fields = [
             'leave_policies.id', 
             'leave_policies.name', 
             'leave_policies.leave_type', 
+            'leave_policies.days_per_year',
             'leave_policies.requires_attachment',
-            'leave_policies.settings'
-        ]);
+            'leave_policies.settings',
+            'leave_policies.excluded_contract_types'
+        ];
+        
+        $types = $query->get($fields);
 
-        $formatted = $types->map(function($t) {
-            $settings = is_string($t->settings) ? json_decode($t->settings, true) : $t->settings;
+        $formatted = $types->filter(function($t) use ($employee) {
+            // Filter by excluded_contract_types
+            if (!empty($t->excluded_contract_types) && $employee && !empty($employee->contract_type)) {
+                $excluded = is_string($t->excluded_contract_types) 
+                    ? json_decode($t->excluded_contract_types, true) 
+                    : $t->excluded_contract_types;
+                
+                if (is_array($excluded) && in_array($employee->contract_type, $excluded, true)) {
+                    return false;
+                }
+            }
+            return true;
+        })
+        ->map(function($t) {
+            $settings = is_string($t->settings) ? json_decode($t->settings, true) : ($t->settings ?? []);
+            
             return [
                 'id' => $t->id,
                 'name' => $t->name,
                 'leave_type' => $t->leave_type,
+                'days_per_year' => (float)$t->days_per_year,
                 'requires_attachment' => (bool)$t->requires_attachment,
                 'duration_unit' => $settings['duration_unit'] ?? 'full_day',
+                'allow_retroactive' => (bool)($settings['allow_retroactive'] ?? false),
+                'note_required' => (bool)($settings['note_required'] ?? false),
+                'note_text' => (string)($settings['note_text'] ?? ''),
+                'note_ack_required' => (bool)($settings['note_ack_required'] ?? false),
+                'deduction_policy' => (string)($settings['deduction_policy'] ?? 'balance_only'),
+                'notice_min_days' => (int)($settings['notice_min_days'] ?? 0),
+                'notice_max_advance_days' => (int)($settings['notice_max_advance_days'] ?? 0),
+                'attachment_types' => (array)($settings['attachment_types'] ?? ['pdf', 'jpg', 'png']),
             ];
-        });
+        })
+        ->values();
 
         return response()->json([
             'ok'   => true,
@@ -336,7 +368,7 @@ class EmployeeController extends Controller
         if (in_array('to_time',   $lrCols)) $leaveColumns[] = 'attendance_leave_requests.to_time';
 
         $approvedLeaves = DB::table('attendance_leave_requests')
-            ->join('leave_policies', 'attendance_leave_requests.leave_policy_id', '=', 'leave_policies.id')
+            ->leftJoin('leave_policies', 'attendance_leave_requests.leave_policy_id', '=', 'leave_policies.id')
             ->where('attendance_leave_requests.employee_id', $employeeId)
             ->where('attendance_leave_requests.status', 'approved')
             ->where('attendance_leave_requests.start_date', '<=', $end->toDateString())
@@ -678,6 +710,8 @@ class EmployeeController extends Controller
             'reason',
             'requested_days',
             'reject_reason',
+            'attachment_path',
+            'attachment_name',
             'notes',
             'from_date', 'to_date',
             'start_date', 'end_date',
@@ -807,8 +841,19 @@ class EmployeeController extends Controller
             $arr['request_date'] = isset($arr['created_at']) ? substr((string)$arr['created_at'], 0, 10) : '';
             $arr['requested_at'] = isset($arr['requested_at']) ? (string)$arr['requested_at'] : (isset($arr['created_at']) ? (string)$arr['created_at'] : '');
             
-            // Format requested_days to remove .0 if it's integer
-            if (isset($arr['requested_days'])) {
+            // ✅ Map requested_days to actual Calendar Duration for Mobile App UX
+            if ($table === 'attendance_leave_requests' && !empty($arr['start_date']) && !empty($arr['end_date'])) {
+                try {
+                    $s = \Carbon\Carbon::parse($arr['start_date'])->startOfDay();
+                    $e = \Carbon\Carbon::parse($arr['end_date'])->startOfDay();
+                    if (empty($arr['from_time']) && empty($arr['to_time'])) {
+                        $arr['requested_days'] = $s->diffInDays($e) + 1;
+                    } else if (isset($arr['requested_days'])) {
+                        $arr['requested_days'] = (float)$arr['requested_days'] > 0 ? (float)$arr['requested_days'] : 1;
+                        $arr['requested_days'] = (float)$arr['requested_days'] == (int)$arr['requested_days'] ? (int)$arr['requested_days'] : (float)$arr['requested_days'];
+                    }
+                } catch (\Exception $e) {}
+            } elseif (isset($arr['requested_days'])) {
                 $arr['requested_days'] = (float)$arr['requested_days'] == (int)$arr['requested_days'] 
                     ? (int)$arr['requested_days'] 
                     : (float)$arr['requested_days'];
@@ -979,12 +1024,81 @@ class EmployeeController extends Controller
                 ->first();
             
             if ($policy) {
+                if (!$policy->is_active) {
+                    return response()->json([
+                        'ok'      => false,
+                        'error'   => 'policy_inactive',
+                        'message' => function_exists('tr') ? tr('This leave type is currently inactive.') : 'This leave type is currently inactive.',
+                    ], 422);
+                }
+
+                $employee = $user->employee ?? null;
+                if (!$employee && !empty($user->employee_id)) {
+                    $employee = DB::table('employees')->where('id', (int)$user->employee_id)->first();
+                }
+
+                // Check Exclusions
+                if (!empty($policy->excluded_contract_types) && $employee && !empty($employee->contract_type)) {
+                    $excluded = is_string($policy->excluded_contract_types) 
+                        ? json_decode($policy->excluded_contract_types, true) 
+                        : $policy->excluded_contract_types;
+                    
+                    if (is_array($excluded) && in_array($employee->contract_type, $excluded, true)) {
+                        return response()->json([
+                            'ok'      => false,
+                            'error'   => 'contract_excluded',
+                            'message' => function_exists('tr') ? tr('Your contract type is excluded from this leave type.') : 'Your contract type is excluded from this leave type.',
+                        ], 422);
+                    }
+                }
+
+                $pSettings = is_string($policy->settings) ? json_decode($policy->settings, true) : ($policy->settings ?? []);
+
+                // Check Backdating
+                $allowRetro = (bool)($pSettings['allow_retroactive'] ?? false);
+                if (!$allowRetro) {
+                    $startDate = Carbon::parse($validated['start_date'])->startOfDay();
+                    $today = now()->startOfDay();
+                    if ($startDate->lt($today)) {
+                        return response()->json([
+                            'ok'      => false,
+                            'error'   => 'backdating_not_allowed',
+                            'message' => function_exists('tr') ? tr('Backdated leave requests are not allowed.') : 'Backdated leave requests are not allowed.',
+                        ], 422);
+                    }
+                }
+
+                // Check Mandatory Notes
+                $noteRequired = (bool)($pSettings['note_required'] ?? false);
+                if ($noteRequired && empty($validated['reason'])) {
+                    return response()->json([
+                        'ok'      => false,
+                        'error'   => 'note_required',
+                        'message' => function_exists('tr') ? tr('Reason is required for this leave type.') : 'Reason is required for this leave type.',
+                    ], 422);
+                }
+
+                // Check Requires Attachment
+                if ($policy->requires_attachment && !$request->hasFile('attachment') && !$request->filled('attachment_base64')) {
+                    return response()->json([
+                        'ok'      => false,
+                        'error'   => 'attachment_required',
+                        'message' => function_exists('tr') ? tr('An attachment is required for this leave type.') : 'An attachment is required for this leave type.',
+                    ], 422);
+                }
+
                 if (in_array('leave_policy_id', $cols, true)) {
                     $data['leave_policy_id'] = $policy->id;
                 }
                 if (in_array('policy_year_id', $cols, true)) {
                     $data['policy_year_id'] = $policy->policy_year_id;
                 }
+            } else {
+                return response()->json([
+                    'ok'      => false,
+                    'error'   => 'policy_not_found',
+                    'message' => function_exists('tr') ? tr('Leave policy not found.') : 'Leave policy not found.',
+                ], 404);
             }
         }
 
@@ -1036,6 +1150,17 @@ class EmployeeController extends Controller
                     $remaining = $balance ? (float) $balance->remaining_days : (float) ($policy->days_per_year ?? 0);
                     
                     if ($requestedDays > $remaining) {
+                        $pSettings = is_string($policy->settings) ? json_decode($policy->settings, true) : ($policy->settings ?? []);
+                        $deductionPolicy = (string)($pSettings['deduction_policy'] ?? 'balance_only');
+
+                        if ($deductionPolicy === 'balance_only') {
+                            return response()->json([
+                                'ok'      => false,
+                                'error'   => 'insufficient_balance',
+                                'message' => function_exists('tr') ? tr('Your balance is insufficient and the policy does not allow exceeding it.') : 'Your balance is insufficient and the policy does not allow exceeding it.',
+                            ], 422);
+                        }
+
                         $data['is_exception'] = true;
                         if (in_array('exception_status', $cols, true)) {
                             $data['exception_status'] = 'pending_hr';
@@ -1052,6 +1177,16 @@ class EmployeeController extends Controller
         if (in_array('created_at', $cols, true)) $data['created_at'] = $now;
         if (in_array('updated_at', $cols, true)) $data['updated_at'] = $now;
 
+        // ✅ Handle File Upload if present
+        if ($request->hasFile('attachment')) {
+            $file = $request->file('attachment');
+            if ($file->isValid()) {
+                $path = $file->store('attachments/leaves', 'public');
+                if (in_array('attachment_path', $cols, true)) $data['attachment_path'] = $path;
+                if (in_array('attachment_name', $cols, true)) $data['attachment_name'] = $file->getClientOriginalName();
+            }
+        }
+
         $id = DB::table($table)->insertGetId($data);
         if (class_exists(\Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController::class)) {
             $companyId = $data['company_id'] ?? $user->saas_company_id ?? 1;
@@ -1061,9 +1196,82 @@ class EmployeeController extends Controller
         $row = DB::table($table)->where('id', $id)->first();
 
         return response()->json([
-            'ok'   => true,
-            'data' => $row,
+            'ok'      => true,
+            'message' => function_exists('tr') ? tr('Your leave request has been submitted successfully.') : 'Your leave request has been submitted successfully.',
+            'data'    => $row,
         ], 201);
+    }
+
+    public function permissionPolicy(Request $request)
+    {
+        $user = $request->user();
+
+        if ($resp = $this->denyIfNotMobileEmployee($user)) {
+            return $resp;
+        }
+
+        $companyId = (int) ($user->saas_company_id ?? 0);
+
+        if (!$companyId || !Schema::hasTable('permission_policies')) {
+            return response()->json([
+                'ok'   => true,
+                'data' => [
+                    'requires_attachment'  => false,
+                    'attachment_types'     => ['pdf', 'jpg', 'jpeg', 'png'],
+                    'attachment_max_mb'    => 2,
+                ],
+            ]);
+        }
+
+        $cols = Schema::getColumnListing('permission_policies');
+
+        $query = DB::table('permission_policies')->where('company_id', $companyId);
+
+        // Filter by active policy year if possible
+        if (in_array('policy_year_id', $cols, true) && class_exists(\Athka\SystemSettings\Models\LeavePolicyYear::class)) {
+            $yearId = (int) \Athka\SystemSettings\Models\LeavePolicyYear::query()
+                ->where('company_id', $companyId)
+                ->where('is_active', true)
+                ->value('id');
+            if ($yearId > 0) {
+                $query->where('policy_year_id', $yearId);
+            }
+        }
+
+        $policy = $query->first();
+
+        if (!$policy) {
+            return response()->json([
+                'ok'   => true,
+                'data' => [
+                    'requires_attachment'  => false,
+                    'attachment_types'     => ['pdf', 'jpg', 'jpeg', 'png'],
+                    'attachment_max_mb'    => 2,
+                ],
+            ]);
+        }
+
+        // Parse attachment_types (may be JSON string or array)
+        $rawTypes = $policy->attachment_types ?? null;
+        if (is_string($rawTypes)) {
+            $types = json_decode($rawTypes, true);
+            if (!is_array($types)) $types = ['pdf', 'jpg', 'jpeg', 'png'];
+        } elseif (is_array($rawTypes)) {
+            $types = $rawTypes;
+        } else {
+            $types = ['pdf', 'jpg', 'jpeg', 'png'];
+        }
+
+        return response()->json([
+            'ok'   => true,
+            'data' => [
+                'requires_attachment' => (bool) ($policy->requires_attachment ?? false),
+                'attachment_types'    => array_values($types),
+                'attachment_max_mb'   => (int) ($policy->attachment_max_mb ?? 2),
+                'show_in_app'         => (bool) ($policy->show_in_app ?? true),
+                'is_active'           => (bool) ($policy->is_active ?? true),
+            ],
+        ]);
     }
 
     public function createPermissionRequest(Request $request)
@@ -1169,6 +1377,7 @@ class EmployeeController extends Controller
         // 🟢 NEW: Validate Limits (Daily/Monthly) based on policy
         $companyId = (int) ($user->saas_company_id ?? 0);
         $policy = null;
+        $permCols = [];
         if ($companyId > 0 && Schema::hasTable('permission_policies')) {
             $permCols = Schema::getColumnListing('permission_policies');
             $permQuery = DB::table('permission_policies')->where('company_id', $companyId);
@@ -1185,13 +1394,50 @@ class EmployeeController extends Controller
             $policy = $permQuery->first();
         }
 
+        if (!$policy) {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'no_permission_policy',
+                'message' => 'لم يتم تهيئة إعدادات الأذونات من النظام بعد، يرجى التواصل مع الإدارة',
+            ], 422);
+        }
+
+        // ✅ Check Workflow existence
+        if (class_exists(\Athka\SystemSettings\Services\Approvals\ApprovalService::class)) {
+            $approvalService = app(\Athka\SystemSettings\Services\Approvals\ApprovalService::class);
+            if (!$approvalService->hasApproversForEmployee('permissions', (int)($user->employee_id ?? 0), $companyId)) {
+                return response()->json([
+                    'ok'      => false,
+                    'error'   => 'no_approval_workflow',
+                    'message' => 'لا يمكن تقديم الطلب، يرجى التواصل مع الإدارة لتعيين تسلسل موافقات (سير عمل) خاص بك.',
+                ], 422);
+            }
+        }
+
+        // ✅ Check if allowed to show in app (Required by User)
+        if (in_array('show_in_app', $permCols, true) && !$policy->show_in_app) {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'permission_policy_not_configured',
+                'message' => 'لم يتم تهيئة إعدادات الأذونات من النظام بعد، يرجى التواصل مع الإدارة',
+            ], 422);
+        }
+
+        // Check if inactive
+        if (in_array('is_active', $permCols, true) && !$policy->is_active) {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'permission_policy_inactive',
+                'message' => 'إعدادات الأذونات غير نشطة حالياً، يرجى التواصل مع الإدارة',
+            ], 422);
+        }
+
         if ($policy) {
-            // 1. Max per request limit
             if ($policy->max_request_minutes > 0 && $minutes > $policy->max_request_minutes) {
                 return response()->json([
                     'ok'      => false,
                     'error'   => 'limit_exceeded',
-                    'message' => 'تجاوزت الحد المسموح به للطلب الواحد (' . $policy->max_request_minutes . ' دقيقة).',
+                    'message' => 'لا يمكن تجاوز الحد الأقصى للطلب الواحد، يرجى تعديل الوقت المطلوب',
                 ], 422);
             }
 
@@ -1215,7 +1461,7 @@ class EmployeeController extends Controller
                         return response()->json([
                             'ok'      => false,
                             'error'   => 'monthly_limit_exceeded',
-                            'message' => 'تجاوزت الرصيد الشهري المسموح به للاستئذان (' . $policy->monthly_limit_minutes . ' دقيقة).',
+                            'message' => 'لا يمكن تجاوز الحد الشهري للأذونات، يرجى مراجعة الإدارة',
                         ], 422);
                     }
                 }
@@ -1228,6 +1474,16 @@ class EmployeeController extends Controller
         if (in_array('created_at', $cols, true)) $data['created_at'] = $now;
         if (in_array('updated_at', $cols, true)) $data['updated_at'] = $now;
 
+        // ✅ Handle File Upload if present
+        if ($request->hasFile('attachment')) {
+            $file = $request->file('attachment');
+            if ($file->isValid()) {
+                $path = $file->store('attachments/permissions', 'public');
+                if (in_array('attachment_path', $cols, true)) $data['attachment_path'] = $path;
+                if (in_array('attachment_name', $cols, true)) $data['attachment_name'] = $file->getClientOriginalName();
+            }
+        }
+
         $id = DB::table($table)->insertGetId($data);
         if (class_exists(\Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController::class)) {
             $companyId = $data['company_id'] ?? $user->saas_company_id ?? 1;
@@ -1237,8 +1493,9 @@ class EmployeeController extends Controller
         $row = DB::table($table)->where('id', $id)->first();
 
         return response()->json([
-            'ok'   => true,
-            'data' => $row,
+            'ok'      => true,
+            'message' => function_exists('tr') ? tr('Your permission request has been submitted successfully.') : 'Your permission request has been submitted successfully.',
+            'data'    => $row,
         ], 201);
     }
 
@@ -1480,6 +1737,7 @@ class EmployeeController extends Controller
             'reason'          => ['nullable', 'string', 'max:2000'],
             'from_time'       => ['required', 'date_format:H:i'],
             'to_time'         => ['required', 'date_format:H:i'],
+            'attachment'      => ['nullable', 'file', 'max:5120'], // Max 5MB
         ]);
 
         $dateVal = (string) ($validated['permission_date'] ?? $validated['date'] ?? '');
@@ -1512,6 +1770,7 @@ class EmployeeController extends Controller
         // 🟢 NEW: Validate Limits (Daily/Monthly) based on policy
         $companyId = (int) ($user->saas_company_id ?? 0);
         $policy = null;
+        $permCols = [];
         if ($companyId > 0 && Schema::hasTable('permission_policies')) {
             $permCols = Schema::getColumnListing('permission_policies');
             $permQuery = DB::table('permission_policies')->where('company_id', $companyId);
@@ -1527,12 +1786,38 @@ class EmployeeController extends Controller
             $policy = $permQuery->first();
         }
 
+        if (!$policy) {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'no_permission_policy',
+                'message' => 'لم يتم تهيئة إعدادات الأذونات من النظام بعد، يرجى التواصل مع الإدارة',
+            ], 422);
+        }
+
+        // ✅ Check if allowed to show in app (Required by User)
+        if (in_array('show_in_app', $permCols, true) && !$policy->show_in_app) {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'permission_policy_not_configured',
+                'message' => 'لم يتم تهيئة إعدادات الأذونات من النظام بعد، يرجى التواصل مع الإدارة',
+            ], 422);
+        }
+
+        // Check if inactive
+        if (in_array('is_active', $permCols, true) && !$policy->is_active) {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'permission_policy_inactive',
+                'message' => 'إعدادات الأذونات غير نشطة حالياً، يرجى التواصل مع الإدارة',
+            ], 422);
+        }
+
         if ($policy) {
             if ($policy->max_request_minutes > 0 && $minutes > $policy->max_request_minutes) {
                 return response()->json([
                     'ok'      => false,
                     'error'   => 'limit_exceeded',
-                    'message' => 'تجاوزت الحد المسموح به للطلب الواحد (' . $policy->max_request_minutes . ' دقيقة).',
+                    'message' => 'لا يمكن تجاوز الحد الأقصى للطلب الواحد، يرجى تعديل الوقت المطلوب',
                 ], 422);
             }
 
@@ -1555,10 +1840,20 @@ class EmployeeController extends Controller
                         return response()->json([
                             'ok'      => false,
                             'error'   => 'monthly_limit_exceeded',
-                            'message' => 'تجاوزت الرصيد الشهري المسموح به للاستئذان (' . $policy->monthly_limit_minutes . ' دقيقة).',
+                            'message' => 'لا يمكن تجاوز الحد الشهري للأذونات، يرجى مراجعة الإدارة',
                         ], 422);
                     }
                 }
+            }
+        }
+
+        // ✅ Handle File Upload if present
+        if ($request->hasFile('attachment')) {
+            $file = $request->file('attachment');
+            if ($file->isValid()) {
+                $path = $file->store('attachments/permissions', 'public');
+                if (in_array('attachment_path', $cols, true)) $data['attachment_path'] = $path;
+                if (in_array('attachment_name', $cols, true)) $data['attachment_name'] = $file->getClientOriginalName();
             }
         }
 
@@ -1643,6 +1938,18 @@ class EmployeeController extends Controller
 
         if (!$employeeId) {
             return response()->json(['ok' => false, 'error' => 'missing_employee_id'], 403);
+        }
+
+        // ✅ Check Workflow existence
+        if (class_exists(\Athka\SystemSettings\Services\Approvals\ApprovalService::class)) {
+            $approvalService = app(\Athka\SystemSettings\Services\Approvals\ApprovalService::class);
+            if (!$approvalService->hasApproversForEmployee('missions', $employeeId, $companyId)) {
+                return response()->json([
+                    'ok'      => false,
+                    'error'   => 'no_approval_workflow',
+                    'message' => 'لا يمكن تقديم الطلب، يرجى التواصل مع الإدارة لتعيين تسلسل موافقات (سير عمل) خاص بك.',
+                ], 422);
+            }
         }
 
         $data = [
