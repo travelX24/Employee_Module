@@ -33,6 +33,12 @@ class Employee extends Model
                 $employee->employee_no = 'EMP-' . str_pad($nextId, 3, '0', STR_PAD_LEFT);
             }
         });
+
+        // ✅ Hide terminated/inactive employees system-wide by default
+        static::addGlobalScope('active_only', function (Builder $builder) {
+            // Apply this only to the regular flow, not when explicitly bypass is needed
+            $builder->where('status', 'ACTIVE');
+        });
     }
 
     protected $fillable = [

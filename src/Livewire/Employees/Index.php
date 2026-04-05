@@ -11,6 +11,11 @@ use App\Services\ExcelExportService;
 use Athka\Employees\Models\Employee;
 use Athka\Employees\Models\EmployeeStatusLog;
 
+use Livewire\Attributes\Lazy;
+use Livewire\Attributes\Layout;
+
+#[Lazy]
+#[Layout('layouts.company-admin')]
 class Index extends Component
 {
     use WithPagination, \Livewire\WithFileUploads;
@@ -120,6 +125,11 @@ class Index extends Component
      * لذلك هنا نرفع عدد النتائج في الصفحة الأولى حتى يعمل نفس الإحساس.
      */
     public int $perPage = 200;
+
+    public function placeholder()
+    {
+        return view('employees::livewire.employees.placeholder');
+    }
 
     protected $queryString = [
         'search'          => ['except' => ''],
@@ -267,7 +277,8 @@ public function setViewMode(string $mode): void
             ->values()
             ->all();
 
-        $query = Employee::where('saas_company_id', $companyId)
+        $query = Employee::withoutGlobalScope('active_only')
+            ->where('saas_company_id', $companyId)
             ->when(! empty($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
             // ✅ NEW: Scoping based on permission
             ->when(!Auth::user()->can('employees.view.all'), function ($q) {
@@ -333,32 +344,75 @@ public function setViewMode(string $mode): void
         }
 
         if ($this->exportFormat === 'excel') {
-            return $this->exportToExcel($employees, $fieldsToExport, app(ExcelExportService::class));
+            return $this->exportToExcel($employees, $fieldsToExport);
         } else {
             return $this->exportToPdf($employees, $fieldsToExport);
         }
     }
 
-    private function exportToExcel($employees, $fields, ExcelExportService $exporter)
+    private function exportToExcel($employees, $fields)
     {
-        $filename = 'employees_export_' . date('Y-m-d_H-i-s');
+        set_time_limit(0);
+        ini_set('memory_limit', '1024M');
+
+        $filename = 'employees_export_' . date('Y-m-d_H-i-s') . '.xlsx';
         $available = $this->availableFields;
         
-        $headers = [];
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Employees');
+
+        // Headers
+        $col = 1;
         foreach ($fields as $field) {
-            $headers[] = $available[$field] ?? $field;
+            $header = $available[$field] ?? $field;
+            $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col);
+            $sheet->setCellValue($colLetter . '1', $header);
+            $sheet->getStyle($colLetter . '1')->getFont()->setBold(true);
+            $sheet->getColumnDimension($colLetter)->setWidth(20);
+            $col++;
         }
 
-        $data = $employees->map(function ($employee) use ($fields) {
-            $row = [];
+        // Data Rows
+        $rowIdx = 2;
+        foreach ($employees as $employee) {
+            $colIdx = 1;
             foreach ($fields as $field) {
-                $row[] = (string) $this->getExportFieldValue($employee, $field);
+                $val = $this->getExportFieldValue($employee, $field);
+                $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($colIdx);
+                $sheet->setCellValue($colLetter . $rowIdx, $val);
+                $colIdx++;
             }
-            return $row;
-        })->toArray();
+            $rowIdx++;
+        }
 
+        // RTL Support
+        $isAr = in_array(substr((string) app()->getLocale(), 0, 2), ['ar', 'fa', 'ur', 'he']);
+        $sheet->setRightToLeft($isAr);
+
+        // --- Data Sheet for Validation (Dropdowns) ---
+        $dataSheet = $spreadsheet->createSheet();
+        $dataSheet->setTitle('DataStorage_Hidden');
+        $companyId = $this->getCompanyId();
+        
+        $maxRanges = $this->populateValidationDataSheet($dataSheet, $companyId);
+        $dataSheet->setSheetState(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet::SHEETSTATE_HIDDEN);
+
+        // Apply Validations
+        $this->applyValidationsToExportSheet($sheet, $fields, $maxRanges);
+
+        $spreadsheet->setActiveSheetIndex(0);
+        $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
+        
         $this->showExportModal = false;
-        return $exporter->export($filename, $headers, $data);
+
+        return response()->streamDownload(function () use ($writer) {
+            $writer->save('php://output');
+        }, $filename, [
+            'Cache-Control' => 'max-age=0',
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+        ]);
     }
 
     /**
@@ -368,22 +422,22 @@ public function setViewMode(string $mode): void
     {
         $val = '';
         if ($field === 'department_id') {
-            $val = $employee->department?->name ?? 'N/A';
+            $val = $employee->department?->name ?? '';
         } elseif ($field === 'sub_department_id') {
-            $val = $employee->subDepartment?->name ?? 'N/A';
+            $val = $employee->subDepartment?->name ?? '';
         } elseif ($field === 'job_title_id') {
-            $val = $employee->jobTitle?->name ?? 'N/A';
+            $val = $employee->jobTitle?->name ?? '';
         } elseif ($field === 'manager_id') {
-            $val = $employee->manager?->name_ar ?? $employee->manager?->name_en ?? 'N/A';
+            $val = $employee->manager?->name_ar ?? $employee->manager?->name_en ?? '';
         } elseif ($field === 'branch_id') {
             // Load from relations if available, or fetch branch name
             if ($employee->relationLoaded('branch')) {
-                $val = $employee->branch?->name_ar ?? $employee->branch?->name_en ?? 'N/A';
+                $val = $employee->branch?->name_ar ?? $employee->branch?->name_en ?? '';
             } else {
                 $Branch = $this->branchModelClass();
                 if ($Branch) {
                     $branchObj = $Branch::find($employee->branch_id);
-                    $val = $branchObj->name_ar ?? $branchObj->name_en ?? 'N/A';
+                    $val = $branchObj->name_ar ?? $branchObj->name_en ?? '';
                 }
             }
         } elseif (in_array($field, ['national_id_expiry', 'birth_date', 'hired_at', 'ended_at'])) {
@@ -597,7 +651,7 @@ public function setViewMode(string $mode): void
         }
 
         $isAr = substr((string) app()->getLocale(), 0, 2) === 'ar';
-        $managersOptions = Employee::query()
+        $managersOptions = Employee::withoutGlobalScope('active_only')
             ->forCompany($companyId)
             ->where('status', 'ACTIVE')
             ->orderBy('name_ar')
@@ -617,7 +671,7 @@ public function setViewMode(string $mode): void
             ->values()
             ->all();
 
-        $employees = Employee::query()
+        $employees = Employee::withoutGlobalScope('active_only')
             ->forCompany($companyId)
             ->when(! empty($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
             // ✅ NEW: Scoping based on permission
@@ -713,7 +767,7 @@ public function setViewMode(string $mode): void
         ->values()
         ->all();
 
-    $this->selectedEmployee = Employee::query()
+    $this->selectedEmployee = Employee::withoutGlobalScope('active_only')
         ->where('saas_company_id', $companyId)
         ->when(! empty($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
         ->when(!Auth::user()->can('employees.view'), function ($q) {
@@ -1050,105 +1104,36 @@ public function setViewMode(string $mode): void
         // --- Data Sheet for Validation ---
         $dataSheet = $spreadsheet->createSheet();
         $dataSheet->setTitle('DataStorage_Hidden');
-        
         $companyId = $this->getCompanyId();
-
-        // Departments
-        $Department = $this->departmentModelClass();
-        $allDepts = $Department::forCompany($companyId)->get(['id', 'code', 'name', 'parent_id']);
         
-        $mainDepts = $allDepts->whereNull('parent_id');
-        $subDepts = $allDepts->whereNotNull('parent_id');
-
-        $deptCodes = $mainDepts->map(fn($d) => $d->code ? ($d->name . ' (' . $d->code . ')') : $d->name)->filter()->values()->toArray();
-        $subDeptCodes = $subDepts->map(fn($d) => $d->code ? ($d->name . ' (' . $d->code . ')') : $d->name)->filter()->values()->toArray();
-
-        // Job Titles
-        $JobTitle = $this->jobTitleModelClass();
-        $jobTitles = $JobTitle::forCompany($companyId)->get(['code', 'name']);
-        $jobCodes = $jobTitles->map(fn($j) => $j->code ? ($j->name . ' (' . $j->code . ')') : $j->name)->filter()->values()->toArray();
-
-        // Managers
-        $employeesList = Employee::where('saas_company_id', $companyId)->get(['employee_no', 'name_ar', 'name_en']);
-        $managerCodes = $employeesList->map(function($e) {
-            $name = $e->name_ar ?: $e->name_en;
-            return $e->employee_no ? ($name . ' (' . $e->employee_no . ')') : $name;
-        })->filter()->values()->toArray();
-
-        // Static Lists
-        $isAr = app()->getLocale() === 'ar';
-        $genderList = $isAr ? ['ذكر', 'أنثى'] : ['Male', 'Female'];
-        $maritalList = $isAr ? ['أعزب', 'متزوج', 'مطلق', 'أرمل'] : ['Single', 'Married', 'Divorced', 'Widowed'];
-        $contractList = $isAr ? ['دائم', 'مؤقت', 'تجربة', 'مقاول'] : ['Permanent', 'Temporary', 'Probation', 'Contractor'];
-        $relationList = $isAr ? ['أب', 'أم', 'أخ', 'أخت', 'زوج', 'زوجة', 'ابن', 'ابنة', 'صديق', 'أخرى'] 
-                             : ['Father', 'Mother', 'Brother', 'Sister', 'Husband', 'Wife', 'Son', 'Daughter', 'Friend', 'Other'];
-        
-        $nationalityList = [
-            'Saudi Arabia', 'Egypt', 'Jordan', 'India', 'Pakistan', 'Philippines', 'Suriya', 'Lebanon', 'Yemen', 'Sudan',
-            'United Arab Emirates', 'Kuwait', 'Oman', 'Bahrain', 'Qatar', 'Morocco', 'Algeria', 'Tunisia', 'Libya'
-        ];
-        if ($isAr) {
-            $nationalityList = [
-                'المملكة العربية السعودية', 'مصر', 'الأردن', 'الهند', 'باكستان', 'الفلبين', 'سوريا', 'لبنان', 'اليمن', 'السودان',
-                'الإمارات العربية المتحدة', 'الكويت', 'عمان', 'البحرين', 'قطر', 'المغرب', 'الجزائر', 'تونس', 'ليبيا'
-            ];
-        }
-
-        $writeCol = function ($colLetter, $list) use ($dataSheet) {
-            $row = 1;
-            foreach ($list as $val) {
-                $val = str_replace([',', '"'], '', (string)$val);
-                $dataSheet->setCellValue($colLetter . $row, $val);
-                $row++;
-            }
-            return $row - 1; // max row
-        };
-
-        $maxDeptRow = $writeCol('A', $deptCodes);
-        $maxJobRow = $writeCol('B', $jobCodes);
-        $maxManagerRow = $writeCol('C', $managerCodes);
-        $maxGenderRow = $writeCol('D', $genderList);
-        $maxMaritalRow = $writeCol('E', $maritalList);
-        $maxContractRow = $writeCol('F', $contractList);
-        $maxNationRow = $writeCol('G', $nationalityList);
-        $maxSubDeptRow = $writeCol('H', $subDeptCodes);
-        $maxRelationRow = $writeCol('I', $relationList);
-
-        // Hide data sheet
+        $maxRanges = $this->populateValidationDataSheet($dataSheet, $companyId);
         $dataSheet->setSheetState(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet::SHEETSTATE_HIDDEN);
 
         // --- Apply Validation to the Main Sheet (Optimized) ---
         $applyDropdown = function ($colLetter, $dataColLetter, $maxDataRow) use ($sheet) {
-            if ($maxDataRow < 1) return; // No data to validate against
+            if ($maxDataRow < 1) return;
             
-            // Create validation object once and reuse (clone) for speed
             $validation = new \PhpOffice\PhpSpreadsheet\Cell\DataValidation();
             $validation->setType(\PhpOffice\PhpSpreadsheet\Cell\DataValidation::TYPE_LIST)
                        ->setErrorStyle(\PhpOffice\PhpSpreadsheet\Cell\DataValidation::STYLE_INFORMATION)
                        ->setAllowBlank(true)
-                       ->setShowInputMessage(true)
-                       ->setShowErrorMessage(true)
                        ->setShowDropDown(true)
-                       ->setErrorTitle(tr('Input error'))
-                       ->setError(tr('Value is not in list.'))
-                       ->setPromptTitle(tr('Pick from list'))
-                       ->setPrompt(tr('Please select a value from the drop-down list.'))
                        ->setFormula1('DataStorage_Hidden!$' . $dataColLetter . '$1:$' . $dataColLetter . '$' . $maxDataRow);
 
-            for ($row = 2; $row <= 500; $row++) { // Reduced to 500 rows for better performance on Plesk
+            for ($row = 2; $row <= 1000; $row++) { 
                 $sheet->getCell($colLetter . $row)->setDataValidation(clone $validation);
             }
         };
 
-        $applyDropdown('E', 'G', $maxNationRow);   // Nationality
-        $applyDropdown('G', 'D', $maxGenderRow);   // Gender
-        $applyDropdown('H', 'E', $maxMaritalRow);  // Marital status
-        $applyDropdown('M', 'A', $maxDeptRow);     // Main Dept
-        $applyDropdown('N', 'H', $maxSubDeptRow);  // Sub Dept
-        $applyDropdown('O', 'B', $maxJobRow);      // Job Title
-        $applyDropdown('P', 'C', $maxManagerRow);  // Manager
-        $applyDropdown('U', 'F', $maxContractRow); // Contract type
-        $applyDropdown('AB', 'I', $maxRelationRow); // Emergency Relation
+        $applyDropdown('E', 'G', $maxRanges['nationality']); 
+        $applyDropdown('G', 'D', $maxRanges['gender']);     
+        $applyDropdown('H', 'E', $maxRanges['marital']);   
+        $applyDropdown('M', 'A', $maxRanges['dept']);     
+        $applyDropdown('N', 'H', $maxRanges['subDept']); 
+        $applyDropdown('O', 'B', $maxRanges['job']);    
+        $applyDropdown('P', 'C', $maxRanges['manager']);
+        $applyDropdown('U', 'F', $maxRanges['contract']);
+        $applyDropdown('AB', 'I', $maxRanges['relation']);
 
         $spreadsheet->setActiveSheetIndex(0);
 
@@ -1182,7 +1167,7 @@ public function setViewMode(string $mode): void
             fprintf($file, chr(0xEF) . chr(0xBB) . chr(0xBF)); // BOM
             fputcsv($file, [tr('Department Name'), tr('Department Code')]);
             foreach ($departments as $dept) {
-                fputcsv($file, [$dept->name, $dept->code ?? 'N/A']);
+                fputcsv($file, [$dept->name, $dept->code ?? '']);
             }
             fclose($file);
         };
@@ -1207,7 +1192,7 @@ public function setViewMode(string $mode): void
             fprintf($file, chr(0xEF) . chr(0xBB) . chr(0xBF)); // BOM
             fputcsv($file, [tr('Job Title Name'), tr('Job Title Code')]);
             foreach ($jobTitles as $job) {
-                fputcsv($file, [$job->name, $job->code ?? 'N/A']);
+                fputcsv($file, [$job->name, $job->code ?? '']);
             }
             fclose($file);
         };
@@ -1509,6 +1494,124 @@ public function setViewMode(string $mode): void
 
         if (empty($this->importValidationErrors)) {
             $this->closeImportModal();
+        }
+    }
+
+    /**
+     * Shared logic to populate a hidden sheet with validation data lists.
+     */
+    private function populateValidationDataSheet($dataSheet, $companyId)
+    {
+        // Departments
+        $Department = $this->departmentModelClass();
+        $allDepts = $Department::forCompany($companyId)->get(['id', 'code', 'name', 'parent_id']);
+        $mainDepts = $allDepts->whereNull('parent_id');
+        $subDepts = $allDepts->whereNotNull('parent_id');
+
+        $deptCodes = $mainDepts->map(fn($d) => $d->code ? ($d->name . ' (' . $d->code . ')') : $d->name)->filter()->values()->toArray();
+        $subDeptCodes = $subDepts->map(fn($d) => $d->code ? ($d->name . ' (' . $d->code . ')') : $d->name)->filter()->values()->toArray();
+
+        // Job Titles
+        $JobTitle = $this->jobTitleModelClass();
+        $jobTitles = $JobTitle::forCompany($companyId)->get(['code', 'name']);
+        $jobCodes = $jobTitles->map(fn($j) => $j->code ? ($j->name . ' (' . $j->code . ')') : $j->name)->filter()->values()->toArray();
+
+        // Managers
+        $employeesList = Employee::where('saas_company_id', $companyId)->get(['employee_no', 'name_ar', 'name_en']);
+        $managerCodes = $employeesList->map(function($e) {
+            $name = $e->name_ar ?: $e->name_en;
+            return $e->employee_no ? ($name . ' (' . $e->employee_no . ')') : $name;
+        })->filter()->values()->toArray();
+
+        // Static Lists
+        $isAr = app()->getLocale() === 'ar';
+        $genderList = $isAr ? ['ذكر', 'أنثى'] : ['Male', 'Female'];
+        $maritalList = $isAr ? ['أعزب', 'متزوج', 'مطلق', 'أرمل'] : ['Single', 'Married', 'Divorced', 'Widowed'];
+        $contractList = $isAr ? ['دائم', 'مؤقت', 'تجربة', 'مقاول'] : ['Permanent', 'Temporary', 'Probation', 'Contractor'];
+        $relationList = $isAr ? ['أب', 'أم', 'أخ', 'أخت', 'زوج', 'زوجة', 'ابن', 'ابنة', 'صديق', 'أخرى'] 
+                             : ['Father', 'Mother', 'Brother', 'Sister', 'Husband', 'Wife', 'Son', 'Daughter', 'Friend', 'Other'];
+        
+        $nationalityList = [
+            'Saudi Arabia', 'Egypt', 'Jordan', 'India', 'Pakistan', 'Philippines', 'Suriya', 'Lebanon', 'Yemen', 'Sudan',
+            'United Arab Emirates', 'Kuwait', 'Oman', 'Bahrain', 'Qatar', 'Morocco', 'Algeria', 'Tunisia', 'Libya'
+        ];
+        if ($isAr) {
+            $nationalityList = [
+                'المملكة العربية السعودية', 'مصر', 'الأردن', 'الهند', 'باكستان', 'الفلبين', 'سوريا', 'لبنان', 'اليمن', 'السودان',
+                'الإمارات العربية المتحدة', 'الكويت', 'عمان', 'البحرين', 'قطر', 'المغرب', 'الجزائر', 'تونس', 'ليبيا'
+            ];
+        }
+
+        $writeCol = function ($colLetter, $list) use ($dataSheet) {
+            $row = 1;
+            foreach ($list as $val) {
+                $val = str_replace([',', '"'], '', (string)$val);
+                $dataSheet->setCellValue($colLetter . $row, $val);
+                $row++;
+            }
+            return $row - 1; // max row
+        };
+
+        return [
+            'dept'        => $writeCol('A', $deptCodes),
+            'job'         => $writeCol('B', $jobCodes),
+            'manager'     => $writeCol('C', $managerCodes),
+            'gender'      => $writeCol('D', $genderList),
+            'marital'     => $writeCol('E', $maritalList),
+            'contract'    => $writeCol('F', $contractList),
+            'nationality' => $writeCol('G', $nationalityList),
+            'subDept'     => $writeCol('H', $subDeptCodes),
+            'relation'    => $writeCol('I', $relationList),
+        ];
+    }
+
+    /**
+     * Helper to apply dropdown validations to the exported sheet based on field mapping.
+     */
+    private function applyValidationsToExportSheet($sheet, $fields, $maxRanges)
+    {
+        // Validation definition helper
+        $createValidation = function($dataCol, $maxRow) {
+            if ($maxRow < 1) return null;
+            $validation = new \PhpOffice\PhpSpreadsheet\Cell\DataValidation();
+            $validation->setType(\PhpOffice\PhpSpreadsheet\Cell\DataValidation::TYPE_LIST)
+                       ->setErrorStyle(\PhpOffice\PhpSpreadsheet\Cell\DataValidation::STYLE_INFORMATION)
+                       ->setAllowBlank(true)
+                       ->setShowDropDown(true)
+                       ->setFormula1('DataStorage_Hidden!$' . $dataCol . '$1:$' . $dataCol . '$' . $maxRow);
+            return $validation;
+        };
+
+        foreach ($fields as $index => $field) {
+            $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($index + 1);
+            $validation = null;
+
+            if ($field === 'nationality') {
+                $validation = $createValidation('G', $maxRanges['nationality'] ?? 0);
+            } elseif ($field === 'gender') {
+                $validation = $createValidation('D', $maxRanges['gender'] ?? 0);
+            } elseif ($field === 'marital_status') {
+                $validation = $createValidation('E', $maxRanges['marital'] ?? 0);
+            } elseif ($field === 'department_id') {
+                $validation = $createValidation('A', $maxRanges['dept'] ?? 0);
+            } elseif ($field === 'sub_department_id') {
+                $validation = $createValidation('H', $maxRanges['subDept'] ?? 0);
+            } elseif ($field === 'job_title_id') {
+                $validation = $createValidation('B', $maxRanges['job'] ?? 0);
+            } elseif ($field === 'manager_id') {
+                $validation = $createValidation('C', $maxRanges['manager'] ?? 0);
+            } elseif ($field === 'contract_type') {
+                $validation = $createValidation('F', $maxRanges['contract'] ?? 0);
+            } elseif ($field === 'emergency_contact_relation') {
+                $validation = $createValidation('I', $maxRanges['relation'] ?? 0);
+            }
+
+            if ($validation) {
+                // Apply to first 1000 rows (adjust if needed)
+                for ($r = 2; $r <= 1000; $r++) {
+                    $sheet->getCell($colLetter . $r)->setDataValidation(clone $validation);
+                }
+            }
         }
     }
 

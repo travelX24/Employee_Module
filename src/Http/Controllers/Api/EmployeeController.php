@@ -304,55 +304,73 @@ class EmployeeController extends Controller
             $end = $start->copy()->addDays(30)->endOfDay();
         }
 
-        // ── Fetch active schedule assignment ─────────────────────────────────
-        $assignment = DB::table('employee_work_schedules')
+        // ── Prefetch schedules and rotation logic ───────────────────────────
+        $companyId = (int) ($user->saas_company_id ?? 0);
+        $scheduleIds = DB::table('employee_work_schedules')
             ->where('employee_id', $employeeId)
-            ->where('is_active', true)
-            ->where('start_date', '<=', $start->toDateString())
-            ->where(function ($q) use ($end) {
-                $q->whereNull('end_date')
-                  ->orWhere('end_date', '>=', $end->toDateString());
-            })
-            ->orderByDesc('start_date')
+            ->pluck('work_schedule_id')->toArray();
+            
+        // Add default company schedule as a fallback
+        $defaultSchedule = DB::table('work_schedules')
+            ->where('saas_company_id', $companyId)
+            ->where('is_default', true)
             ->first();
+        if ($defaultSchedule) {
+            $scheduleIds[] = $defaultSchedule->id;
+        }
 
-        // ── Load schedule meta: work_days + periods ───────────────────────────
-        $scheduleName = null;
-        $workDaysArr  = [];   // e.g. ['saturday','sunday','monday',...]
-        $periods      = [];   // shared periods for all working days
-
-        if ($assignment) {
-            $schedule = DB::table('work_schedules')
-                ->where('id', $assignment->work_schedule_id)
-                ->first(['name', 'work_days']);
-
-            if ($schedule) {
-                $scheduleName = $schedule->name;
-
-                // Parse work_days JSON → normalize to lowercase strings
-                $raw = $schedule->work_days;
+        $rotations = [];
+        if (Schema::hasTable('employee_shift_rotations')) {
+             $rotations = DB::table('employee_shift_rotations')
+                 ->where('employee_id', $employeeId)
+                 ->get();
+             foreach ($rotations as $rot) {
+                 $scheduleIds[] = $rot->work_schedule_id_a;
+                 $scheduleIds[] = $rot->work_schedule_id_b;
+             }
+        }
+        
+        $scheduleIds = array_values(array_unique(array_filter($scheduleIds)));
+        $schedulesMeta = [];
+        
+        if (!empty($scheduleIds)) {
+            $schedules = DB::table('work_schedules')->whereIn('id', $scheduleIds)->get(['id', 'name', 'work_days']);
+            $periodRows = DB::table('work_schedule_periods')->whereIn('work_schedule_id', $scheduleIds)->orderBy('sort_order')->get();
+            
+            foreach ($schedules as $sch) {
+                $raw = $sch->work_days;
+                $wDays = [];
                 if (is_string($raw)) {
                     $decoded = json_decode($raw, true);
-                    $workDaysArr = is_array($decoded) ? array_map('strtolower', $decoded) : [];
+                    $wDays = is_array($decoded) ? array_map('strtolower', $decoded) : [];
                 } elseif (is_array($raw)) {
-                    $workDaysArr = array_map('strtolower', $raw);
+                    $wDays = array_map('strtolower', $raw);
                 }
-            }
-
-            // Periods apply to EVERY working day (no day_of_week column)
-            $periodRows = DB::table('work_schedule_periods')
-                ->where('work_schedule_id', $assignment->work_schedule_id)
-                ->orderBy('sort_order')
-                ->get(['start_time', 'end_time', 'is_night_shift']);
-
-            foreach ($periodRows as $p) {
-                $periods[] = [
-                    'start_time'     => substr((string)$p->start_time, 0, 5),
-                    'end_time'       => substr((string)$p->end_time, 0, 5),
-                    'is_night_shift' => (bool)$p->is_night_shift,
+                
+                $schedulesMeta[$sch->id] = [
+                    'name'      => $sch->name,
+                    'work_days' => $wDays,
+                    'periods'   => []
                 ];
             }
+            foreach ($periodRows as $p) {
+                if (isset($schedulesMeta[$p->work_schedule_id])) {
+                     $schedulesMeta[$p->work_schedule_id]['periods'][] = [
+                         'start_time'     => substr((string)$p->start_time, 0, 5),
+                         'end_time'       => substr((string)$p->end_time, 0, 5),
+                         'is_night_shift' => (bool)$p->is_night_shift,
+                     ];
+                }
+            }
         }
+
+        $scheduleService = app(\Athka\SystemSettings\Services\WorkScheduleService::class);
+        $employeeRecord  = \Athka\Employees\Models\Employee::find($employeeId);
+
+        // Helper to resolve the correct schedule for a specific date
+        $resolveScheduleForDate = function(string $dateStr) use ($scheduleService, $companyId, $employeeRecord) {
+            return $scheduleService->getEffectiveSchedule($companyId, $employeeRecord, $dateStr);
+        };
 
         // ── Fetch approved leaves that overlap the range ──────────────────────
         // Include from_time / to_time for partial-day detection
@@ -456,6 +474,23 @@ class EmployeeController extends Controller
         while ($cur->lte($end)) {
             $dateStr = $cur->toDateString();
             $dayKey  = $dayNames[(int)$cur->dayOfWeek];
+            
+            $activeSch = $resolveScheduleForDate($dateStr);
+            
+            $workDaysArr = [];
+            $periodsRaw  = [];
+            
+            if ($activeSch) {
+                $raw = $activeSch->work_days;
+                if (is_string($raw)) {
+                    $decoded = json_decode($raw, true);
+                    $workDaysArr = is_array($decoded) ? array_map('strtolower', $decoded) : [];
+                } elseif (is_array($raw)) {
+                    $workDaysArr = array_map('strtolower', $raw);
+                }
+                $periodsRaw = $activeSch->periods;
+            }
+            
             $dayLeaves = $leaveDays[$dateStr] ?? [];
             $dayPermissions = $permissionDays[$dateStr] ?? [];
 
@@ -504,9 +539,12 @@ class EmployeeController extends Controller
             $hasAnyLeave   = !empty($partialLeaves);
 
             $builtPeriods = [];
-            foreach ($periods as $period) {
-                $pFrom = $toMins($period['start_time']);
-                $pTo   = $toMins($period['end_time']);
+            foreach ($periodsRaw as $period) {
+                $pFromStr = substr((string)$period->start_time, 0, 5);
+                $pToStr   = substr((string)$period->end_time, 0, 5);
+                
+                $pFrom = $toMins($pFromStr);
+                $pTo   = $toMins($pToStr);
                 // Night shift: period crosses midnight
                 if ($pTo <= $pFrom) $pTo += 24 * 60;
 
@@ -524,9 +562,9 @@ class EmployeeController extends Controller
                 }
 
                 $builtPeriods[] = [
-                    'start_time'     => $period['start_time'],
-                    'end_time'       => $period['end_time'],
-                    'is_night_shift' => $period['is_night_shift'],
+                    'start_time'     => $pFromStr,
+                    'end_time'       => $pToStr,
+                    'is_night_shift' => (bool)$period->is_night_shift,
                     'is_leave'       => $leaveMatch !== null,
                     'leave_name'     => $leaveMatch['leave_name'] ?? null,
                 ];
@@ -547,12 +585,14 @@ class EmployeeController extends Controller
             $cur->addDay();
         }
 
+        $firstSch = $resolveScheduleForDate($start->toDateString());
+        
         return response()->json([
             'ok' => true,
             'data' => [
-                'schedule' => $assignment ? [
-                    'id'   => $assignment->work_schedule_id,
-                    'name' => $scheduleName,
+                'schedule' => $firstSch ? [
+                    'id'   => $firstSch->id,
+                    'name' => $firstSch->name,
                 ] : null,
                 'days' => $days,
             ],
@@ -1102,6 +1142,31 @@ class EmployeeController extends Controller
             }
         }
 
+        // ✅ Exceptional Day Overlap Check
+        if (class_exists(\Athka\SystemSettings\Services\WorkScheduleService::class)) {
+            $wsService = app(\Athka\SystemSettings\Services\WorkScheduleService::class);
+            $currDate = Carbon::parse($validated['start_date']);
+            $endDate = Carbon::parse($validated['end_date']);
+            $employee_obj = $employee; // Can be DB row OR model
+            
+            while ($currDate->lte($endDate)) {
+                $exDay = $wsService->getExceptionalDay($companyId, $currDate->toDateString(), $employee_obj);
+                if ($exDay && (bool)($exDay->is_holiday ?? true)) {
+                    $isOfficial = (bool)($exDay->is_official_holiday ?? false);
+                    $typeLabel = $isOfficial ? (function_exists('tr') ? tr('Official Holiday') : 'Official Holiday') : (function_exists('tr') ? tr('Exceptional Day') : 'Exceptional Day');
+                    $msgPart = (function_exists('tr') ? tr('Cannot request leave on this date') : 'Cannot request leave on this date');
+                    
+                    $msg = $msgPart . ': ' . $typeLabel . ' - ' . ($exDay->name ?? '') . ' (' . $currDate->toDateString() . ')';
+                    return response()->json([
+                        'ok'      => false,
+                        'error'   => 'exceptional_day',
+                        'message' => $msg,
+                    ], 422);
+                }
+                $currDate->addDay();
+            }
+        }
+
         // ✅ NEW: company_id required in some installs
         if (in_array('company_id', $cols, true)) {
             if ($companyId <= 0) {
@@ -1314,6 +1379,27 @@ class EmployeeController extends Controller
                 'error'   => 'invalid_time_range',
                 'message' => 'to_time must be after from_time.',
             ], 422);
+        }
+
+        // ✅ Exceptional Day Check
+        if (class_exists(\Athka\SystemSettings\Services\WorkScheduleService::class)) {
+            $wsService = app(\Athka\SystemSettings\Services\WorkScheduleService::class);
+            $employee_obj = $user->employee_id ? DB::table('employees')->where('id', $user->employee_id)->first() : null;
+            $companyId = (int) ($user->saas_company_id ?? 0);
+            
+            $exDay = $wsService->getExceptionalDay($companyId, $dateVal, $employee_obj);
+            if ($exDay && (bool)($exDay->is_holiday ?? true)) {
+                $isOfficial = (bool)($exDay->is_official_holiday ?? false);
+                $typeLabel = $isOfficial ? (function_exists('tr') ? tr('Official Holiday') : 'Official Holiday') : (function_exists('tr') ? tr('Exceptional Day') : 'Exceptional Day');
+                $msgPart = (function_exists('tr') ? tr('Cannot request permission on this date') : 'Cannot request permission on this date');
+
+                $msg = $msgPart . '. ' . $typeLabel . ': ' . ($exDay->name ?? '');
+                return response()->json([
+                    'ok'      => false,
+                    'error'   => 'exceptional_day',
+                    'message' => $msg,
+                ], 422);
+            }
         }
 
         $cols = Schema::getColumnListing($table);
@@ -2008,6 +2094,31 @@ class EmployeeController extends Controller
                     'error'   => 'no_approval_workflow',
                     'message' => 'لا يمكن تقديم الطلب، يرجى التواصل مع الإدارة لتعيين تسلسل موافقات (سير عمل) خاص بك.',
                 ], 422);
+            }
+        }
+
+        // ✅ Exceptional Day Overlap Check
+        if (class_exists(\Athka\SystemSettings\Services\WorkScheduleService::class)) {
+            $wsService = app(\Athka\SystemSettings\Services\WorkScheduleService::class);
+            $currDate = Carbon::parse($validated['start_date']);
+            $endDate = Carbon::parse($validated['end_date'] ?? $validated['start_date']);
+            $employee_obj = $user->employee_id ? DB::table('employees')->where('id', $user->employee_id)->first() : null;
+
+            while ($currDate->lte($endDate)) {
+                $exDay = $wsService->getExceptionalDay($companyId, $currDate->toDateString(), $employee_obj);
+                if ($exDay && (bool)($exDay->is_holiday ?? true)) {
+                    $isOfficial = (bool)($exDay->is_official_holiday ?? false);
+                    $typeLabel = $isOfficial ? (function_exists('tr') ? tr('Official Holiday') : 'Official Holiday') : (function_exists('tr') ? tr('Exceptional Day') : 'Exceptional Day');
+                    $msgPart = (function_exists('tr') ? tr('Cannot request mission on this date') : 'Cannot request mission on this date');
+                    
+                    $msg = $msgPart . ': ' . $typeLabel . ' - ' . ($exDay->name ?? '') . ' (' . $currDate->toDateString() . ')';
+                    return response()->json([
+                        'ok'      => false,
+                        'error'   => 'exceptional_day',
+                        'message' => $msg,
+                    ], 422);
+                }
+                $currDate->addDay();
             }
         }
 
