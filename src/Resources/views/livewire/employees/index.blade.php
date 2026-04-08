@@ -187,6 +187,7 @@
                                     ['value' => 'RESIGNED', 'label' => tr('Resigned')],
                                     ['value' => 'TERMINATED', 'label' => tr('Terminated')],
                                     ['value' => 'RETIRED', 'label' => tr('Retired')],
+                                    ['value' => 'ENDED', 'label' => tr('Contract Ended')],
                                 ]"
                                 width="full"
                                 :defer="false"
@@ -304,7 +305,7 @@
         'RESIGNED'   => tr('Resigned'),
         'TERMINATED' => tr('Terminated'),
         'RETIRED'    => tr('Retired'),
-        'ENDED'      => tr('Ended'),
+        'ENDED'      => tr('Contract Ended'),
         'ARCHIVED'   => tr('Archived'),
         default      => $emp->status ?: '—',
     };
@@ -492,7 +493,7 @@
         'RESIGNED'   => tr('Resigned'),
         'TERMINATED' => tr('Terminated'),
         'RETIRED'    => tr('Retired'),
-        'ENDED'      => tr('Ended'),
+        'ENDED'      => tr('Contract Ended'),
         'ARCHIVED'   => tr('Archived'),
         default      => $emp->status ?: '—',
     };
@@ -1112,8 +1113,8 @@
                             <div class="flex-1">
                                 <div class="text-sm font-bold text-gray-900">{{ tr('Excel (CSV)') }}</div>
                             </div>
-                            <div class="w-4 h-4 rounded-full border-2 border-gray-200 flex items-center justify-center peer-checked:border-[color:var(--brand-via)] peer-checked:bg-[color:var(--brand-via)] transition-all">
-                                <div class="w-1.5 h-1.5 rounded-full bg-white opacity-0 peer-checked:opacity-100 transition-opacity"></div>
+                            <div class="w-5 h-5 rounded-full border-2 border-gray-200 flex items-center justify-center peer-checked:border-[color:var(--brand-via)] peer-checked:bg-[color:var(--brand-via)] transition-all shadow-sm">
+                                <div class="w-2 h-2 rounded-full bg-white opacity-0 peer-checked:opacity-100 transition-opacity"></div>
                             </div>
                         </div>
                     </label>
@@ -1127,8 +1128,8 @@
                             <div class="flex-1">
                                 <div class="text-sm font-bold text-gray-900">{{ tr('PDF Document') }}</div>
                             </div>
-                            <div class="w-4 h-4 rounded-full border-2 border-gray-200 flex items-center justify-center peer-checked:border-[color:var(--brand-via)] peer-checked:bg-[color:var(--brand-via)] transition-all">
-                                <div class="w-1.5 h-1.5 rounded-full bg-white opacity-0 peer-checked:opacity-100 transition-opacity"></div>
+                            <div class="w-5 h-5 rounded-full border-2 border-gray-200 flex items-center justify-center peer-checked:border-[color:var(--brand-via)] peer-checked:bg-[color:var(--brand-via)] transition-all shadow-sm">
+                                <div class="w-2 h-2 rounded-full bg-white opacity-0 peer-checked:opacity-100 transition-opacity"></div>
                             </div>
                         </div>
                     </label>
@@ -1174,10 +1175,10 @@
                         <div class="max-h-[220px] overflow-y-auto custom-scrollbar p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1">
                             @foreach($this->availableFields as $key => $label)
                                 <label wire:key="export-field-{{ $key }}" class="flex items-center gap-2.5 cursor-pointer group py-1.5 border-b border-gray-50/50 last:border-0 hover:bg-white px-2 rounded-lg transition-all">
-                                    <div class="relative w-3.5 h-3.5 flex items-center justify-center flex-shrink-0">
+                                    <div class="relative w-5 h-5 flex items-center justify-center flex-shrink-0">
                                         <input type="checkbox" wire:model="selectedFields" value="{{ $key }}" class="peer sr-only">
-                                        <div class="absolute inset-0 border border-gray-300 rounded transition-all peer-checked:border-[color:var(--brand-via)] peer-checked:bg-[color:var(--brand-via)]"></div>
-                                        <i class="fas fa-check text-[7px] text-white opacity-0 peer-checked:opacity-100 transition-opacity"></i>
+                                        <div class="absolute inset-0 border-2 border-gray-200 rounded-lg transition-all peer-checked:border-[color:var(--brand-via)] peer-checked:bg-[color:var(--brand-via)] shadow-sm"></div>
+                                        <i class="fas fa-check text-[10px] text-white opacity-0 peer-checked:opacity-100 transition-opacity"></i>
                                     </div>
                                     <span class="text-[11px] font-bold text-gray-600 group-hover:text-gray-900 transition-colors truncate">{{ $label }}</span>
                                 </label>
