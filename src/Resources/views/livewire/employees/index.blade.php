@@ -4,15 +4,16 @@
     $dir    = $isRtl ? 'rtl' : 'ltr';
 @endphp
 
+@section('topbar-left-content')
+    <x-ui.page-header
+        :title="tr('Employees')"
+        :subtitle="tr('Search and filter employees')"
+        class="!flex-col {{ $isRtl ? '!items-end !text-right' : '!items-start !text-left' }} !justify-start !gap-1"
+        titleSize="xl"
+    />
+@endsection
+
 <div class="space-y-4 sm:space-y-6" dir="{{ $dir }}">
-    @section('topbar-left-content')
-        <x-ui.page-header
-            :title="tr('Employees')"
-            :subtitle="tr('Search and filter employees')"
-            class="!flex-col {{ $isRtl ? '!items-end !text-right' : '!items-start !text-left' }} !justify-start !gap-1"
-            titleSize="xl"
-        />
-    @endsection
 
     {{-- Search and Filters (مثل Companies) --}}
         <x-ui.card>

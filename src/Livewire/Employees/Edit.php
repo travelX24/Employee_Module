@@ -1003,6 +1003,124 @@ if (! empty($allowed)) {
         return null;
 
     }
+
+    private function clearFieldErrorsByPrefix(string $field): void
+    {
+        $bag = $this->getErrorBag();
+
+        foreach (array_keys($bag->toArray()) as $key) {
+            if ($key === $field || str_starts_with($key, $field . '.')) {
+                $bag->forget($key);
+            }
+        }
+
+        $this->setErrorBag($bag);
+    }
+
+    public function clearUploadFieldError(string $field): void
+    {
+        $this->clearFieldErrorsByPrefix($field);
+    }
+
+    public function setUploadFieldError(string $field, string $message): void
+    {
+        $this->clearFieldErrorsByPrefix($field);
+
+        if (trim($message) !== '') {
+            $this->addError($field, $message);
+        }
+    }
+
+    public function setUploadFieldErrors(string $field, array $messages): void
+    {
+        $this->clearFieldErrorsByPrefix($field);
+
+        foreach ($messages as $message) {
+            if (is_string($message) && trim($message) !== '') {
+                $this->addError($field, $message);
+            }
+        }
+    }
+
+    public function formatFileSize($bytes)
+    {
+        if ($bytes === 0 || $bytes === null) {
+            return '0 B';
+        }
+
+        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        $power = $bytes > 0 ? floor(log($bytes, 1024)) : 0;
+
+        return number_format($bytes / pow(1024, $power), 2, '.', ',') . ' ' . $units[$power];
+    }
+
+    private function validateDocumentField(string $field): void
+    {
+        $this->clearFieldErrorsByPrefix($field);
+        if (method_exists($this, 'rulesTab5')) {
+            $rules = $this->rulesTab5();
+            if (! isset($rules[$field])) return;
+            $this->validateOnly($field, [$field => $rules[$field]], $this->messages());
+        }
+    }
+
+    public function updatedPhoto(): void { $this->validateDocumentField('photo'); }
+    public function updatedNationalIdPhoto(): void { $this->validateDocumentField('national_id_photo'); }
+    public function updatedQualification(): void { $this->validateDocumentField('qualification'); }
+    public function updatedCertificates(): void { $this->clearFieldErrorsByPrefix('certificates'); }
+    public function updatedFamilyDocuments(): void { $this->clearFieldErrorsByPrefix('family_documents'); }
+    public function updatedOtherDocuments(): void { $this->clearFieldErrorsByPrefix('other_documents'); }
+
+    public function removeUploadItem(string $field, int $index): void
+    {
+        $allowed = ['certificates', 'family_documents', 'other_documents'];
+
+        if (! in_array($field, $allowed, true)) {
+            return;
+        }
+
+        $current = $this->{$field};
+
+        if (! is_array($current)) {
+            $this->{$field} = [];
+            $this->clearFieldErrorsByPrefix($field);
+            return;
+        }
+
+        if (array_key_exists($index, $current)) {
+            unset($current[$index]);
+            $this->{$field} = array_values($current);
+        }
+
+        $this->clearFieldErrorsByPrefix($field);
+    }
+
+    #[\Livewire\Attributes\On('remove-existing-file')]
+    public function removeExistingFile($field = null, $index = null): void
+    {
+        if (!$field || $index === null) {
+            return;
+        }
+
+        $property = 'existing_' . $field;
+
+        if (property_exists($this, $property) && is_array($this->{$property})) {
+            if (isset($this->{$property}[$index])) {
+                $docData = $this->{$property}[$index];
+                if (isset($docData['id'])) {
+                    $document = \Athka\Employees\Models\EmployeeDocument::find($docData['id']);
+                    if ($document) {
+                        \Illuminate\Support\Facades\Storage::disk('public')->delete($document->file_path);
+                        $document->delete();
+                    }
+                }
+                
+                unset($this->{$property}[$index]);
+                $this->{$property} = array_values($this->{$property});
+            }
+        }
+    }
+
     public function getBranchesProperty(): array
     {
         $Branch = $this->branchModelClass();

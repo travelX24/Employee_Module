@@ -14,10 +14,21 @@
 @endphp
 
     <div
+        wire:key="employee-detail-wrap-{{ $employee->id }}"
         x-data="{
             activeTab: 1,
             editMode: false,
             employeeId: {{ $employee->id }},
+            isModalOpen: @entangle('show'),
+
+            init() {
+                this.$watch('isModalOpen', (value) => {
+                    if (value === true) {
+                        this.editMode = false;
+                        this.activeTab = 1;
+                    }
+                });
+            },
 
             show() {
                 this.editMode = false;
@@ -26,7 +37,7 @@
 
             hide() {
                 this.editMode = false;
-                $wire.set('show', false);
+                this.isModalOpen = false;
             },
 
             enableEdit() {
@@ -230,7 +241,7 @@
 
             {{-- Edit Mode --}}
             <div x-show="editMode" x-transition class="w-full">
-                @livewire('employees.edit', ['employeeId' => $employee->id], 'edit-employee-'.$employee->id)
+                @livewire('employees.edit', ['employeeId' => $employee->id], key('edit-employee-'.$employee->id))
             </div>
         </div>
         <div class="sticky bottom-0 px-6 py-4 border-t border-gray-200 bg-white shadow-[0_-8px_20px_rgba(0,0,0,0.06)] z-20 rounded-b-2xl">

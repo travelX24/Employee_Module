@@ -43,8 +43,11 @@
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="bg-gray-50/50 rounded-lg p-2 border border-gray-100">
             <x-ui.multiple-files
-                label="{{ tr('Certificates') }}"
+                :label="tr('Certificates')"
+                name="certificates"
                 wire:model="certificates"
+                target="certificates"
+                :files="$certificates"
                 error="certificates"
                 :existingFiles="$existing_certificates"
             />
@@ -52,8 +55,11 @@
         
         <div class="bg-gray-50/50 rounded-lg p-2 border border-gray-100">
             <x-ui.multiple-files
-                label="{{ tr('Family Documents') }}"
+                :label="tr('Family Documents')"
+                name="family_documents"
                 wire:model="family_documents"
+                target="family_documents"
+                :files="$family_documents"
                 error="family_documents"
                 :existingFiles="$existing_family_documents"
             />
@@ -61,8 +67,11 @@
         
         <div class="bg-gray-50/50 rounded-lg p-2 border border-gray-100">
             <x-ui.multiple-files
-                label="{{ tr('Other Documents') }}"
+                :label="tr('Other Documents')"
+                name="other_documents"
                 wire:model="other_documents"
+                target="other_documents"
+                :files="$other_documents"
                 error="other_documents"
                 :existingFiles="$existing_other_documents"
             />

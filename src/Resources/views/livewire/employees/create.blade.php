@@ -12,6 +12,7 @@
         titleSize="xl"
     />
 @endsection
+
 @section('topbar-actions')
     <x-ui.secondary-button
         href="{{ route('company-admin.employees.index') }}"

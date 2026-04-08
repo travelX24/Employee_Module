@@ -14,7 +14,6 @@ use Athka\Employees\Models\EmployeeStatusLog;
 use Livewire\Attributes\Lazy;
 use Livewire\Attributes\Layout;
 
-#[Lazy]
 #[Layout('layouts.company-admin')]
 class Index extends Component
 {
