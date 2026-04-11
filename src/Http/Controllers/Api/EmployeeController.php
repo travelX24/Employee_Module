@@ -1666,9 +1666,33 @@ class EmployeeController extends Controller
             $from = Carbon::createFromFormat('H:i', $request->input('from_time'));
             $to   = Carbon::createFromFormat('H:i', $request->input('to_time'));
             $diffMins = $from->diffInMinutes($to);
-            // We assume a standard work day is 8 hours (480 mins) for the fraction
-            // You can adjust this based on policy if needed
-            return round($diffMins / 480, 2);
+            
+            $workdayMinutes = 480; // Standard fallback
+            
+            if (class_exists(\Athka\SystemSettings\Services\WorkScheduleService::class)) {
+                $wsService = app(\Athka\SystemSettings\Services\WorkScheduleService::class);
+                $user = $request->user();
+                $employee = null;
+                if ($user && !empty($user->employee_id)) {
+                    $employee = \Athka\Employees\Models\Employee::find($user->employee_id);
+                }
+                
+                $schedule = $wsService->getEffectiveSchedule((int)$companyId, $employee, $start->toDateString());
+                $holidays = $wsService->getHolidays((int)$companyId, $start->toDateString(), $start->toDateString());
+                $metrics = $wsService->getMetricsForDate($start->toDateString(), $schedule, $holidays, $employee);
+                
+                if (isset($metrics['total_minutes']) && $metrics['total_minutes'] > 0) {
+                    $workdayMinutes = $metrics['total_minutes'];
+                }
+            }
+
+            // If the requested hours cover most of the shift (e.g., 95%+), count as a full day
+            $fraction = $diffMins / $workdayMinutes;
+            if ($fraction >= 0.95) {
+                return 1.0;
+            }
+
+            return round($fraction, 2);
         }
 
         $days = 0.0;
