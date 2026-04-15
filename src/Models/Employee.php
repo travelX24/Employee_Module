@@ -20,7 +20,8 @@ class Employee extends Model
         static::creating(function ($employee) {
             if (!$employee->employee_no) {
                 // Handle both formats: EMP-XXX and company_id-EMP-XXX
-                $lastNumber = static::where('saas_company_id', $employee->saas_company_id)
+                $lastNumber = static::withoutGlobalScope('active_only')
+                    ->where('saas_company_id', $employee->saas_company_id)
                     ->where(function($query) {
                         $query->where('employee_no', 'like', 'EMP-%')
                               ->orWhere('employee_no', 'like', '%-EMP-%');
