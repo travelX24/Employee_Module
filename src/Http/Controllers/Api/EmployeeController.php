@@ -206,6 +206,10 @@ class EmployeeController extends Controller
             $query->where('leave_policy_years.company_id', $user->saas_company_id);
         }
 
+        $currentYear = now()->year;
+        $query->orderByRaw("ABS(leave_policy_years.year - ?) ASC", [$currentYear])
+              ->orderByDesc('leave_policy_years.year');
+
         $cols = Schema::getColumnListing('leave_policies');
         $employee = $user->employee ?? null;
         if (!$employee && !empty($user->employee_id)) {
@@ -227,7 +231,8 @@ class EmployeeController extends Controller
             'leave_policies.days_per_year',
             'leave_policies.requires_attachment',
             'leave_policies.settings',
-            'leave_policies.excluded_contract_types'
+            'leave_policies.excluded_contract_types',
+            'leave_policy_years.year as policy_year_val'
         ];
         
         $types = $query->get($fields);
@@ -250,8 +255,9 @@ class EmployeeController extends Controller
             
             return [
                 'id' => $t->id,
-                'name' => $t->name,
+                'name' => $t->name . ($t->policy_year_val != now()->year ? " ({$t->policy_year_val})" : ""),
                 'leave_type' => $t->leave_type,
+                'policy_year' => $t->policy_year_val,
                 'days_per_year' => (float)$t->days_per_year,
                 'requires_attachment' => (bool)$t->requires_attachment,
                 'duration_unit' => $settings['duration_unit'] ?? 'full_day',
@@ -2116,7 +2122,7 @@ class EmployeeController extends Controller
                 return response()->json([
                     'ok'      => false,
                     'error'   => 'no_approval_workflow',
-                    'message' => 'لا يمكن تقديم الطلب، يرجى التواصل مع الإدارة لتعيين تسلسل موافقات (سير عمل) خاص بك.',
+                    'message' => function_exists('tr') ? tr('Cannot submit request, please contact administration to assign an approval workflow.') : 'لا يمكن تقديم الطلب، يرجى التواصل مع الإدارة لتعيين تسلسل موافقات (سير عمل) خاص بك.',
                 ], 422);
             }
         }
@@ -2177,7 +2183,7 @@ class EmployeeController extends Controller
         return response()->json([
             'ok'      => true,
             'id'      => $id,
-            'message' => 'Mission request created successfully.',
+            'message' => function_exists('tr') ? tr('Mission request created successfully.') : 'Mission request created successfully.',
         ]);
     }
 
@@ -2241,7 +2247,7 @@ class EmployeeController extends Controller
 
         return response()->json([
             'ok'   => true,
-            'message' => 'Mission request updated successfully.',
+            'message' => function_exists('tr') ? tr('Mission request updated successfully.') : 'Mission request updated successfully.',
         ]);
     }
 
