@@ -1103,35 +1103,40 @@
                 <label class="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
                     {{ tr('1. Export Format') }}
                 </label>
-                <div class="grid grid-cols-2 gap-4">
-                    <label class="relative cursor-pointer group">
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <label class="relative block cursor-pointer group select-none">
                         <input type="radio" wire:model.live="exportFormat" value="excel" class="peer sr-only">
-                        <div class="p-3 rounded-2xl border-2 border-gray-100 bg-gray-50/50 flex items-center gap-3 transition-all duration-300 peer-checked:border-[color:var(--brand-via)] peer-checked:bg-[color:var(--brand-via)]/[0.03] group-hover:bg-white group-hover:shadow-md">
+
+                        <div class="p-3 pe-12 rounded-2xl border-2 border-gray-100 bg-gray-50/50 flex items-center gap-3 transition-all duration-300 peer-checked:border-[color:var(--brand-via)] peer-checked:bg-[color:var(--brand-via)]/[0.05] peer-checked:shadow-md group-hover:bg-white group-hover:shadow-md">
                             <div class="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center text-green-600 group-hover:scale-110 transition-transform duration-300">
                                 <i class="fas fa-file-excel"></i>
                             </div>
-                            <div class="flex-1">
+
+                            <div class="flex-1 min-w-0">
                                 <div class="text-sm font-bold text-gray-900">{{ tr('Excel (CSV)') }}</div>
                             </div>
-                            <div class="w-5 h-5 rounded-full border-2 border-gray-200 flex items-center justify-center peer-checked:border-[color:var(--brand-via)] peer-checked:bg-[color:var(--brand-via)] transition-all shadow-sm">
-                                <div class="w-2 h-2 rounded-full bg-white opacity-0 peer-checked:opacity-100 transition-opacity"></div>
-                            </div>
                         </div>
+
+                        <span class="pointer-events-none absolute top-1/2 end-3 -translate-y-1/2 h-5 w-5 rounded-full border-2 border-gray-300 bg-white transition-all duration-200 peer-checked:border-[color:var(--brand-via)] peer-checked:bg-[color:var(--brand-via)] peer-focus-visible:ring-2 peer-focus-visible:ring-[color:var(--brand-via)]/25"></span>
+                        <i class="fas fa-circle pointer-events-none absolute top-1/2 end-[0.95rem] -translate-y-1/2 text-[7px] text-white opacity-0 transition-opacity duration-200 peer-checked:opacity-100"></i>
                     </label>
 
-                    <label class="relative cursor-pointer group">
+                    <label class="relative block cursor-pointer group select-none">
                         <input type="radio" wire:model.live="exportFormat" value="pdf" class="peer sr-only">
-                        <div class="p-3 rounded-2xl border-2 border-gray-100 bg-gray-50/50 flex items-center gap-3 transition-all duration-300 peer-checked:border-[color:var(--brand-via)] peer-checked:bg-[color:var(--brand-via)]/[0.03] group-hover:bg-white group-hover:shadow-md">
+
+                        <div class="p-3 pe-12 rounded-2xl border-2 border-gray-100 bg-gray-50/50 flex items-center gap-3 transition-all duration-300 peer-checked:border-[color:var(--brand-via)] peer-checked:bg-[color:var(--brand-via)]/[0.05] peer-checked:shadow-md group-hover:bg-white group-hover:shadow-md">
                             <div class="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center text-red-600 group-hover:scale-110 transition-transform duration-300">
                                 <i class="fas fa-file-pdf"></i>
                             </div>
-                            <div class="flex-1">
+
+                            <div class="flex-1 min-w-0">
                                 <div class="text-sm font-bold text-gray-900">{{ tr('PDF Document') }}</div>
                             </div>
-                            <div class="w-5 h-5 rounded-full border-2 border-gray-200 flex items-center justify-center peer-checked:border-[color:var(--brand-via)] peer-checked:bg-[color:var(--brand-via)] transition-all shadow-sm">
-                                <div class="w-2 h-2 rounded-full bg-white opacity-0 peer-checked:opacity-100 transition-opacity"></div>
-                            </div>
                         </div>
+
+                        <span class="pointer-events-none absolute top-1/2 end-3 -translate-y-1/2 h-5 w-5 rounded-full border-2 border-gray-300 bg-white transition-all duration-200 peer-checked:border-[color:var(--brand-via)] peer-checked:bg-[color:var(--brand-via)] peer-focus-visible:ring-2 peer-focus-visible:ring-[color:var(--brand-via)]/25"></span>
+                        <i class="fas fa-circle pointer-events-none absolute top-1/2 end-[0.95rem] -translate-y-1/2 text-[7px] text-white opacity-0 transition-opacity duration-200 peer-checked:opacity-100"></i>
                     </label>
                 </div>
             </div>
@@ -1174,14 +1179,18 @@
                     <div class="animate-in slide-in-from-top-2 duration-300 border border-gray-100 rounded-2xl overflow-hidden bg-gray-50/20">
                         <div class="max-h-[220px] overflow-y-auto custom-scrollbar p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1">
                             @foreach($this->availableFields as $key => $label)
-                                <label wire:key="export-field-{{ $key }}" class="flex items-center gap-2.5 cursor-pointer group py-1.5 border-b border-gray-50/50 last:border-0 hover:bg-white px-2 rounded-lg transition-all">
-                                    <div class="relative w-5 h-5 flex items-center justify-center flex-shrink-0">
-                                        <input type="checkbox" wire:model="selectedFields" value="{{ $key }}" class="peer sr-only">
-                                        <div class="absolute inset-0 border-2 border-gray-200 rounded-lg transition-all peer-checked:border-[color:var(--brand-via)] peer-checked:bg-[color:var(--brand-via)] shadow-sm"></div>
-                                        <i class="fas fa-check text-[10px] text-white opacity-0 peer-checked:opacity-100 transition-opacity"></i>
-                                    </div>
-                                    <span class="text-[11px] font-bold text-gray-600 group-hover:text-gray-900 transition-colors truncate">{{ $label }}</span>
-                                </label>
+                               <label wire:key="export-field-{{ $key }}" class="flex items-center gap-2.5 cursor-pointer group py-1.5 border-b border-gray-50/50 last:border-0 hover:bg-white px-2 rounded-lg transition-all select-none">
+    <input
+        type="checkbox"
+        wire:model="selectedFields"
+        value="{{ $key }}"
+        class="h-4 w-4 flex-shrink-0 rounded border-gray-300 accent-[color:var(--brand-via)] focus:ring-2 focus:ring-[color:var(--brand-via)]/20"
+    >
+
+    <span class="text-[11px] font-bold text-gray-600 group-hover:text-gray-900 transition-colors truncate">
+        {{ $label }}
+    </span>
+</label>
                             @endforeach
                         </div>
                     </div>
@@ -1216,8 +1225,3 @@
     {{-- Global Modal for view/edit employee --}}
     @livewire('employees.detail-modal')
 </div>
-
-
-
-
-
