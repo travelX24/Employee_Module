@@ -927,7 +927,7 @@ public function setViewMode(string $mode): void
         abort(404);
     }
 
-    $this->selectedEmployee = Employee::query()
+    $this->selectedEmployee = Employee::withoutGlobalScope('active_only')
         ->where('saas_company_id', $companyId)
         ->when(is_array($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
         ->when(!Auth::user()->can('employees.view.all'), function ($q) {

@@ -19,14 +19,29 @@ class Employee extends Model
     {
         static::creating(function ($employee) {
             if (!$employee->employee_no) {
+                // Handle both formats: EMP-XXX and company_id-EMP-XXX
                 $lastNumber = static::where('saas_company_id', $employee->saas_company_id)
-                    ->where('employee_no', 'like', 'EMP-%')
-                    ->orderByRaw('CAST(SUBSTR(employee_no, 5) AS UNSIGNED) DESC')
+                    ->where(function($query) {
+                        $query->where('employee_no', 'like', 'EMP-%')
+                              ->orWhere('employee_no', 'like', '%-EMP-%');
+                    })
+                    ->orderByRaw('CASE 
+                        WHEN employee_no LIKE \'EMP-%\' THEN CAST(SUBSTR(employee_no, 5) AS UNSIGNED)
+                        ELSE CAST(SUBSTR(employee_no, LOCATE(\'EMP-\', employee_no) + 4) AS UNSIGNED)
+                    END DESC')
                     ->first();
 
                 $nextId = 1;
                 if ($lastNumber) {
-                    $numericPart = (int) substr($lastNumber->employee_no, 4);
+                    // Extract numeric part from both formats
+                    if (strpos($lastNumber->employee_no, 'EMP-') === 0) {
+                        // Format: EMP-XXX
+                        $numericPart = (int) substr($lastNumber->employee_no, 4);
+                    } else {
+                        // Format: company_id-EMP-XXX
+                        $empPos = strpos($lastNumber->employee_no, 'EMP-');
+                        $numericPart = (int) substr($lastNumber->employee_no, $empPos + 4);
+                    }
                     $nextId = $numericPart + 1;
                 }
 

@@ -45,7 +45,7 @@ class DetailModal extends Component
             abort(404);
         }
 
-        $this->employee = Employee::query()
+        $this->employee = Employee::withoutGlobalScope('active_only')
             ->where('saas_company_id', $companyId)
             ->when(is_array($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
             ->with(['department', 'jobTitle', 'documents', 'manager'])
@@ -64,7 +64,7 @@ class DetailModal extends Component
         // Only refresh if it's the same employee
         if ($employeeId && (int) $employeeId !== (int) $this->employee->id) return;
 
-        $this->employee = Employee::query()
+        $this->employee = Employee::withoutGlobalScope('active_only')
             ->where('id', $this->employee->id)
             ->with(['department', 'jobTitle', 'documents', 'manager', 'statusLogs.performer'])
             ->first();

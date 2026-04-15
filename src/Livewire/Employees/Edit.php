@@ -138,7 +138,7 @@ class Edit extends Component
     $this->companyId = $this->getCompanyId();
     $this->loadNationalities();
 
-    $this->employee = Employee::query()
+    $this->employee = Employee::withoutGlobalScope('active_only')
         ->with('documents')
         ->where('id', $employeeId)
         ->where('saas_company_id', (int) $this->companyId)
