@@ -244,8 +244,13 @@ class EmployeeController extends Controller
                     ? json_decode($t->excluded_contract_types, true) 
                     : $t->excluded_contract_types;
                 
-                if (is_array($excluded) && in_array($employee->contract_type, $excluded, true)) {
-                    return false;
+                if (is_array($excluded)) {
+                    $employeeContractType = strtolower(trim($employee->contract_type));
+                    $excludedLower = array_map(fn($v) => strtolower(trim($v)), $excluded);
+                    
+                    if (in_array($employeeContractType, $excludedLower, true)) {
+                        return false;
+                    }
                 }
             }
             return true;
@@ -888,17 +893,24 @@ class EmployeeController extends Controller
             $arr['requested_at'] = isset($arr['requested_at']) ? (string)$arr['requested_at'] : (isset($arr['created_at']) ? (string)$arr['created_at'] : '');
             
             // ✅ Map requested_days to actual Calendar Duration for Mobile App UX
+            // NEW: Use the generic computation that respects work schedule
             if ($table === 'attendance_leave_requests' && !empty($arr['start_date']) && !empty($arr['end_date'])) {
                 try {
-                    $s = \Carbon\Carbon::parse($arr['start_date'])->startOfDay();
-                    $e = \Carbon\Carbon::parse($arr['end_date'])->startOfDay();
+                    $s = \Carbon\Carbon::parse($arr['start_date']);
+                    $e = \Carbon\Carbon::parse($arr['end_date']);
                     if (empty($arr['from_time']) && empty($arr['to_time'])) {
-                        $arr['requested_days'] = $s->diffInDays($e) + 1;
+                        // Use the smarter calculation method
+                        $arr['requested_days'] = $this->computeRequestedDaysGeneric(
+                            (int)($item->company_id ?? $value->saas_company_id ?? 0), 
+                            $item->leave_policy_id ?? null, 
+                            $s, 
+                            $e
+                        );
                     } else if (isset($arr['requested_days'])) {
                         $arr['requested_days'] = (float)$arr['requested_days'] > 0 ? (float)$arr['requested_days'] : 1;
                         $arr['requested_days'] = (float)$arr['requested_days'] == (int)$arr['requested_days'] ? (int)$arr['requested_days'] : (float)$arr['requested_days'];
                     }
-                } catch (\Exception $e) {}
+                } catch (\Exception $ex) {}
             } elseif (isset($arr['requested_days'])) {
                 $arr['requested_days'] = (float)$arr['requested_days'] == (int)$arr['requested_days'] 
                     ? (int)$arr['requested_days'] 
@@ -922,7 +934,11 @@ class EmployeeController extends Controller
             // Balance Calculation (Including Pending Requests)
             $balanceStr = '';
             if ($table === 'attendance_leave_requests' && !empty($arr['leave_policy_id'])) {
-                $employeeId = $value;
+                $employeeId = $value; // value is already employee_id or user_id
+                if ($key === 'user_id') {
+                    $employeeId = DB::table('employees')->where('user_id', $value)->value('id') ?: 0;
+                }
+                
                 $policyId   = $arr['leave_policy_id'];
                 $yearId     = $arr['policy_year_id'] ?? 0;
 
@@ -936,10 +952,10 @@ class EmployeeController extends Controller
                         ->where('status', 'approved')
                         ->sum('requested_days');
                     
-                    $rem = max($total - (float)$consumed, 0);
-                    $totalStr = ($total == (int)$total) ? (int)$total : $total;
-                    $remStr   = ($rem == (int)$rem) ? (int)$rem : $rem;
-                    $balanceStr = $totalStr . ' / ' . $remStr;
+                    $totalStr    = ($total == (int)$total) ? (int)$total : $total;
+                    $consumedStr = ($consumed == (int)$consumed) ? (int)$consumed : $consumed;
+                    // Changed to show: Total / Consumed
+                    $balanceStr = $totalStr . ' / ' . $consumedStr;
                 }
             }
             $arr['balance'] = $balanceStr;
@@ -1247,6 +1263,23 @@ class EmployeeController extends Controller
 
         if (in_array('created_at', $cols, true)) $data['created_at'] = $now;
         if (in_array('updated_at', $cols, true)) $data['updated_at'] = $now;
+        
+        $employeeId = $value; // Current employee ID
+
+        // ✅ Check Workflow existence
+        if (class_exists(\Athka\SystemSettings\Services\Approvals\ApprovalService::class)) {
+            $approvalService = app(\Athka\SystemSettings\Services\Approvals\ApprovalService::class);
+            $hasWorkflow = $approvalService->hasApproversForEmployee('leaves', (int)$employeeId, $companyId);
+            $hasManager = $approvalService->resolveDirectManagerId((int)$employeeId) > 0;
+
+            if (!$hasWorkflow && !$hasManager) {
+                return response()->json([
+                    'ok'      => false,
+                    'error'   => 'no_approval_workflow',
+                    'message' => function_exists('tr') ? tr('Cannot submit request, please contact administration to assign an approval workflow.') : 'لا يمكن تقديم الطلب، يرجى التواصل مع الإدارة لتعيين تسلسل موافقات (سير عمل) خاص بك.',
+                ], 422);
+            }
+        }
 
         // ✅ Handle File Upload if present
         if ($request->hasFile('attachment')) {
@@ -1285,17 +1318,13 @@ class EmployeeController extends Controller
 
         if (!$companyId || !Schema::hasTable('permission_policies')) {
             return response()->json([
-                'ok'   => true,
-                'data' => [
-                    'requires_attachment'  => false,
-                    'attachment_types'     => ['pdf', 'jpg', 'jpeg', 'png'],
-                    'attachment_max_mb'    => 2,
-                ],
-            ]);
+                'ok'      => false,
+                'error'   => 'permission_policy_not_configured',
+                'message' => function_exists('tr') ? tr('Permission settings are not configured yet, please contact administration.') : 'لم يتم تهيئة إعدادات الأذونات من النظام بعد، يرجى التواصل مع الإدارة',
+            ], 422);
         }
 
         $cols = Schema::getColumnListing('permission_policies');
-
         $query = DB::table('permission_policies')->where('company_id', $companyId);
 
         // Filter by active policy year if possible
@@ -1311,15 +1340,17 @@ class EmployeeController extends Controller
 
         $policy = $query->first();
 
-        if (!$policy) {
+        $showInApp = true;
+        if (in_array('show_in_app', $cols, true) && $policy) {
+            $showInApp = (bool)$policy->show_in_app;
+        }
+
+        if (!$policy || !$showInApp) {
             return response()->json([
-                'ok'   => true,
-                'data' => [
-                    'requires_attachment'  => false,
-                    'attachment_types'     => ['pdf', 'jpg', 'jpeg', 'png'],
-                    'attachment_max_mb'    => 2,
-                ],
-            ]);
+                'ok'      => false,
+                'error'   => 'permission_policy_not_configured',
+                'message' => function_exists('tr') ? tr('Permission settings are not configured yet, please contact administration.') : 'لم يتم تهيئة إعدادات الأذونات من النظام بعد، يرجى التواصل مع الإدارة',
+            ], 422);
         }
 
         // Parse attachment_types (may be JSON string or array)
@@ -1525,13 +1556,15 @@ class EmployeeController extends Controller
             }
         }
 
-        // ✅ Check if allowed to show in app (Required by User)
-        if (in_array('show_in_app', $permCols, true) && !$policy->show_in_app) {
-            return response()->json([
-                'ok'      => false,
-                'error'   => 'permission_policy_not_configured',
-                'message' => function_exists('tr') ? tr('Permission settings are not configured yet, please contact administration.') : 'لم يتم تهيئة إعدادات الأذونات من النظام بعد، يرجى التواصل مع الإدارة',
-            ], 422);
+        if (in_array('show_in_app', $permCols, true)) {
+            $showInApp = (bool) $policy->show_in_app;
+            if (!$showInApp) {
+                return response()->json([
+                    'ok'      => false,
+                    'error'   => 'permission_policy_not_configured',
+                    'message' => function_exists('tr') ? tr('Permission settings are not configured yet, please contact administration.') : 'لم يتم تهيئة إعدادات الأذونات من النظام بعد، يرجى التواصل مع الإدارة',
+                ], 422);
+            }
         }
 
         // Check if inactive
@@ -1545,14 +1578,14 @@ class EmployeeController extends Controller
 
         if ($policy) {
             $deductionPolicy = strtolower(trim((string)($policy->deduction_policy ?? 'not_allowed_after_limit')));
-            $isAllowedAfterLimit = $deductionPolicy !== 'not_allowed_after_limit' && $deductionPolicy !== 'not_allowed';
+            $isAllowedAfterLimit = in_array($deductionPolicy, ['salary_after_limit', 'allow_without_deduction']);
 
             if ($policy->max_request_minutes > 0 && $minutes > $policy->max_request_minutes) {
                 if (!$isAllowedAfterLimit) {
                     return response()->json([
                         'ok'      => false,
-                        'error'   => 'limit_exceeded',
-                        'message' => function_exists('tr') ? tr('Cannot exceed the maximum limit per request, please adjust the requested time.') : 'لا يمكن تجاوز الحد الأقصى للطلب الواحد، يرجى تعديل الوقت المطلوب',
+                        'error'   => 'max_request_minutes_exceeded',
+                        'message' => 'لا يمكن تجاوز الحد الأقصى للطلب الواحد، يرجى تعديل الوقت المطلوب',
                     ], 422);
                 }
             }
@@ -1572,7 +1605,7 @@ class EmployeeController extends Controller
                             return response()->json([
                                 'ok'      => false,
                                 'error'   => 'daily_limit_exceeded',
-                                'message' => function_exists('tr') ? tr('Daily permission limit exceeded, please contact administration.') : 'Daily permission limit exceeded, please contact administration.',
+                                'message' => 'لقد تجاوزت الحد اليومي للأذونات المسموح بها اليوم',
                             ], 422);
                         }
                     }
@@ -1595,7 +1628,7 @@ class EmployeeController extends Controller
                         return response()->json([
                             'ok'      => false,
                             'error'   => 'monthly_limit_exceeded',
-                            'message' => function_exists('tr') ? tr('Cannot exceed the monthly permissions limit, please contact administration.') : 'لا يمكن تجاوز الحد الشهري للأذونات، يرجى مراجعة الإدارة',
+                            'message' => 'لا يمكن تجاوز الحد الشهري للأذونات، يرجى مراجعة الإدارة',
                         ], 422);
                     }
                 }
@@ -1618,27 +1651,35 @@ class EmployeeController extends Controller
             }
         }
 
-        $id = DB::table($table)->insertGetId($data);
-        if ($approvalRequired && class_exists(\Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController::class)) {
-            $companyId = $data['company_id'] ?? $user->saas_company_id ?? 1;
-            app(\Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController::class)->ensureTasksForRequest((int)$companyId, 'permissions', $id);
-        } elseif (!$approvalRequired) {
-            try {
-                if (class_exists(\App\Notifications\ApprovalTaskNotification::class)) {
-                    $dummyTask = new \Athka\SystemSettings\Models\ApprovalTask([
-                        'operation_key' => 'permissions',
-                        'approvable_type' => 'permissions',
-                        'approvable_id' => $id,
-                        'request_employee_id' => $user->employee_id ?? $user->id,
-                        'status' => 'approved',
-                    ]);
-                    $dummyTask->id = 0; // Prevent null ID issue
-                    $user->notify(new \App\Notifications\ApprovalTaskNotification($dummyTask, 'submitted'));
-                    $user->notify(new \App\Notifications\ApprovalTaskNotification($dummyTask, 'resolution'));
+        try {
+            $id = DB::table($table)->insertGetId($data);
+            if ($approvalRequired && class_exists(\Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController::class)) {
+                $companyId = $data['company_id'] ?? $user->saas_company_id ?? 1;
+                app(\Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController::class)->ensureTasksForRequest((int)$companyId, 'permissions', $id);
+            } elseif (!$approvalRequired) {
+                try {
+                    if (class_exists(\App\Notifications\ApprovalTaskNotification::class)) {
+                        $dummyTask = new \Athka\SystemSettings\Models\ApprovalTask([
+                            'operation_key' => 'permissions',
+                            'approvable_type' => 'permissions',
+                            'approvable_id' => $id,
+                            'request_employee_id' => $user->employee_id ?? $user->id,
+                            'status' => 'approved',
+                        ]);
+                        $dummyTask->id = 0; // Prevent null ID issue
+                        $user->notify(new \App\Notifications\ApprovalTaskNotification($dummyTask, 'submitted'));
+                        $user->notify(new \App\Notifications\ApprovalTaskNotification($dummyTask, 'resolution'));
+                    }
+                } catch (\Exception $e) {
+                    \Illuminate\Support\Facades\Log::error("Auto-approval notification failed (Permission API): " . $e->getMessage());
                 }
-            } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::error("Auto-approval notification failed (Permission API): " . $e->getMessage());
             }
+        } catch (\Exception $ex) {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'database_error',
+                'message' => 'Failed to save request: ' . $ex->getMessage(),
+            ], 500);
         }
 
         $row = DB::table($table)->where('id', $id)->first();
@@ -1988,12 +2029,40 @@ class EmployeeController extends Controller
         }
 
         if ($policy) {
+            $deductionPolicy = strtolower(trim((string)($policy->deduction_policy ?? 'not_allowed_after_limit')));
+            $isAllowedAfterLimit = in_array($deductionPolicy, ['salary_after_limit', 'allow_without_deduction']);
+
             if ($policy->max_request_minutes > 0 && $minutes > $policy->max_request_minutes) {
-                return response()->json([
-                    'ok'      => false,
-                    'error'   => 'limit_exceeded',
-                    'message' => 'لا يمكن تجاوز الحد الأقصى للطلب الواحد، يرجى تعديل الوقت المطلوب',
-                ], 422);
+                if (!$isAllowedAfterLimit) {
+                    return response()->json([
+                        'ok'      => false,
+                        'error'   => 'max_request_minutes_exceeded',
+                        'message' => 'لا يمكن تجاوز الحد الأقصى للطلب الواحد، يرجى تعديل الوقت المطلوب',
+                    ], 422);
+                }
+            }
+
+            // 1.5 Daily Limit
+            if ($policy->max_request_minutes > 0) {
+                $dateCol = in_array('permission_date', $cols, true) ? 'permission_date' : (in_array('date', $cols, true) ? 'date' : null);
+                if ($dateCol) {
+                    $usedDailyMinutes = DB::table($table)
+                        ->where($key, $value)
+                        ->where('id', '!=', $id)
+                        ->whereDate($dateCol, $dateVal)
+                        ->whereIn('status', ['approved', 'pending'])
+                        ->sum('minutes');
+
+                    if (($usedDailyMinutes + $minutes) > $policy->max_request_minutes) {
+                        if (!$isAllowedAfterLimit) {
+                            return response()->json([
+                                'ok'      => false,
+                                'error'   => 'daily_limit_exceeded',
+                                'message' => 'لقد تجاوزت الحد اليومي للأذونات المسموح بها اليوم',
+                            ], 422);
+                        }
+                    }
+                }
             }
 
             if ($policy->monthly_limit_minutes > 0) {
@@ -2008,10 +2077,7 @@ class EmployeeController extends Controller
                     ->sum('minutes');
 
                 if (($usedMinutes + $minutes) > $policy->monthly_limit_minutes) {
-                    $settings = is_string($policy->settings) ? json_decode($policy->settings, true) : ($policy->settings ?? []);
-                    $allowExceed = (bool)($settings['allow_exceed_monthly_limit'] ?? false);
-
-                    if (!$allowExceed) {
+                    if (!$isAllowedAfterLimit) {
                         return response()->json([
                             'ok'      => false,
                             'error'   => 'monthly_limit_exceeded',
@@ -2118,7 +2184,10 @@ class EmployeeController extends Controller
         // ✅ Check Workflow existence
         if (class_exists(\Athka\SystemSettings\Services\Approvals\ApprovalService::class)) {
             $approvalService = app(\Athka\SystemSettings\Services\Approvals\ApprovalService::class);
-            if (!$approvalService->hasApproversForEmployee('missions', $employeeId, $companyId)) {
+            $hasWorkflow = $approvalService->hasApproversForEmployee('missions', $employeeId, $companyId);
+            $hasManager = $approvalService->resolveDirectManagerId((int)$employeeId) > 0;
+
+            if (!$hasWorkflow && !$hasManager) {
                 return response()->json([
                     'ok'      => false,
                     'error'   => 'no_approval_workflow',
