@@ -204,10 +204,21 @@ class EmployeeController extends Controller
         if (!empty($user->saas_company_id)) {
             $query->where('leave_policies.company_id', $user->saas_company_id);
             $query->where('leave_policy_years.company_id', $user->saas_company_id);
+
+            // Filter by calendar type (Gregorian vs Hijri)
+            $calendarType = DB::table('operational_calendars')
+                ->where('company_id', $user->saas_company_id)
+                ->value('calendar_type') ?? 'gregorian';
+            
+            if (strtolower($calendarType) === 'hijri') {
+                $query->whereBetween('leave_policy_years.year', [1300, 1600]);
+            } else {
+                $query->whereBetween('leave_policy_years.year', [1900, 2500]);
+            }
         }
 
         $currentYear = now()->year;
-        $query->orderByRaw("ABS(leave_policy_years.year - ?) ASC", [$currentYear])
+        $query->orderByRaw("ABS(CAST(leave_policy_years.year AS SIGNED) - ?) ASC", [$currentYear])
               ->orderByDesc('leave_policy_years.year');
 
         $cols = Schema::getColumnListing('leave_policies');
@@ -1320,7 +1331,7 @@ class EmployeeController extends Controller
             return response()->json([
                 'ok'      => false,
                 'error'   => 'permission_policy_not_configured',
-                'message' => function_exists('tr') ? tr('Permission settings are not configured yet, please contact administration.') : 'لم يتم تهيئة إعدادات الأذونات من النظام بعد، يرجى التواصل مع الإدارة',
+                'message' => function_exists('tr') ? tr('Permission settings are not configured yet, please contact administration.') : 'لم يتم تهيئة إعدادات الأذونات من النظام بعد، يرجى التواصل مع المسؤول',
             ], 422);
         }
 
@@ -1345,11 +1356,11 @@ class EmployeeController extends Controller
             $showInApp = (bool)$policy->show_in_app;
         }
 
-        if (!$policy || !$showInApp) {
+        if (!$policy || !$showInApp || (($policy->monthly_limit_minutes ?? 0) <= 0 && ($policy->max_request_minutes ?? 0) <= 0)) {
             return response()->json([
                 'ok'      => false,
                 'error'   => 'permission_policy_not_configured',
-                'message' => function_exists('tr') ? tr('Permission settings are not configured yet, please contact administration.') : 'لم يتم تهيئة إعدادات الأذونات من النظام بعد، يرجى التواصل مع الإدارة',
+                'message' => function_exists('tr') ? tr('Permission settings are not configured yet, please contact administration.') : 'لم يتم تهيئة إعدادات الأذونات من النظام بعد، يرجى التواصل مع المسؤول',
             ], 422);
         }
 
@@ -1536,11 +1547,11 @@ class EmployeeController extends Controller
             $policy = $permQuery->first();
         }
 
-        if (!$policy) {
+        if (!$policy || (($policy->monthly_limit_minutes ?? 0) <= 0 && ($policy->max_request_minutes ?? 0) <= 0)) {
             return response()->json([
                 'ok'      => false,
                 'error'   => 'no_permission_policy',
-                'message' => function_exists('tr') ? tr('Permission settings are not configured yet, please contact administration.') : 'لم يتم تهيئة إعدادات الأذونات من النظام بعد، يرجى التواصل مع الإدارة',
+                'message' => function_exists('tr') ? tr('Permission settings are not configured yet, please contact administration.') : 'لم يتم تهيئة إعدادات الأذونات من النظام بعد، يرجى التواصل مع المسؤول',
             ], 422);
         }
 
@@ -1562,7 +1573,7 @@ class EmployeeController extends Controller
                 return response()->json([
                     'ok'      => false,
                     'error'   => 'permission_policy_not_configured',
-                    'message' => function_exists('tr') ? tr('Permission settings are not configured yet, please contact administration.') : 'لم يتم تهيئة إعدادات الأذونات من النظام بعد، يرجى التواصل مع الإدارة',
+                    'message' => function_exists('tr') ? tr('Permission settings are not configured yet, please contact administration.') : 'لم يتم تهيئة إعدادات الأذونات من النظام بعد، يرجى التواصل مع المسؤول',
                 ], 422);
             }
         }
@@ -1580,7 +1591,7 @@ class EmployeeController extends Controller
             $deductionPolicy = strtolower(trim((string)($policy->deduction_policy ?? 'not_allowed_after_limit')));
             $isAllowedAfterLimit = in_array($deductionPolicy, ['salary_after_limit', 'allow_without_deduction']);
 
-            if ($policy->max_request_minutes > 0 && $minutes > $policy->max_request_minutes) {
+            if (isset($policy->max_request_minutes) && $minutes > $policy->max_request_minutes) {
                 if (!$isAllowedAfterLimit) {
                     return response()->json([
                         'ok'      => false,
@@ -1591,7 +1602,7 @@ class EmployeeController extends Controller
             }
 
             // 1.5 Daily Limit (Same as max_request_minutes)
-            if ($policy->max_request_minutes > 0) {
+            if (isset($policy->max_request_minutes)) {
                 $dateCol = in_array('permission_date', $cols, true) ? 'permission_date' : (in_array('date', $cols, true) ? 'date' : null);
                 if ($dateCol) {
                     $usedDailyMinutes = DB::table($table)
@@ -1613,7 +1624,7 @@ class EmployeeController extends Controller
             }
 
             // 2. Monthly limit
-            if ($policy->monthly_limit_minutes > 0) {
+            if (isset($policy->monthly_limit_minutes)) {
                 $monthStart = Carbon::parse($dateVal)->startOfMonth()->toDateString();
                 $monthEnd   = Carbon::parse($dateVal)->endOfMonth()->toDateString();
 
