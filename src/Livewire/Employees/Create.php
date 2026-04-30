@@ -301,11 +301,13 @@ class Create extends Component
             'certificates.*.mimes' => $this->txt('ملفات الشهادات يجب أن تكون PDF أو JPG أو PNG.', 'Certificate files must be PDF, JPG, or PNG.'),
             'family_documents.*.mimes' => $this->txt('ملفات الوثائق العائلية يجب أن تكون PDF أو JPG أو PNG.', 'Family document files must be PDF, JPG, or PNG.'),
             'other_documents.*.mimes' => $this->txt('ملفات الوثائق الأخرى يجب أن تكون PDF أو JPG أو PNG.', 'Other document files must be PDF, JPG, or PNG.'),
-            'national_id_type_note.required' => $this->txt(
-    'يرجى توضيح نوع الهوية عند اختيار "أخرى".',
-    'Please specify the ID type when "Other" is selected.'
-),
-        ];
+    'national_id_type_note.required' => $this->txt(
+        'يرجى توضيح نوع الهوية عند اختيار "أخرى".',
+        'Please specify the ID type when "Other" is selected.'
+    ),
+    'name_ar.regex' => $this->txt('يجب إدخال الاسم الثلاثي على الأقل.', 'At least a triple name is required.'),
+    'name_en.regex' => $this->txt('يجب إدخال الاسم الثلاثي على الأقل.', 'At least a triple name is required.'),
+];
     }
 
     private function clearFieldErrorsByPrefix(string $field): void
@@ -509,32 +511,45 @@ class Create extends Component
         ];
     }
 
-   private function rulesTab1(): array
-{
-    return [
-        'name_ar' => ['required', 'string', 'max:255'],
-        'national_id_type' => ['required', Rule::in(['national_id', 'iqama', 'passport', 'other'])],
-        'national_id_type_note' => $this->national_id_type === 'other'
-            ? ['required', 'string', 'max:255']
-            : ['nullable', 'string', 'max:255'],
-        'national_id' => [
-            'required',
-            'string',
-            'max:50',
-            Rule::unique('employees', 'national_id')
-                ->where('saas_company_id', $this->companyId)
-                ->whereNull('deleted_at'),
-        ],
-        'national_id_expiry' => ['required', 'date', 'after:today'],
-        'nationality' => ['required', 'string', 'max:100'],
-        'gender' => ['required', Rule::in(['male', 'female'])],
-        'social_status' => ['required', Rule::in(['single', 'married'])],
-        'birth_place' => ['required', 'string', 'max:255'],
-        'birth_date' => ['required', 'date'],
-        'name_en' => ['nullable', 'string', 'max:255'],
-        'children_count' => ['nullable', 'integer', 'min:0'],
-    ];
-}
+    private function rulesTab1(): array
+    {
+        $tripleNameRegex = '/^(\s*\S+\s+){2,}\S+\s*$/u';
+        $tripleNameMessage = $this->txt('يجب إدخال الاسم الثلاثي على الأقل.', 'At least a triple name is required.');
+
+        return [
+            'name_ar' => [
+                'required', 
+                'string', 
+                'max:255',
+                'regex:' . $tripleNameRegex,
+            ],
+            'national_id_type' => ['required', Rule::in(['national_id', 'iqama', 'passport', 'other'])],
+            'national_id_type_note' => $this->national_id_type === 'other'
+                ? ['required', 'string', 'max:255']
+                : ['nullable', 'string', 'max:255'],
+            'national_id' => [
+                'required',
+                'string',
+                'max:50',
+                Rule::unique('employees', 'national_id')
+                    ->where('saas_company_id', $this->companyId)
+                    ->whereNull('deleted_at'),
+            ],
+            'national_id_expiry' => ['required', 'date', 'after:today'],
+            'nationality' => ['required', 'string', 'max:100'],
+            'gender' => ['required', Rule::in(['male', 'female'])],
+            'social_status' => ['required', Rule::in(['single', 'married'])],
+            'birth_place' => ['required', 'string', 'max:255'],
+            'birth_date' => ['required', 'date'],
+            'name_en' => [
+                'nullable', 
+                'string', 
+                'max:255',
+                'regex:' . $tripleNameRegex,
+            ],
+            'children_count' => ['nullable', 'integer', 'min:0'],
+        ];
+    }
     private function rulesTab2(): array
     {
         return [
@@ -644,6 +659,19 @@ class Create extends Component
 
         if ($target > $this->tab) {
             for ($t = $this->tab; $t < $target; $t++) {
+                if ($t === 1) {
+                    if (!$this->hasAtLeastThreeNameParts($this->name_ar)) {
+                        $this->addError('name_ar', $this->txt('يجب إدخال الاسم الثلاثي على الأقل.', 'At least a triple name is required.'));
+                        $this->tab = 1;
+                        return;
+                    }
+                    if ($this->name_en && !$this->hasAtLeastThreeNameParts($this->name_en)) {
+                        $this->addError('name_en', $this->txt('يجب إدخال الاسم الثلاثي على الأقل.', 'At least a triple name is required.'));
+                        $this->tab = 1;
+                        return;
+                    }
+                }
+
                 $this->validate(
                     $this->rulesForTab($t),
                     $this->validationMessages(),
@@ -657,6 +685,17 @@ class Create extends Component
 
     public function nextTab(): void
     {
+        if ($this->tab === 1) {
+            if (!$this->hasAtLeastThreeNameParts($this->name_ar)) {
+                $this->addError('name_ar', $this->txt('يجب إدخال الاسم الثلاثي على الأقل.', 'At least a triple name is required.'));
+                return;
+            }
+            if ($this->name_en && !$this->hasAtLeastThreeNameParts($this->name_en)) {
+                $this->addError('name_en', $this->txt('يجب إدخال الاسم الثلاثي على الأقل.', 'At least a triple name is required.'));
+                return;
+            }
+        }
+
         $this->validate(
             $this->rulesForTab($this->tab),
             $this->validationMessages(),

@@ -865,14 +865,25 @@ class EmployeeController extends Controller
 
         $currentMonth = now()->format('Y-m');
         $monthlyLeaveDays = 0;
+        $monthlyLeaveDaysByPolicy = [];
         $monthlyPermissionMinutes = 0;
 
         if ($employeeId > 0) {
-            $monthlyLeaveDays = DB::table('attendance_leave_requests')
+            $monthlyLeaveStats = DB::table('attendance_leave_requests')
+                ->select('leave_policy_id', 'policy_year_id', DB::raw('SUM(requested_days) as total_days'))
                 ->where('employee_id', $employeeId)
                 ->where('status', 'approved')
                 ->where('start_date', 'like', $currentMonth . '%')
-                ->sum('requested_days');
+                ->groupBy('leave_policy_id', 'policy_year_id')
+                ->get();
+
+            foreach ($monthlyLeaveStats as $stat) {
+                if ($stat->leave_policy_id) {
+                    $keyStr = $stat->leave_policy_id . '_' . ($stat->policy_year_id ?? 0);
+                    $monthlyLeaveDaysByPolicy[$keyStr] = $stat->total_days;
+                }
+                $monthlyLeaveDays += $stat->total_days;
+            }
 
             $monthlyPermissionMinutes = DB::table('attendance_permission_requests')
                 ->where('employee_id', $employeeId)
@@ -881,7 +892,7 @@ class EmployeeController extends Controller
                 ->sum('minutes');
         }
 
-        $transformed = $items->map(function($item) use ($table, $key, $value, $locale, $groupedTasks, $approvers, $monthlyLeaveDays, $monthlyPermissionMinutes) {
+        $transformed = $items->map(function($item) use ($table, $key, $value, $locale, $groupedTasks, $approvers, $monthlyLeaveDays, $monthlyLeaveDaysByPolicy, $monthlyPermissionMinutes) {
             $arr = (array)$item;
             
             // Map common fields to what Flutter expects
@@ -972,7 +983,13 @@ class EmployeeController extends Controller
             $arr['balance'] = $balanceStr;
             
             // Monthly Stats
-            $arr['monthly_taken_days'] = (float)$monthlyLeaveDays;
+            if ($table === 'attendance_leave_requests' && !empty($arr['leave_policy_id'])) {
+                $pId = $arr['leave_policy_id'];
+                $yId = $arr['policy_year_id'] ?? 0;
+                $arr['monthly_taken_days'] = (float)($monthlyLeaveDaysByPolicy[$pId . '_' . $yId] ?? 0);
+            } else {
+                $arr['monthly_taken_days'] = (float)$monthlyLeaveDays;
+            }
             $arr['monthly_taken_minutes'] = (int)$monthlyPermissionMinutes;
 
             // ✅ Include Approval Tasks and Find Current Approver
@@ -1718,8 +1735,16 @@ class EmployeeController extends Controller
             })
             ->get();
 
-        // Check if it's a partial day (same day with times)
         $request = request();
+        $wsService = class_exists(\Athka\SystemSettings\Services\WorkScheduleService::class) 
+            ? app(\Athka\SystemSettings\Services\WorkScheduleService::class) : null;
+            
+        $employee = null;
+        if ($request->user() && !empty($request->user()->employee_id)) {
+            $employee = \Athka\Employees\Models\Employee::find($request->user()->employee_id);
+        }
+
+        // Check if it's a partial day (same day with times)
         if ($start->isSameDay($end) && $request->filled('from_time') && $request->filled('to_time')) {
             $from = Carbon::createFromFormat('H:i', $request->input('from_time'));
             $to   = Carbon::createFromFormat('H:i', $request->input('to_time'));
@@ -1727,17 +1752,10 @@ class EmployeeController extends Controller
             
             $workdayMinutes = 480; // Standard fallback
             
-            if (class_exists(\Athka\SystemSettings\Services\WorkScheduleService::class)) {
-                $wsService = app(\Athka\SystemSettings\Services\WorkScheduleService::class);
-                $user = $request->user();
-                $employee = null;
-                if ($user && !empty($user->employee_id)) {
-                    $employee = \Athka\Employees\Models\Employee::find($user->employee_id);
-                }
-                
+            if ($wsService) {
                 $schedule = $wsService->getEffectiveSchedule((int)$companyId, $employee, $start->toDateString());
-                $holidays = $wsService->getHolidays((int)$companyId, $start->toDateString(), $start->toDateString());
-                $metrics = $wsService->getMetricsForDate($start->toDateString(), $schedule, $holidays, $employee);
+                $dayHolidays = $wsService->getHolidays((int)$companyId, $start->toDateString(), $start->toDateString());
+                $metrics = $wsService->getMetricsForDate($start->toDateString(), $schedule, $dayHolidays, $employee);
                 
                 if (isset($metrics['total_minutes']) && $metrics['total_minutes'] > 0) {
                     $workdayMinutes = $metrics['total_minutes'];
@@ -1764,9 +1782,30 @@ class EmployeeController extends Controller
                 continue;
             }
 
-            if ($weekendPolicy === 'include' || in_array((int)$cursor->dayOfWeek, $workingDays, true)) {
+            $isWorkday = false;
+            if ($weekendPolicy === 'include') {
+                $isWorkday = true;
+            } else {
+                if ($wsService) {
+                    $schedule = $wsService->getEffectiveSchedule((int)$companyId, $employee, $cursor->toDateString());
+                    if ($schedule) {
+                        $raw = $schedule->work_days ?? [];
+                        $workDaysArr = is_string($raw) ? json_decode($raw, true) : $raw;
+                        $workDaysArr = is_array($workDaysArr) ? array_map('strtolower', $workDaysArr) : [];
+                        $dayNameStr = strtolower($cursor->englishDayOfWeek);
+                        $isWorkday = in_array($dayNameStr, $workDaysArr, true);
+                    } else {
+                        $isWorkday = in_array((int)$cursor->dayOfWeek, $workingDays, true);
+                    }
+                } else {
+                    $isWorkday = in_array((int)$cursor->dayOfWeek, $workingDays, true);
+                }
+            }
+
+            if ($isWorkday) {
                 $days += 1.0;
             }
+            
             $cursor->addDay();
         }
 

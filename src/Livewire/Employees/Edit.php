@@ -534,6 +534,19 @@ if (! empty($allowed)) {
         return $this->isAr() ? $ar : $en;
     }
 
+    private function hasAtLeastThreeNameParts(?string $value): bool
+    {
+        $value = trim((string) $value);
+
+        if ($value === '') {
+            return false;
+        }
+
+        $parts = preg_split('/\s+/u', $value, -1, PREG_SPLIT_NO_EMPTY);
+
+        return count($parts) >= 3;
+    }
+
     public function messages(): array
     {
         return [
@@ -557,15 +570,29 @@ if (! empty($allowed)) {
             ],
             'image' => $this->txt('يجب أن يكون الملف :attribute صورة.', 'The :attribute must be an image.'),
             'mimes' => $this->txt('يجب أن يكون ملف :attribute من نوع: :values.', 'The :attribute must be a file of type: :values.'),
+            'name_ar.regex' => $this->txt('يجب إدخال الاسم الثلاثي على الأقل.', 'At least a triple name is required.'),
+            'name_en.regex' => $this->txt('يجب إدخال الاسم الثلاثي على الأقل.', 'At least a triple name is required.'),
         ];
     }
 
     // Validation rules for each tab
     protected function rulesTab1(): array
     {
+        $tripleNameRegex = '/^(\s*\S+\s+){2,}\S+\s*$/u';
+
         return [
-            'name_ar' => ['required', 'string', 'max:255'],
-            'name_en' => ['nullable', 'string', 'max:255'],
+            'name_ar' => [
+                'required', 
+                'string', 
+                'max:255',
+                'regex:' . $tripleNameRegex,
+            ],
+            'name_en' => [
+                'nullable', 
+                'string', 
+                'max:255',
+                'regex:' . $tripleNameRegex,
+            ],
             'national_id_type' => ['required', Rule::in(['national_id','iqama','passport','other'])],
             'national_id' => ['required', 'string', 'max:50'],
             'national_id_expiry' => ['required', 'date'],
@@ -708,6 +735,17 @@ if (! empty($allowed)) {
 
     public function nextTab(): void
     {
+        if ($this->tab === 1) {
+            if (!$this->hasAtLeastThreeNameParts($this->name_ar)) {
+                $this->addError('name_ar', $this->txt('يجب إدخال الاسم الثلاثي على الأقل.', 'At least a triple name is required.'));
+                return;
+            }
+            if ($this->name_en && !$this->hasAtLeastThreeNameParts($this->name_en)) {
+                $this->addError('name_en', $this->txt('يجب إدخال الاسم الثلاثي على الأقل.', 'At least a triple name is required.'));
+                return;
+            }
+        }
+
         $rules = match ($this->tab) {
             1 => $this->rulesTab1(),
             2 => $this->rulesTab2(),
