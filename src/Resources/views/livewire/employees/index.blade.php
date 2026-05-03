@@ -1017,17 +1017,21 @@
                         </div>
 
                         {{-- Loading for file upload --}}
-                        <div wire:loading wire:target="importFile" class="absolute inset-0 bg-white/90 backdrop-blur-sm rounded-3xl flex flex-col items-center justify-center z-10 transition-all">
-                            <div class="w-10 h-10 rounded-full border-4 border-[color:var(--brand-via)]/20 border-t-[color:var(--brand-via)] animate-spin"></div>
-                            <span class="text-sm font-bold text-[color:var(--brand-via)] mt-3">{{ tr('Uploading...') }}</span>
+                        <div wire:loading.flex wire:target="importFile" class="absolute inset-0 w-full h-full bg-white/90 backdrop-blur-sm rounded-3xl items-center justify-center z-10" style="display: none;">
+                            <div class="text-center">
+                                <div class="w-10 h-10 mx-auto rounded-full border-4 border-[color:var(--brand-via)]/20 border-t-[color:var(--brand-via)] animate-spin"></div>
+                                <span class="text-sm font-bold text-[color:var(--brand-via)] mt-3 block">{{ tr('Uploading...') }}</span>
+                            </div>
                         </div>
 
                         {{-- Loading for import process --}}
-                        <div wire:loading wire:target="import" class="absolute inset-0 bg-white/90 backdrop-blur-sm rounded-3xl flex flex-col items-center justify-center z-20 transition-all">
-                            <div class="w-12 h-12 rounded-full border-4 border-[color:var(--brand-via)]/20 border-t-[color:var(--brand-via)] animate-spin mb-4"></div>
-                            <div class="flex flex-col items-center gap-1 px-6 text-center">
-                                <span class="text-base font-bold text-gray-900">{{ tr('Processing Data...') }}</span>
-                                <span class="text-xs text-gray-500">{{ tr('Please wait, this may take a moment.') }}</span>
+                        <div wire:loading.flex wire:target="import" class="absolute inset-0 w-full h-full bg-white/90 backdrop-blur-sm rounded-3xl items-center justify-center z-20" style="display: none;">
+                            <div class="text-center">
+                                <div class="w-12 h-12 mx-auto rounded-full border-4 border-[color:var(--brand-via)]/20 border-t-[color:var(--brand-via)] animate-spin mb-4"></div>
+                                <div class="flex flex-col items-center gap-1 px-6 text-center">
+                                    <span class="text-base font-bold text-gray-900 block">{{ tr('Processing Data...') }}</span>
+                                    <span class="text-xs text-gray-500 block">{{ tr('Please wait, this may take a moment.') }}</span>
+                                </div>
                             </div>
                         </div>
                     </label>

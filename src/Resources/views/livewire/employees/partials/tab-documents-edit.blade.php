@@ -7,6 +7,7 @@
                 label="{{ tr('Personal Photo') }}"
                 wire:model="photo"
                 error="photo"
+                maxKb="10240"
                 {{-- Removed custom previewSize to ensure image displays correctly (default size usually works best) --}}
                 :existingImage="$existing_photo ? asset('storage/' . $existing_photo->file_path) : null"
             />
@@ -20,6 +21,7 @@
                     label="{{ tr('National ID Photo') }}"
                     wire:model="national_id_photo"
                     error="national_id_photo"
+                    maxKb="10240"
                     :existingImage="$existing_national_id_photo ? asset('storage/' . $existing_national_id_photo->file_path) : null"
                 />
             </div>
@@ -30,6 +32,7 @@
                     label="{{ tr('Qualification') }}"
                     wire:model="qualification"
                     error="qualification"
+                    maxKb="10240"
                     accept=".pdf,.jpg,.png,.jpeg"
                     :existingFile="$existing_qualification ? ['original_name' => $existing_qualification->title ?? basename($existing_qualification->file_path), 'url' => asset('storage/' . $existing_qualification->file_path)] : null"
                 />
@@ -49,6 +52,7 @@
                 target="certificates"
                 :files="$certificates"
                 error="certificates"
+                maxKb="10240"
                 :existingFiles="$existing_certificates"
             />
         </div>
@@ -61,6 +65,7 @@
                 target="family_documents"
                 :files="$family_documents"
                 error="family_documents"
+                maxKb="10240"
                 :existingFiles="$existing_family_documents"
             />
         </div>
@@ -73,6 +78,7 @@
                 target="other_documents"
                 :files="$other_documents"
                 error="other_documents"
+                maxKb="10240"
                 :existingFiles="$existing_other_documents"
             />
         </div>

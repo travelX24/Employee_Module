@@ -775,6 +775,14 @@ if (! empty($allowed)) {
     {
         $this->authorize('employees.edit');
 
+        // ✅ منع الحفظ إذا كانت هناك أخطاء في الرفع لم تُعالج
+        $fileFields = ['photo', 'national_id_photo', 'qualification', 'certificates', 'family_documents', 'other_documents'];
+        if ($this->getErrorBag()->hasAny($fileFields)) {
+            $this->tab = 5;
+            $this->dispatch('toast', type: 'error', title: $this->txt('خطأ في الملفات', 'File Error'), message: $this->txt('يرجى حذف أو تعديل الملفات المرفوضة قبل الحفظ.', 'Please remove or fix rejected files before saving.'));
+            return;
+        }
+
         // ✅ NEW: Re-enforce scoping during save to prevent manipulation
         if (!Auth::user()->can('employees.view.all')) {
             if (Auth::user()->department_id) {
