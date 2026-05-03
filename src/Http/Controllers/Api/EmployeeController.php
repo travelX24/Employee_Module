@@ -160,6 +160,7 @@ class EmployeeController extends Controller
                 'is_active'            => $company->is_active ?? null,
                 'subscription_ends_at' => $subscriptionEndsAt,
                 'allowed_users'        => $companyInfo?->allowed_users,
+                'datetime_format'      => $companyInfo?->datetime_format ?: 'Y-m-d H:i',
             ] : null,
 
             'roles'       => $roles,
