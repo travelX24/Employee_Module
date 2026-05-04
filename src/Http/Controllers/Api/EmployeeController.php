@@ -278,10 +278,10 @@ class EmployeeController extends Controller
                 'days_per_year' => (float)$t->days_per_year,
                 'requires_attachment' => (bool)$t->requires_attachment,
                 'duration_unit' => $settings['duration_unit'] ?? 'full_day',
-                'allow_retroactive' => (bool)($settings['allow_retroactive'] ?? false),
-                'note_required' => (bool)($settings['note_required'] ?? false),
+                'allow_retroactive' => isset($settings['allow_retroactive']) && (bool)$settings['allow_retroactive'],
+                'note_required' => isset($settings['note_required']) && (bool)$settings['note_required'],
                 'note_text' => (string)($settings['note_text'] ?? ''),
-                'note_ack_required' => (bool)($settings['note_ack_required'] ?? false),
+                'note_ack_required' => isset($settings['note_ack_required']) && (bool)$settings['note_ack_required'],
                 'deduction_policy' => (string)($settings['deduction_policy'] ?? 'balance_only'),
                 'notice_min_days' => (int)($settings['notice_min_days'] ?? 0),
                 'notice_max_advance_days' => (int)($settings['notice_max_advance_days'] ?? 0),
@@ -1119,7 +1119,7 @@ class EmployeeController extends Controller
                 }
 
                 // Check Mandatory Notes
-                $noteRequired = (bool)($pSettings['note_required'] ?? false);
+                $noteRequired = isset($pSettings['note_required']) && (bool)$pSettings['note_required'];
                 if ($noteRequired && empty($validated['reason'])) {
                     return response()->json([
                         'ok'      => false,
@@ -1152,30 +1152,8 @@ class EmployeeController extends Controller
             }
         }
 
-        // ✅ Exceptional Day Overlap Check
-        if (class_exists(\Athka\SystemSettings\Services\WorkScheduleService::class)) {
-            $wsService = app(\Athka\SystemSettings\Services\WorkScheduleService::class);
-            $currDate = Carbon::parse($validated['start_date']);
-            $endDate = Carbon::parse($validated['end_date']);
-            $employee_obj = $employee; // Can be DB row OR model
-            
-            while ($currDate->lte($endDate)) {
-                $exDay = $wsService->getExceptionalDay($companyId, $currDate->toDateString(), $employee_obj);
-                if ($exDay && (bool)($exDay->is_holiday ?? true)) {
-                    $isOfficial = (bool)($exDay->is_official_holiday ?? false);
-                    $typeLabel = $isOfficial ? (function_exists('tr') ? tr('Official Holiday') : 'Official Holiday') : (function_exists('tr') ? tr('Exceptional Day') : 'Exceptional Day');
-                    $msgPart = (function_exists('tr') ? tr('Cannot request leave on this date') : 'Cannot request leave on this date');
-                    
-                    $msg = $msgPart . ': ' . $typeLabel . ' - ' . ($exDay->name ?? '') . ' (' . $currDate->toDateString() . ')';
-                    return response()->json([
-                        'ok'      => false,
-                        'error'   => 'exceptional_day',
-                        'message' => $msg,
-                    ], 422);
-                }
-                $currDate->addDay();
-            }
-        }
+        // (Holiday check moved later to allow balance check to take precedence)
+
 
         // ✅ NEW: company_id required in some installs
         if (in_array('company_id', $cols, true)) {
@@ -1242,6 +1220,31 @@ class EmployeeController extends Controller
                         }
                     }
                 }
+            }
+        }
+
+        // ✅ Exceptional Day Overlap Check (Moved here to allow balance error to take precedence)
+        if (class_exists(\Athka\SystemSettings\Services\WorkScheduleService::class)) {
+            $wsService = app(\Athka\SystemSettings\Services\WorkScheduleService::class);
+            $currDate = Carbon::parse($validated['start_date']);
+            $endDate = Carbon::parse($validated['end_date']);
+            $employee_obj = $employee; 
+            
+            while ($currDate->lte($endDate)) {
+                $exDay = $wsService->getExceptionalDay($companyId, $currDate->toDateString(), $employee_obj);
+                if ($exDay && (bool)($exDay->is_holiday ?? true)) {
+                    $isOfficial = (bool)($exDay->is_official_holiday ?? false);
+                    $typeLabel = $isOfficial ? (function_exists('tr') ? tr('Official Holiday') : 'Official Holiday') : (function_exists('tr') ? tr('Exceptional Day') : 'Exceptional Day');
+                    $msgPart = (function_exists('tr') ? tr('Cannot request leave on this date') : 'Cannot request leave on this date');
+                    
+                    $msg = $msgPart . ': ' . $typeLabel . ' - ' . ($exDay->name ?? '') . ' (' . $currDate->toDateString() . ')';
+                    return response()->json([
+                        'ok'      => false,
+                        'error'   => 'exceptional_day',
+                        'message' => $msg,
+                    ], 422);
+                }
+                $currDate->addDay();
             }
         }
 
