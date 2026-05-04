@@ -894,70 +894,26 @@ class EmployeeController extends Controller
         }
 
         $transformed = $items->map(function($item) use ($table, $key, $value, $locale, $groupedTasks, $approvers, $monthlyLeaveDays, $monthlyLeaveDaysByPolicy, $monthlyPermissionMinutes) {
-            $arr = (array)$item;
+            $arr = $this->normalizeRequestItem($item, $table, $locale);
             
-            // Map common fields to what Flutter expects
-            if ($table === 'attendance_mission_requests') {
-                $arr['leave_type'] = $locale === 'ar' ? 'مهمة عمل' : 'Work Mission';
-            } else {
-                $arr['leave_type'] = $arr['leave_type_name'] ?? ($table === 'attendance_permission_requests' ? ($locale === 'ar' ? 'إذن' : 'Permission') : '');
-            }
-            
-            // Build creator name based on locale
-            $nameAr = $arr['creator_name_ar'] ?? '';
-            $nameEn = $arr['creator_name_en'] ?? '';
-            if ($locale === 'ar') {
-                $arr['creator'] = !empty($nameAr) ? $nameAr : $nameEn;
-            } else {
-                $arr['creator'] = !empty($nameEn) ? $nameEn : $nameAr;
-            }
-
-            $arr['request_date'] = isset($arr['created_at']) ? substr((string)$arr['created_at'], 0, 10) : '';
-            $arr['requested_at'] = isset($arr['requested_at']) ? (string)$arr['requested_at'] : (isset($arr['created_at']) ? (string)$arr['created_at'] : '');
-            
-            // ✅ Map requested_days to actual Calendar Duration for Mobile App UX
-            // NEW: Use the generic computation that respects work schedule
+            // Map requested_days for UX specifically if needed (override from normalize if we want smarter computation)
             if ($table === 'attendance_leave_requests' && !empty($arr['start_date']) && !empty($arr['end_date'])) {
                 try {
                     $s = \Carbon\Carbon::parse($arr['start_date']);
                     $e = \Carbon\Carbon::parse($arr['end_date']);
                     if (empty($arr['from_time']) && empty($arr['to_time'])) {
-                        // Use the smarter calculation method
                         $arr['requested_days'] = $this->computeRequestedDaysGeneric(
                             (int)($item->company_id ?? $value->saas_company_id ?? 0), 
-                            $item->leave_policy_id ?? null, 
-                            $s, 
-                            $e
+                            $item->leave_policy_id ?? null, $s, $e
                         );
-                    } else if (isset($arr['requested_days'])) {
-                        $arr['requested_days'] = (float)$arr['requested_days'] > 0 ? (float)$arr['requested_days'] : 1;
-                        $arr['requested_days'] = (float)$arr['requested_days'] == (int)$arr['requested_days'] ? (int)$arr['requested_days'] : (float)$arr['requested_days'];
                     }
                 } catch (\Exception $ex) {}
-            } elseif (isset($arr['requested_days'])) {
-                $arr['requested_days'] = (float)$arr['requested_days'] == (int)$arr['requested_days'] 
-                    ? (int)$arr['requested_days'] 
-                    : (float)$arr['requested_days'];
-            }
-
-            // Dates mapping
-            if (isset($arr['start_date'])) $arr['from_date'] = $arr['start_date'];
-            if (isset($arr['end_date']))   $arr['to_date']   = $arr['end_date'];
-            
-            if ($table === 'attendance_mission_requests') {
-                 $arr['start_date'] = $arr['start_date'] ?? '';
-                 $arr['end_date']   = $arr['end_date'] ?? '';
-            }
-            
-            if (isset($arr['permission_date'])) {
-                $arr['from_date'] = $arr['permission_date'];
-                $arr['to_date']   = $arr['permission_date'];
             }
 
             // Balance Calculation (Including Pending Requests)
             $balanceStr = '';
             if ($table === 'attendance_leave_requests' && !empty($arr['leave_policy_id'])) {
-                $employeeId = $value; // value is already employee_id or user_id
+                $employeeId = $value;
                 if ($key === 'user_id') {
                     $employeeId = DB::table('employees')->where('user_id', $value)->value('id') ?: 0;
                 }
@@ -977,7 +933,6 @@ class EmployeeController extends Controller
                     
                     $totalStr    = ($total == (int)$total) ? (int)$total : $total;
                     $consumedStr = ($consumed == (int)$consumed) ? (int)$consumed : $consumed;
-                    // Changed to show: Total / Consumed
                     $balanceStr = $totalStr . ' / ' . $consumedStr;
                 }
             }
@@ -999,10 +954,14 @@ class EmployeeController extends Controller
             
             $arr['approval_tasks'] = $tasks->map(function($t) use ($approvers, &$currentApproverName, $locale) {
                 $tArr = (array)$t;
+                $tArr['id'] = (int) $tArr['id'];
+                $tArr['approvable_id'] = (int) $tArr['approvable_id'];
+                $tArr['approver_employee_id'] = (int) $tArr['approver_employee_id'];
+                $tArr['position'] = (int) $tArr['position'];
+
                 $approver = $approvers->get($tArr['approver_employee_id']);
                 if ($approver) {
                     $tArr['approver'] = (array)$approver;
-                    // If this task is pending, this is the current approver
                     if ($tArr['status'] === 'pending' && empty($currentApproverName)) {
                         $currentApproverName = ($locale === 'ar') ? ($approver->name_ar ?? $approver->name_en) : ($approver->name_en ?? $approver->name_ar);
                     }
@@ -1331,7 +1290,7 @@ class EmployeeController extends Controller
         return response()->json([
             'ok'      => true,
             'message' => function_exists('tr') ? tr('Your leave request has been submitted successfully.') : 'Your leave request has been submitted successfully.',
-            'data'    => $row,
+            'data'    => $this->normalizeRequestItem($row, $table),
         ], 201);
     }
 
@@ -1716,7 +1675,7 @@ class EmployeeController extends Controller
         return response()->json([
             'ok'      => true,
             'message' => function_exists('tr') ? tr('Your permission request has been submitted successfully.') : 'Your permission request has been submitted successfully.',
-            'data'    => $row,
+            'data'    => $this->normalizeRequestItem($row, $table),
         ], 201);
     }
 
@@ -1921,10 +1880,12 @@ class EmployeeController extends Controller
 
         DB::table($table)->where('id', $id)->update($data);
 
+        $row = DB::table($table)->where('id', $id)->first();
+
         return response()->json([
-            'ok'   => true,
-            'message' => 'Request updated successfully.',
-            'data' => DB::table($table)->where('id', $id)->first(),
+            'ok'      => true,
+            'message' => function_exists('tr') ? tr('Request updated successfully.') : 'Request updated successfully.',
+            'data'    => $this->normalizeRequestItem($row, $table),
         ]);
     }
 
@@ -1961,9 +1922,15 @@ class EmployeeController extends Controller
 
         DB::table($table)->where('id', $id)->delete();
 
+        // Broadcast that a task might have been removed
+        try {
+            DB::table('approval_tasks')->where('approvable_type', 'leaves')->where('approvable_id', $id)->delete();
+        } catch (\Exception $e) {}
+
         return response()->json([
             'ok'   => true,
             'message' => 'Request deleted successfully.',
+            'data' => (int) $id,
         ]);
     }
 
@@ -2151,10 +2118,12 @@ class EmployeeController extends Controller
 
         DB::table($table)->where('id', $id)->update($data);
 
+        $row = DB::table($table)->where('id', $id)->first();
+
         return response()->json([
-            'ok'   => true,
-            'message' => 'Request updated successfully.',
-            'data' => DB::table($table)->where('id', $id)->first(),
+            'ok'      => true,
+            'message' => function_exists('tr') ? tr('Request updated successfully.') : 'Request updated successfully.',
+            'data'    => $this->normalizeRequestItem($row, $table),
         ]);
     }
 
@@ -2191,9 +2160,15 @@ class EmployeeController extends Controller
 
         DB::table($table)->where('id', $id)->delete();
 
+        // Broadcast that a task might have been removed
+        try {
+            DB::table('approval_tasks')->where('approvable_type', 'permissions')->where('approvable_id', $id)->delete();
+        } catch (\Exception $e) {}
+
         return response()->json([
             'ok'   => true,
             'message' => 'Request deleted successfully.',
+            'data' => (int) $id,
         ]);
     }
 
@@ -2300,11 +2275,13 @@ class EmployeeController extends Controller
             // Log or ignore if settings module not available
         }
 
+        $row = DB::table($table)->where('id', $id)->first();
+
         return response()->json([
             'ok'      => true,
-            'id'      => $id,
             'message' => function_exists('tr') ? tr('Mission request created successfully.') : 'Mission request created successfully.',
-        ]);
+            'data'    => $this->normalizeRequestItem($row, $table),
+        ], 201);
     }
 
     public function updateMissionRequest(Request $request, $id)
@@ -2365,9 +2342,12 @@ class EmployeeController extends Controller
 
         DB::table($table)->where('id', $id)->update($data);
 
+        $row = DB::table($table)->where('id', $id)->first();
+
         return response()->json([
-            'ok'   => true,
+            'ok'      => true,
             'message' => function_exists('tr') ? tr('Mission request updated successfully.') : 'Mission request updated successfully.',
+            'data'    => $this->normalizeRequestItem($row, $table),
         ]);
     }
 
@@ -2427,9 +2407,15 @@ class EmployeeController extends Controller
 
         DB::table($table)->where('id', $id)->delete();
 
+        // Cleanup tasks
+        try {
+            DB::table('approval_tasks')->where('approvable_type', 'missions')->where('approvable_id', $id)->delete();
+        } catch (\Exception $e) {}
+
         return response()->json([
             'ok'      => true,
             'message' => 'Mission request deleted successfully.',
+            'data'    => (int) $id,
         ]);
     }
 
@@ -2455,5 +2441,65 @@ class EmployeeController extends Controller
         }
 
         return [6, 0, 1, 2, 3]; // Default fallback
+    }
+
+    protected function normalizeRequestItem($item, string $table, string $locale = 'ar')
+    {
+        $arr = (array)$item;
+        
+        // Ensure numeric fields are correctly typed for Dart/Flutter models
+        if (isset($arr['id'])) $arr['id'] = (int) $arr['id'];
+        if (isset($arr['employee_id'])) $arr['employee_id'] = (int) $arr['employee_id'];
+        if (isset($arr['user_id'])) $arr['user_id'] = (int) $arr['user_id'];
+        if (isset($arr['leave_policy_id'])) $arr['leave_policy_id'] = (int) $arr['leave_policy_id'];
+        if (isset($arr['policy_year_id']))  $arr['policy_year_id']  = (int) $arr['policy_year_id'];
+        if (isset($arr['minutes']))         $arr['minutes']         = (int) $arr['minutes'];
+        if (isset($arr['requested_by']))    $arr['requested_by']    = (int) $arr['requested_by'];
+        if (isset($arr['company_id']))     $arr['company_id']      = (int) $arr['company_id'];
+        
+        if (isset($arr['requested_days'])) {
+            $arr['requested_days'] = (float)$arr['requested_days'] == (int)$arr['requested_days'] 
+                ? (int)$arr['requested_days'] 
+                : (float)$arr['requested_days'];
+        }
+
+        // UI Helpers for Mobile App
+        $status = $arr['status'] ?? '';
+        $arr['is_editable']  = $status === 'pending';
+        $arr['is_deletable'] = $status === 'pending';
+
+        // Map localized strings
+        if ($table === 'attendance_mission_requests') {
+            $arr['leave_type'] = $locale === 'ar' ? 'مهمة عمل' : 'Work Mission';
+        } else {
+            $arr['leave_type'] = $arr['leave_type_name'] ?? ($table === 'attendance_permission_requests' ? ($locale === 'ar' ? 'إذن' : 'Permission') : '');
+        }
+
+        // Build creator name based on locale
+        if (isset($arr['creator_name_ar']) || isset($arr['creator_name_en'])) {
+            $nameAr = $arr['creator_name_ar'] ?? '';
+            $nameEn = $arr['creator_name_en'] ?? '';
+            if ($locale === 'ar') {
+                $arr['creator'] = !empty($nameAr) ? $nameAr : $nameEn;
+            } else {
+                $arr['creator'] = !empty($nameEn) ? $nameEn : $nameAr;
+            }
+            $arr['employee_name'] = $arr['creator'];
+            $arr['employee'] = $arr['creator'];
+        }
+
+        $arr['request_date'] = isset($arr['created_at']) ? substr((string)$arr['created_at'], 0, 10) : '';
+        $arr['requested_at'] = isset($arr['requested_at']) ? (string)$arr['requested_at'] : (isset($arr['created_at']) ? (string)$arr['created_at'] : '');
+
+        // Dates mapping
+        if (isset($arr['start_date'])) $arr['from_date'] = $arr['start_date'];
+        if (isset($arr['end_date']))   $arr['to_date']   = $arr['end_date'];
+        
+        if (isset($arr['permission_date'])) {
+            $arr['from_date'] = $arr['permission_date'];
+            $arr['to_date']   = $arr['permission_date'];
+        }
+
+        return $arr;
     }
 }
