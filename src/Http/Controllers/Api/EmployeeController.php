@@ -1261,14 +1261,26 @@ class EmployeeController extends Controller
         if (class_exists(\Athka\SystemSettings\Services\Approvals\ApprovalService::class)) {
             $approvalService = app(\Athka\SystemSettings\Services\Approvals\ApprovalService::class);
             $hasWorkflow = $approvalService->hasApproversForEmployee('leaves', (int)$employeeId, $companyId);
-            $hasManager = $approvalService->resolveDirectManagerId((int)$employeeId) > 0;
+            $hasPolicies = $approvalService->hasActivePolicies('leaves', $companyId);
 
-            if (!$hasWorkflow && !$hasManager) {
-                return response()->json([
-                    'ok'      => false,
-                    'error'   => 'no_approval_workflow',
-                    'message' => function_exists('tr') ? tr('Cannot submit request, please contact administration to assign an approval workflow.') : 'لا يمكن تقديم الطلب، يرجى التواصل مع الإدارة لتعيين تسلسل موافقات (سير عمل) خاص بك.',
-                ], 422);
+            if ($hasPolicies) {
+                if (!$hasWorkflow) {
+                    return response()->json([
+                        'ok'      => false,
+                        'error'   => 'no_matching_policy',
+                        'message' => function_exists('tr') ? tr('You are not authorized to apply for this leave type as per current approval policies.') : 'أنت غير مخول للتقديم على هذا النوع من الإجازات حسب سياسات الموافقات الحالية.',
+                    ], 422);
+                }
+            } else {
+                // Legacy fallback to manager only if no policies exist
+                $hasManager = $approvalService->resolveDirectManagerId((int)$employeeId) > 0;
+                if (!$hasWorkflow && !$hasManager) {
+                    return response()->json([
+                        'ok'      => false,
+                        'error'   => 'no_approval_workflow',
+                        'message' => function_exists('tr') ? tr('Cannot submit request, please contact administration to assign an approval workflow.') : 'لا يمكن تقديم الطلب، يرجى التواصل مع الإدارة لتعيين تسلسل موافقات (سير عمل) خاص بك.',
+                    ], 422);
+                }
             }
         }
 
@@ -1538,12 +1550,27 @@ class EmployeeController extends Controller
         // ✅ Check Workflow existence (only if approval is required)
         if ($approvalRequired && class_exists(\Athka\SystemSettings\Services\Approvals\ApprovalService::class)) {
             $approvalService = app(\Athka\SystemSettings\Services\Approvals\ApprovalService::class);
-            if (!$approvalService->hasApproversForEmployee('permissions', (int)($user->employee_id ?? 0), $companyId)) {
-                return response()->json([
-                    'ok'      => false,
-                    'error'   => 'no_approval_workflow',
-                    'message' => function_exists('tr') ? tr('Cannot submit request, please contact administration to assign an approval workflow.') : 'لا يمكن تقديم الطلب، يرجى التواصل مع الإدارة لتعيين تسلسل موافقات (سير عمل) خاص بك.',
-                ], 422);
+            $hasWorkflow = $approvalService->hasApproversForEmployee('permissions', (int)($user->employee_id ?? 0), $companyId);
+            $hasPolicies = $approvalService->hasActivePolicies('permissions', $companyId);
+
+            if ($hasPolicies) {
+                if (!$hasWorkflow) {
+                    return response()->json([
+                        'ok'      => false,
+                        'error'   => 'no_matching_policy',
+                        'message' => function_exists('tr') ? tr('You are not authorized to apply for this permission as per current approval policies.') : 'أنت غير مخول للتقديم على هذا النوع من الأذونات حسب سياسات الموافقات الحالية.',
+                    ], 422);
+                }
+            } else {
+                // Legacy fallback to manager only if no policies exist
+                $hasManager = $approvalService->resolveDirectManagerId((int)($user->employee_id ?? 0)) > 0;
+                if (!$hasWorkflow && !$hasManager) {
+                    return response()->json([
+                        'ok'      => false,
+                        'error'   => 'no_approval_workflow',
+                        'message' => function_exists('tr') ? tr('Cannot submit request, please contact administration to assign an approval workflow.') : 'لا يمكن تقديم الطلب، يرجى التواصل مع الإدارة لتعيين تسلسل موافقات (سير عمل) خاص بك.',
+                    ], 422);
+                }
             }
         }
 
@@ -2214,14 +2241,26 @@ class EmployeeController extends Controller
         if (class_exists(\Athka\SystemSettings\Services\Approvals\ApprovalService::class)) {
             $approvalService = app(\Athka\SystemSettings\Services\Approvals\ApprovalService::class);
             $hasWorkflow = $approvalService->hasApproversForEmployee('missions', $employeeId, $companyId);
-            $hasManager = $approvalService->resolveDirectManagerId((int)$employeeId) > 0;
+            $hasPolicies = $approvalService->hasActivePolicies('missions', $companyId);
 
-            if (!$hasWorkflow && !$hasManager) {
-                return response()->json([
-                    'ok'      => false,
-                    'error'   => 'no_approval_workflow',
-                    'message' => function_exists('tr') ? tr('Cannot submit request, please contact administration to assign an approval workflow.') : 'لا يمكن تقديم الطلب، يرجى التواصل مع الإدارة لتعيين تسلسل موافقات (سير عمل) خاص بك.',
-                ], 422);
+            if ($hasPolicies) {
+                if (!$hasWorkflow) {
+                    return response()->json([
+                        'ok'      => false,
+                        'error'   => 'no_matching_policy',
+                        'message' => function_exists('tr') ? tr('You are not authorized to apply for this mission as per current approval policies.') : 'أنت غير مخول للتقديم على المهام حسب سياسات الموافقات الحالية.',
+                    ], 422);
+                }
+            } else {
+                // Legacy fallback to manager only if no policies exist
+                $hasManager = $approvalService->resolveDirectManagerId((int)$employeeId) > 0;
+                if (!$hasWorkflow && !$hasManager) {
+                    return response()->json([
+                        'ok'      => false,
+                        'error'   => 'no_approval_workflow',
+                        'message' => function_exists('tr') ? tr('Cannot submit request, please contact administration to assign an approval workflow.') : 'لا يمكن تقديم الطلب، يرجى التواصل مع الإدارة لتعيين تسلسل موافقات (سير عمل) خاص بك.',
+                    ], 422);
+                }
             }
         }
 
