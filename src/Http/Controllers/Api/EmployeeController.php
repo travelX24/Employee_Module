@@ -520,14 +520,18 @@ class EmployeeController extends Controller
             // Check if ANY full-day leave covers this date
             $fullDayLeave = collect($dayLeaves)->firstWhere('is_full_day', true);
 
+            $exDay = $scheduleService->getExceptionalDay($companyId, $dateStr, $employeeRecord);
+            $isHoliday = $exDay && (bool)($exDay->is_holiday ?? true);
+            $holidayName = $exDay ? ($exDay->name_ar ?: $exDay->name) : null;
+
             if ($fullDayLeave) {
                 // Entire day is leave
                 $days[] = [
                     'date'         => $dateStr,
                     'day_key'      => $dayKey,
                     'status'       => 'on_leave',
-                    'is_holiday'   => false,
-                    'holiday_name' => null,
+                    'is_holiday'   => $isHoliday,
+                    'holiday_name' => $holidayName,
                     'is_workday'   => false,
                     'leave_name'   => $fullDayLeave['leave_name'],
                     'periods'      => [],
@@ -546,8 +550,8 @@ class EmployeeController extends Controller
                     'date'         => $dateStr,
                     'day_key'      => $dayKey,
                     'status'       => 'off',
-                    'is_holiday'   => false,
-                    'holiday_name' => null,
+                    'is_holiday'   => $isHoliday,
+                    'holiday_name' => $holidayName,
                     'is_workday'   => false,
                     'leave_name'   => null,
                     'periods'      => [],
@@ -597,8 +601,8 @@ class EmployeeController extends Controller
                 'date'         => $dateStr,
                 'day_key'      => $dayKey,
                 'status'       => $hasAnyLeave ? 'partial_leave' : 'working',
-                'is_holiday'   => false,
-                'holiday_name' => null,
+                'is_holiday'   => $isHoliday,
+                'holiday_name' => $holidayName,
                 'is_workday'   => true,
                 'leave_name'   => $hasAnyLeave ? collect($partialLeaves)->first()['leave_name'] : null,
                 'periods'      => $builtPeriods,
@@ -933,7 +937,7 @@ class EmployeeController extends Controller
                     
                     $totalStr    = ($total == (int)$total) ? (int)$total : $total;
                     $consumedStr = ($consumed == (int)$consumed) ? (int)$consumed : $consumed;
-                    $balanceStr = $totalStr . ' / ' . $consumedStr;
+                    $balanceStr = $consumedStr . ' / ' . $totalStr;
                 }
             }
             $arr['balance'] = $balanceStr;
@@ -1189,7 +1193,15 @@ class EmployeeController extends Controller
             $requestedDays = $this->computeRequestedDaysGeneric($companyId, $leavePolicyId, $start, $end);
             $data['requested_days'] = $requestedDays;
 
-            if ($leavePolicyId && $requestedDays > 0) {
+            if ($leavePolicyId) {
+                if ($requestedDays <= 0) {
+                    return response()->json([
+                        'ok'      => false,
+                        'error'   => 'invalid_range',
+                        'message' => function_exists('tr') ? tr('The selected range contains no working days for this leave policy.') : 'The selected range contains no working days for this leave policy.',
+                    ], 422);
+                }
+
                 $policy = DB::table('leave_policies')->where('id', $leavePolicyId)->where('company_id', $companyId)->first();
                 if ($policy && in_array('is_exception', $cols, true)) {
                     $yearId = $policy->policy_year_id;
@@ -1202,9 +1214,9 @@ class EmployeeController extends Controller
                         
                     $remaining = $balance ? (float) $balance->remaining_days : (float) ($policy->days_per_year ?? 0);
                     
-                    if ($requestedDays > $remaining) {
-                        $pSettings = is_string($policy->settings) ? json_decode($policy->settings, true) : ($policy->settings ?? []);
-                        $deductionPolicy = (string)($pSettings['deduction_policy'] ?? 'balance_only');
+                    if (round($requestedDays, 2) > round($remaining, 2)) {
+                        $settings = $policy ? (is_string($policy->settings) ? json_decode($policy->settings, true) : $policy->settings) : [];
+                        $deductionPolicy = (string) ($settings['deduction_policy'] ?? 'balance_only');
 
                         if ($deductionPolicy === 'balance_only') {
                             return response()->json([
@@ -1214,7 +1226,7 @@ class EmployeeController extends Controller
                             ], 422);
                         }
 
-                        $data['is_exception'] = true;
+                        $data['is_exception'] = 1;
                         if (in_array('exception_status', $cols, true)) {
                             $data['exception_status'] = 'pending_hr';
                         }
@@ -1260,15 +1272,20 @@ class EmployeeController extends Controller
         // ✅ Check Workflow existence
         if (class_exists(\Athka\SystemSettings\Services\Approvals\ApprovalService::class)) {
             $approvalService = app(\Athka\SystemSettings\Services\Approvals\ApprovalService::class);
-            $hasWorkflow = $approvalService->hasApproversForEmployee('leaves', (int)$employeeId, $companyId);
+            $workflowReason = null;
+            $hasWorkflow = $approvalService->hasApproversForEmployee('leaves', (int)$employeeId, $companyId, $workflowReason);
             $hasPolicies = $approvalService->hasActivePolicies('leaves', $companyId);
 
             if ($hasPolicies) {
                 if (!$hasWorkflow) {
+                    $msg = function_exists('tr') ? tr('You are not authorized to apply for this leave type as per current approval policies.') : 'أنت غير مخول للتقديم على هذا النوع من الإجازات حسب سياسات الموافقات الحالية.';
+                    if ($workflowReason === 'missing_direct_manager') {
+                        $msg = function_exists('tr') ? tr('Cannot submit request: Your direct manager is not assigned in the system.') : 'لا يمكن تقديم الطلب: لم يتم تعيين مدير مباشر لك في النظام.';
+                    }
                     return response()->json([
                         'ok'      => false,
-                        'error'   => 'no_matching_policy',
-                        'message' => function_exists('tr') ? tr('You are not authorized to apply for this leave type as per current approval policies.') : 'أنت غير مخول للتقديم على هذا النوع من الإجازات حسب سياسات الموافقات الحالية.',
+                        'error'   => $workflowReason ?: 'no_matching_policy',
+                        'message' => $msg,
                     ], 422);
                 }
             } else {
@@ -1550,15 +1567,20 @@ class EmployeeController extends Controller
         // ✅ Check Workflow existence (only if approval is required)
         if ($approvalRequired && class_exists(\Athka\SystemSettings\Services\Approvals\ApprovalService::class)) {
             $approvalService = app(\Athka\SystemSettings\Services\Approvals\ApprovalService::class);
-            $hasWorkflow = $approvalService->hasApproversForEmployee('permissions', (int)($user->employee_id ?? 0), $companyId);
+            $workflowReason = null;
+            $hasWorkflow = $approvalService->hasApproversForEmployee('permissions', (int)($user->employee_id ?? 0), $companyId, $workflowReason);
             $hasPolicies = $approvalService->hasActivePolicies('permissions', $companyId);
 
             if ($hasPolicies) {
                 if (!$hasWorkflow) {
+                    $msg = function_exists('tr') ? tr('You are not authorized to apply for this permission as per current approval policies.') : 'أنت غير مخول للتقديم على هذا النوع من الأذونات حسب سياسات الموافقات الحالية.';
+                    if ($workflowReason === 'missing_direct_manager') {
+                        $msg = function_exists('tr') ? tr('Cannot submit request: Your direct manager is not assigned in the system.') : 'لا يمكن تقديم الطلب: لم يتم تعيين مدير مباشر لك في النظام.';
+                    }
                     return response()->json([
                         'ok'      => false,
-                        'error'   => 'no_matching_policy',
-                        'message' => function_exists('tr') ? tr('You are not authorized to apply for this permission as per current approval policies.') : 'أنت غير مخول للتقديم على هذا النوع من الأذونات حسب سياسات الموافقات الحالية.',
+                        'error'   => $workflowReason ?: 'no_matching_policy',
+                        'message' => $msg,
                     ], 422);
                 }
             } else {
@@ -2240,15 +2262,20 @@ class EmployeeController extends Controller
         // ✅ Check Workflow existence
         if (class_exists(\Athka\SystemSettings\Services\Approvals\ApprovalService::class)) {
             $approvalService = app(\Athka\SystemSettings\Services\Approvals\ApprovalService::class);
-            $hasWorkflow = $approvalService->hasApproversForEmployee('missions', $employeeId, $companyId);
+            $workflowReason = null;
+            $hasWorkflow = $approvalService->hasApproversForEmployee('missions', $employeeId, $companyId, $workflowReason);
             $hasPolicies = $approvalService->hasActivePolicies('missions', $companyId);
 
             if ($hasPolicies) {
                 if (!$hasWorkflow) {
+                    $msg = function_exists('tr') ? tr('You are not authorized to apply for this mission as per current approval policies.') : 'أنت غير مخول للتقديم على المهام حسب سياسات الموافقات الحالية.';
+                    if ($workflowReason === 'missing_direct_manager') {
+                        $msg = function_exists('tr') ? tr('Cannot submit request: Your direct manager is not assigned in the system.') : 'لا يمكن تقديم الطلب: لم يتم تعيين مدير مباشر لك في النظام.';
+                    }
                     return response()->json([
                         'ok'      => false,
-                        'error'   => 'no_matching_policy',
-                        'message' => function_exists('tr') ? tr('You are not authorized to apply for this mission as per current approval policies.') : 'أنت غير مخول للتقديم على المهام حسب سياسات الموافقات الحالية.',
+                        'error'   => $workflowReason ?: 'no_matching_policy',
+                        'message' => $msg,
                     ], 422);
                 }
             } else {

@@ -1163,6 +1163,9 @@ if (! empty($allowed)) {
                 
                 unset($this->{$property}[$index]);
                 $this->{$property} = array_values($this->{$property});
+                
+                // Clear errors for this field as well
+                $this->clearFieldErrorsByPrefix($field);
             }
         }
     }
