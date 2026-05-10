@@ -1,7 +1,7 @@
 <div x-data="{ tab: @entangle('tab') }">
     {{-- Stepper Navigation --}}
     <div class="mb-6">
-        <div class="flex justify-center items-center gap-2 overflow-x-auto pb-2">
+        <div class="stepper-scroll-wrap">
             @foreach([
                 1 => tr('Basic Information'),
                 2 => tr('Job Information'),
@@ -12,10 +12,11 @@
                 <button
                     type="button"
                     @click="tab = {{ $stepNum }}"
-                    class="group flex flex-col items-center gap-2 px-2 transition-all duration-200 min-w-[80px]"
+                    data-step="{{ $stepNum }}"
+                    class="stepper-btn group flex flex-col items-center gap-2 px-2 transition-all duration-200 flex-shrink-0"
                     :class="tab === {{ $stepNum }} ? 'scale-105' : 'hover:scale-105'"
                 >
-                    <div class="relative w-10 h-10 sm:w-12 sm:h-12 transition-all duration-200">
+                    <div class="relative w-10 h-10 transition-all duration-200">
                         <svg viewBox="0 0 56 56" class="absolute inset-0 drop-shadow-sm">
                             <polygon
                                 points="28,4 48,20 40,48 16,48 8,20"
@@ -33,9 +34,8 @@
                             <span x-show="tab <= {{ $stepNum }}">{{ $stepNum }}</span>
                         </div>
                     </div>
-
                     <div
-                        class="text-[10px] sm:text-[11px] font-semibold text-center leading-tight transition-colors duration-200"
+                        class="text-[10px] font-semibold text-center leading-tight transition-colors duration-200 max-w-[70px]"
                         :class="tab === {{ $stepNum }} || tab > {{ $stepNum }} ? 'text-[color:var(--brand-via)]' : 'text-gray-500'"
                     >
                         {{ $stepLabel }}
@@ -44,13 +44,35 @@
 
                 @if(!$loop->last)
                     <div
-                        class="h-[3px] w-8 sm:w-12 rounded-full transition-all duration-300"
-                        :class="tab > {{ $stepNum }} ? 'bg-gradient-to-r from-[color:var(--brand-via)] to-[color:var(--brand-via)]/80 shadow-sm' : 'bg-gray-200'"
+                        class="h-[3px] w-6 rounded-full transition-all duration-300 flex-shrink-0 self-start mt-5"
+                        :class="tab > {{ $stepNum }} ? 'bg-[color:var(--brand-via)]' : 'bg-gray-200'"
                     ></div>
                 @endif
             @endforeach
         </div>
     </div>
+
+    <style>
+        .stepper-scroll-wrap {
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            padding: 4px 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .stepper-scroll-wrap::-webkit-scrollbar { display: none; }
+
+        /* Desktop: center */
+        @media (min-width: 541px) {
+            .stepper-scroll-wrap {
+                justify-content: center;
+            }
+        }
+    </style>
+
 
     <form wire:submit.prevent="save" novalidate>
         <div class="space-y-6">

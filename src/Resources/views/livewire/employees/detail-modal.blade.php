@@ -95,119 +95,78 @@
             class="px-6 py-5 bg-gradient-to-br from-gray-50 via-gray-50/80 to-gray-50/60 border-b border-gray-200/50"
             x-show="!editMode"
         >
-            {{-- Desktop / Tablet --}}
-            <div class="hidden sm:block">
-                <div class="flex justify-center overflow-x-auto no-scrollbar pb-2">
-
-                    <div class="inline-flex items-start justify-center min-w-fit">
-                        @foreach($steps as $stepNum => $stepLabel)
-                            @php $isLast = $loop->last; @endphp
-
-                            
-
-                            <button
-                                type="button"
-                                @click="activeTab = {{ $stepNum }}"
-                                class="group flex flex-col items-center gap-2 px-1 transition-all duration-200"
-                                :class="activeTab === {{ $stepNum }} ? 'scale-105' : 'hover:scale-105'"
-                            >
-                                <div class="relative w-12 h-12 transition-all duration-200">
-                                    <svg viewBox="0 0 56 56" class="absolute inset-0 drop-shadow-sm">
-                                        <polygon
-                                            points="28,4 48,20 40,48 16,48 8,20"
-                                            :fill="activeTab === {{ $stepNum }} ? 'var(--brand-via)' : (activeTab > {{ $stepNum }} ? 'var(--brand-via)' : '#f3f4f6')"
-                                            :stroke="activeTab === {{ $stepNum }} ? 'var(--brand-via)' : (activeTab > {{ $stepNum }} ? 'var(--brand-via)' : '#d1d5db')"
-                                            stroke-width="2.5"
-                                            class="transition-all duration-200"
-                                        />
-                                    </svg>
-
-                                    <div
-                                        class="absolute inset-0 flex items-center justify-center text-base font-extrabold transition-colors duration-200"
-                                        :class="activeTab === {{ $stepNum }} || activeTab > {{ $stepNum }} ? 'text-white' : 'text-gray-600'"
-                                    >
-                                        <span x-show="activeTab > {{ $stepNum }}">✓</span>
-                                        <span x-show="activeTab <= {{ $stepNum }}">{{ $stepNum }}</span>
-                                    </div>
-                                </div>
-
-                                <div
-                                    class="text-[11px] font-semibold text-center leading-tight max-w-[110px] transition-colors duration-200"
-                                    :class="activeTab === {{ $stepNum }} || activeTab > {{ $stepNum }} ? 'text-[color:var(--brand-via)]' : 'text-gray-500'"
-                                >
-                                    {{ $stepLabel }}
-                                </div>
-                            </button>
-
-                            @if(!$isLast)
-                                <div
-                                    class="h-[3px] w-16 md:w-20 lg:w-24 mx-3 md:mx-4 mt-6 rounded-full transition-all duration-300"
-                                    :class="activeTab > {{ $stepNum }} ? 'bg-gradient-to-r from-[color:var(--brand-via)] to-[color:var(--brand-via)]/80 shadow-sm' : 'bg-gray-200'"
-                                ></div>
-                            @endif
-                        @endforeach
+        {{-- Unified Responsive Stepper (View Mode) --}}
+        <div class="stepper-scroll-wrap">
+            @foreach($steps as $stepNum => $stepLabel)
+                <button
+                    type="button"
+                    @click="activeTab = {{ $stepNum }}"
+                    data-step="{{ $stepNum }}"
+                    class="stepper-btn group flex flex-col items-center gap-2 px-2 transition-all duration-200 flex-shrink-0"
+                    :class="activeTab === {{ $stepNum }} ? 'scale-105' : 'hover:scale-105'"
+                >
+                    <div class="relative w-10 h-10 transition-all duration-200">
+                        <svg viewBox="0 0 56 56" class="absolute inset-0 drop-shadow-sm">
+                            <polygon
+                                points="28,4 48,20 40,48 16,48 8,20"
+                                :fill="activeTab === {{ $stepNum }} ? 'var(--brand-via)' : (activeTab > {{ $stepNum }} ? 'var(--brand-via)' : '#f3f4f6')"
+                                :stroke="activeTab === {{ $stepNum }} ? 'var(--brand-via)' : (activeTab > {{ $stepNum }} ? 'var(--brand-via)' : '#d1d5db')"
+                                stroke-width="2.5"
+                                class="transition-all duration-200"
+                            />
+                        </svg>
+                        <div
+                            class="absolute inset-0 flex items-center justify-center text-sm font-extrabold transition-colors duration-200"
+                            :class="activeTab === {{ $stepNum }} || activeTab > {{ $stepNum }} ? 'text-white' : 'text-gray-600'"
+                        >
+                            <span x-show="activeTab > {{ $stepNum }}">✓</span>
+                            <span x-show="activeTab <= {{ $stepNum }}">{{ $stepNum }}</span>
+                        </div>
                     </div>
-                </div>
-
-                <div class="text-center mt-4">
-                    <span class="text-sm font-bold text-[color:var(--brand-via)] bg-white/60 px-4 py-1.5 rounded-full inline-block shadow-sm">
-                        {{ tr('Step') }} <span x-text="activeTab"></span> {{ tr('of') }} 6:
-                        <span x-text="['{{ $steps[1] }}', '{{ $steps[2] }}', '{{ $steps[3] }}', '{{ $steps[4] }}', '{{ $steps[5] }}', '{{ $steps[6] }}'][activeTab - 1]"></span>
-                    </span>
-                </div>
-            </div>
-
-            {{-- Mobile --}}
-            <div class="sm:hidden">
-                <div class="flex justify-center overflow-x-auto no-scrollbar pb-2">
-
-                    <div class="inline-flex items-center gap-2">
-                        @foreach($steps as $stepNum => $stepLabel)
-                            @php $isLast = $loop->last; @endphp
-
-                            <button
-                                type="button"
-                                @click="activeTab = {{ $stepNum }}"
-                                class="group transition-all duration-200"
-                                :class="activeTab === {{ $stepNum }} ? 'scale-110' : ''"
-                            >
-                                <div class="relative w-10 h-10">
-                                    <svg viewBox="0 0 56 56" class="absolute inset-0">
-                                        <polygon
-                                            points="28,4 48,20 40,48 16,48 8,20"
-                                            :fill="activeTab === {{ $stepNum }} ? 'var(--brand-via)' : (activeTab > {{ $stepNum }} ? 'var(--brand-via)' : '#f3f4f6')"
-                                            :stroke="activeTab === {{ $stepNum }} ? 'var(--brand-via)' : (activeTab > {{ $stepNum }} ? 'var(--brand-via)' : '#d1d5db')"
-                                            stroke-width="2.5"
-                                        />
-                                    </svg>
-
-                                    <div
-                                        class="absolute inset-0 flex items-center justify-center text-sm font-extrabold"
-                                        :class="activeTab === {{ $stepNum }} || activeTab > {{ $stepNum }} ? 'text-white' : 'text-gray-600'"
-                                    >
-                                        <span x-show="activeTab > {{ $stepNum }}">✓</span>
-                                        <span x-show="activeTab <= {{ $stepNum }}">{{ $stepNum }}</span>
-                                    </div>
-                                </div>
-                            </button>
-
-                            @if(!$isLast)
-                                <div
-                                    class="h-[3px] w-7 rounded-full transition-all duration-300"
-                                    :class="activeTab > {{ $stepNum }} ? 'bg-[color:var(--brand-via)]' : 'bg-gray-200'"
-                                ></div>
-                            @endif
-                        @endforeach
+                    <div
+                        class="text-[10px] font-semibold text-center leading-tight transition-colors duration-200 max-w-[70px]"
+                        :class="activeTab === {{ $stepNum }} || activeTab > {{ $stepNum }} ? 'text-[color:var(--brand-via)]' : 'text-gray-500'"
+                    >
+                        {{ $stepLabel }}
                     </div>
-                </div>
+                </button>
 
-                <div class="text-center mt-3">
-                    <span class="text-xs font-bold text-[color:var(--brand-via)] bg-white/60 px-3 py-1 rounded-full inline-block">
-                        {{ tr('Step') }} <span x-text="activeTab"></span> / 6 —
-                        <span x-text="['{{ $steps[1] }}', '{{ $steps[2] }}', '{{ $steps[3] }}', '{{ $steps[4] }}', '{{ $steps[5] }}', '{{ $steps[6] }}'][activeTab - 1]"></span>
-                    </span>
-                </div>
-            </div>
+                @if(!$loop->last)
+                    <div
+                        class="h-[3px] w-6 rounded-full transition-all duration-300 flex-shrink-0 self-start mt-5"
+                        :class="activeTab > {{ $stepNum }} ? 'bg-[color:var(--brand-via)]' : 'bg-gray-200'"
+                    ></div>
+                @endif
+            @endforeach
+        </div>
+
+        <div class="text-center mt-4">
+            <span class="text-sm font-bold text-[color:var(--brand-via)] bg-white/60 px-4 py-1.5 rounded-full inline-block shadow-sm">
+                {{ tr('Step') }} <span x-text="activeTab"></span> {{ tr('of') }} 6:
+                <span x-text="['{{ $steps[1] }}', '{{ $steps[2] }}', '{{ $steps[3] }}', '{{ $steps[4] }}', '{{ $steps[5] }}', '{{ $steps[6] }}'][activeTab - 1]"></span>
+            </span>
+        </div>
+
+        <style>
+            .stepper-scroll-wrap {
+                width: 100%;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+                padding: 4px 8px;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+            .stepper-scroll-wrap::-webkit-scrollbar { display: none; }
+
+            /* Desktop: center */
+            @media (min-width: 541px) {
+                .stepper-scroll-wrap {
+                    justify-content: center;
+                }
+            }
+        </style>
         </div>
 
         {{-- Content --}}

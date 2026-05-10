@@ -58,109 +58,78 @@
 
         {{-- Stepper --}}
         <div class="px-3 sm:px-4 md:px-6 py-4 sm:py-5 bg-gray-50/40">
+            <div class="stepper-scroll-wrap">
+                @foreach($steps as $stepNum => $stepLabel)
+                    @php
+                        $isActive = ($tab == $stepNum);
+                        $isCompleted = ($tab > $stepNum);
+                        $isLast = $loop->last;
+                    @endphp
+
+                    <button
+                        type="button"
+                        wire:click="goToTab({{ $stepNum }})"
+                        wire:loading.attr="disabled"
+                        wire:target="goToTab"
+                        class="stepper-btn group flex flex-col items-center gap-2 px-2 transition-all duration-200 flex-shrink-0 disabled:opacity-50 disabled:cursor-wait {{ $isActive ? 'scale-105' : 'hover:scale-105' }}"
+                    >
+                        <div class="relative w-10 h-10 transition-all duration-200">
+                            <svg viewBox="0 0 56 56" class="absolute inset-0 drop-shadow-sm">
+                                <polygon
+                                    points="28,4 48,20 40,48 16,48 8,20"
+                                    fill="{{ $isActive ? 'var(--brand-via)' : ($isCompleted ? 'var(--brand-via)' : '#f3f4f6') }}"
+                                    stroke="{{ $isActive ? 'var(--brand-via)' : ($isCompleted ? 'var(--brand-via)' : '#d1d5db') }}"
+                                    stroke-width="2.5"
+                                    class="transition-all duration-200"
+                                />
+                            </svg>
+                            <div
+                                class="absolute inset-0 flex items-center justify-center text-sm font-extrabold transition-colors duration-200 {{ $isActive || $isCompleted ? 'text-white' : 'text-gray-600' }}"
+                            >
+                                <span>{{ $isCompleted ? '✓' : $stepNum }}</span>
+                            </div>
+                        </div>
+                        <div
+                            class="text-[10px] font-semibold text-center leading-tight transition-colors duration-200 max-w-[70px] {{ $isActive || $isCompleted ? 'text-[color:var(--brand-via)]' : 'text-gray-500' }}"
+                        >
+                            {{ $stepLabel }}
+                        </div>
+                    </button>
+
+                    @if(!$isLast)
+                        <div
+                            class="h-[3px] w-6 rounded-full transition-all duration-300 flex-shrink-0 self-start mt-5 {{ $isCompleted ? 'bg-[color:var(--brand-via)]' : 'bg-gray-200' }}"
+                        ></div>
+                    @endif
+                @endforeach
+            </div>
+
+            <div class="text-center mt-4">
+                <span class="text-sm font-bold text-[color:var(--brand-via)] bg-white/60 px-4 py-1.5 rounded-full inline-block shadow-sm">
+                    {{ tr('Step') }} {{ $tab }} {{ tr('of') }} 5: {{ $steps[$tab] ?? '' }}
+                </span>
+            </div>
+
             <style>
-                .stepper-container {
-                    overflow-x: hidden !important;
-                    overflow-y: hidden !important;
+                .stepper-scroll-wrap {
+                    width: 100%;
+                    overflow-x: auto;
+                    -webkit-overflow-scrolling: touch;
                     scrollbar-width: none;
-                    -ms-overflow-style: none;
+                    padding: 4px 8px;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
                 }
-                .stepper-container::-webkit-scrollbar {
-                    display: none;
+                .stepper-scroll-wrap::-webkit-scrollbar { display: none; }
+
+                /* Desktop: center */
+                @media (min-width: 541px) {
+                    .stepper-scroll-wrap {
+                        justify-content: center;
+                    }
                 }
             </style>
-
-            {{-- Desktop / Tablet --}}
-            <div class="hidden sm:block stepper-container">
-                <div class="flex justify-center">
-                    <div class="flex items-center justify-center flex-wrap gap-2">
-                        @foreach($steps as $stepNum => $stepLabel)
-                            @php
-                                $isActive = ($tab == $stepNum);
-                                $isCompleted = ($tab > $stepNum);
-                                $isLast = $loop->last;
-                            @endphp
-
-                            <button type="button"
-                                    wire:click="goToTab({{ $stepNum }})"
-                                    wire:loading.attr="disabled"
-                                    wire:target="goToTab"
-                                    class="group flex flex-col items-center gap-1 px-1 disabled:opacity-50 disabled:cursor-wait">
-                                <div class="relative w-10 sm:w-12 h-10 sm:h-12 transition-transform duration-200 group-hover:scale-105">
-                                    <svg viewBox="0 0 56 56" class="absolute inset-0">
-                                        <polygon points="28,4 48,20 40,48 16,48 8,20"
-                                                 fill="{{ $isActive ? 'var(--brand-via)' : ($isCompleted ? 'var(--brand-via)' : '#f3f4f6') }}"
-                                                 stroke="{{ $isActive ? 'var(--brand-via)' : ($isCompleted ? 'var(--brand-via)' : '#d1d5db') }}"
-                                                 stroke-width="2"/>
-                                    </svg>
-
-                                    <div class="absolute inset-0 flex items-center justify-center text-sm sm:text-base font-extrabold
-                                        {{ $isActive || $isCompleted ? 'text-white' : 'text-gray-700' }}">
-                                        {{ $isCompleted ? '✓' : $stepNum }}
-                                    </div>
-                                </div>
-
-                                <div class="text-[10px] sm:text-[11px] font-semibold text-center leading-4 max-w-[100px] sm:max-w-[120px]
-                                    {{ $isActive || $isCompleted ? 'text-[color:var(--brand-via)]' : 'text-gray-500' }}">
-                                    {{ $stepLabel }}
-                                </div>
-                            </button>
-
-                            @if(! $isLast)
-                                <div class="h-[3px] w-8 sm:w-12 md:w-16 lg:w-20 mt-6 rounded-full
-                                    {{ $tab > $stepNum ? 'bg-[color:var(--brand-via)]' : 'bg-gray-200' }}">
-                                </div>
-                            @endif
-                        @endforeach
-                    </div>
-                </div>
-
-                <div class="text-center mt-3">
-                    <span class="text-xs sm:text-sm font-semibold text-[color:var(--brand-via)]">
-                        {{ tr('Step') }} {{ $tab }} {{ tr('of') }} 5: {{ $steps[$tab] ?? '' }}
-                    </span>
-                </div>
-            </div>
-
-            {{-- Mobile --}}
-            <div class="sm:hidden">
-                <div class="flex justify-center">
-                    <div class="inline-flex items-center gap-2">
-                        @foreach($steps as $stepNum => $stepLabel)
-                            @php
-                                $isActive = ($tab == $stepNum);
-                                $isCompleted = ($tab > $stepNum);
-                                $isLast = $loop->last;
-                            @endphp
-
-                            <button type="button" wire:click="goToTab({{ $stepNum }})" wire:loading.attr="disabled" wire:target="goToTab" class="group disabled:opacity-50 disabled:cursor-wait">
-                                <div class="relative w-10 h-10">
-                                    <svg viewBox="0 0 56 56" class="absolute inset-0">
-                                        <polygon points="28,4 48,20 40,48 16,48 8,20"
-                                                 fill="{{ $isActive ? 'var(--brand-via)' : ($isCompleted ? 'var(--brand-via)' : '#f3f4f6') }}"
-                                                 stroke="{{ $isActive ? 'var(--brand-via)' : ($isCompleted ? 'var(--brand-via)' : '#d1d5db') }}"
-                                                 stroke-width="2"/>
-                                    </svg>
-                                    <div class="absolute inset-0 flex items-center justify-center text-sm font-extrabold
-                                        {{ $isActive || $isCompleted ? 'text-white' : 'text-gray-700' }}">
-                                        {{ $isCompleted ? '✓' : $stepNum }}
-                                    </div>
-                                </div>
-                            </button>
-
-                            @if(! $isLast)
-                                <div class="h-[3px] w-7 rounded-full
-                                    {{ $tab > $stepNum ? 'bg-[color:var(--brand-via)]' : 'bg-gray-200' }}">
-                                </div>
-                            @endif
-                        @endforeach
-                    </div>
-                </div>
-
-                <div class="text-center mt-3 text-sm font-semibold text-[color:var(--brand-via)]">
-                    {{ tr('Step') }} {{ $tab }} / 5 — {{ $steps[$tab] ?? '' }}
-                </div>
-            </div>
         </div>
 
         {{-- Content --}}
