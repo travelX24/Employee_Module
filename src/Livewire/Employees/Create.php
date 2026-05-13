@@ -64,6 +64,14 @@ class Create extends Component
     public $opening_leave_balance = null;
     public int $leave_balance_adjustments = 0;
     public $calculated_leave_balance = 0;
+    
+    // Leave Adjustment Modal
+    public bool $showingAdjustmentModal = false;
+    public string $adjustmentType = 'add';
+    public int $adjustmentAmount = 1;
+    public string $adjustmentReason = ''; 
+    public $adjustmentFile = null; 
+    public $adjustmentFile_name = null;
 
     /* TAB 4: Personal */
     public string $mobile = '';
@@ -183,14 +191,30 @@ class Create extends Component
 
     public function addLeaveDay()
     {
-        $this->leave_balance_adjustments++;
-        $this->updateLeaveBalancePreview();
+        $this->adjustmentType = 'add';
+        $this->adjustmentAmount = 1;
+        $this->showingAdjustmentModal = true;
     }
 
     public function subtractLeaveDay()
     {
-        $this->leave_balance_adjustments--;
+        $this->adjustmentType = 'subtract';
+        $this->adjustmentAmount = 1;
+        $this->showingAdjustmentModal = true;
+    }
+
+    public function confirmLeaveAdjustment()
+    {
+        $this->validate([
+            'adjustmentAmount' => 'required|numeric|min:0.5',
+        ]);
+
+        $amount = ($this->adjustmentType === 'add') ? (float)$this->adjustmentAmount : -(float)$this->adjustmentAmount;
+        
+        $this->leave_balance_adjustments += $amount;
         $this->updateLeaveBalancePreview();
+        
+        $this->showingAdjustmentModal = false;
     }
 
     private function updateLeaveBalancePreview()
@@ -252,7 +276,7 @@ class Create extends Component
     return count($parts) >= 3;
 }
 
-    private function validationMessages(): array
+    protected function validationMessages(): array
     {
         return [
             'required' => $this->txt('حقل :attribute مطلوب.', 'The :attribute field is required.'),
@@ -461,7 +485,7 @@ class Create extends Component
         $this->clearFieldErrorsByPrefix('other_documents');
     }
 
-    private function validationAttributes(): array
+    protected function validationAttributes(): array
     {
         return [
             'name_ar' => tr('Arabic Name'),
@@ -636,7 +660,7 @@ class Create extends Component
         ];
     }
 
-    private function rulesForTab(int $tab): array
+    protected function rulesForTab(int $tab): array
     {
         return match ($tab) {
             1 => $this->rulesTab1(),

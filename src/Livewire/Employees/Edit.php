@@ -75,6 +75,7 @@ class Edit extends Component
     // Leave Adjustment Modal
     public bool $showingAdjustmentModal = false;
     public string $adjustmentType = 'add';
+    public $adjustmentAmount = 1;
     public string $adjustmentReason = '';
     public $adjustmentFile = null;
 
@@ -441,23 +442,27 @@ if (! empty($allowed)) {
 
     private function resetAdjustmentForm()
     {
+        $this->adjustmentAmount = 1;
         $this->adjustmentReason = '';
         $this->adjustmentFile = null;
-        $this->resetErrorBag(['adjustmentReason', 'adjustmentFile']);
+        $this->resetErrorBag(['adjustmentAmount', 'adjustmentReason', 'adjustmentFile']);
     }
 
     public function confirmLeaveAdjustment()
     {
         $this->validate([
+            'adjustmentAmount' => 'required|numeric|min:0.5',
             'adjustmentReason' => 'required|string|min:4',
             'adjustmentFile' => 'required|file|max:5120',
         ], [
+            'adjustmentAmount.required' => $this->txt('يجب إدخال عدد الأيام.', 'Number of days is required.'),
+            'adjustmentAmount.min' => $this->txt('أقل قيمة مسموحة هي 0.5.', 'Minimum allowed value is 0.5.'),
             'adjustmentReason.required' => $this->txt('يجب ذكر سبب التعديل.', 'Adjustment reason is required.'),
             'adjustmentReason.min' => $this->txt('السبب قصير جداً.', 'Reason is too short.'),
             'adjustmentFile.required' => $this->txt('يجب رفع ملف مرفق (قرار/طلب).', 'Attachment file is required.'),
         ]);
 
-        $amount = ($this->adjustmentType === 'add') ? 1 : -1;
+        $amount = ($this->adjustmentType === 'add') ? (float)$this->adjustmentAmount : -(float)$this->adjustmentAmount;
 
         // 1. Upload File
         $path = $this->adjustmentFile->store("employees/{$this->employee->id}/leave_adjustments", 'public');

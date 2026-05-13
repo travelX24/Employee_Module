@@ -135,7 +135,7 @@
                         </div>
                         
                         <div class="text-xs text-gray-400 border-r pr-3">
-                            {{ tr('Adjustments') }}: <span class="font-bold {{ $leave_balance_adjustments >= 0 ? 'text-green-500' : 'text-red-500' }}">{{ $leave_balance_adjustments > 0 ? '+' : '' }}{{ $leave_balance_adjustments }}</span>
+                            {{ tr('Adjustments') }}: <span class="font-bold {{ ($leave_balance_adjustments ?? 0) >= 0 ? 'text-green-500' : 'text-red-500' }}">{{ ($leave_balance_adjustments ?? 0) > 0 ? '+' : '' }}{{ $leave_balance_adjustments ?? 0 }}</span>
                         </div>
                     </div>
                     </div>
@@ -189,7 +189,7 @@
     @endif
 
     {{-- Leave Adjustment Modal --}}
-    @if(isset($employee))
+    @if(isset($showingAdjustmentModal))
         <x-ui.modal wire:model="showingAdjustmentModal" maxWidth="md">
             <x-slot name="title">
                 <div class="flex items-center gap-2">
@@ -213,47 +213,63 @@
                     <div class="text-xs text-indigo-800 leading-relaxed">
                         {{ tr('You are about to') }} 
                         <span class="font-bold {{ $adjustmentType === 'add' ? 'text-green-600' : 'text-red-600' }}">
-                            {{ $adjustmentType === 'add' ? tr('ADD 1 day') : tr('SUBTRACT 1 day') }}
+                            {{ $adjustmentType === 'add' ? tr('ADD') : tr('SUBTRACT') }} {{ $adjustmentAmount ?: 0 }} {{ tr('days') }}
                         </span>
-                        {{ tr('from the employee balance. Correcting or adjusting balances requires documentation for audit purposes.') }}
+                        {{ tr('from the employee balance.') }}
+                        @if(isset($employee))
+                            {{ tr('Correcting or adjusting balances requires documentation for audit purposes.') }}
+                        @endif
                     </div>
                 </div>
-    
-                <x-ui.textarea 
-                    id="adjustment_reason"
-                    :label="tr('Adjustment Reason')" 
-                    wire:model="adjustmentReason" 
-                    error="adjustmentReason"
-                    :required="true"
-                    rows="3"
-                    placeholder="{{ tr('Write a detailed reason for this adjustment (e.g. Compensation for weekend work, administrative decision #123)...') }}"
-                />
-    
+
                 <x-ui.input 
-                    id="adjustment_file"
-                    type="file"
-                    :label="tr('Attachment (PDF/Image)')" 
-                    wire:model="adjustmentFile" 
-                    error="adjustmentFile"
+                    id="adjustment_amount"
+                    type="number"
+                    step="0.5"
+                    :label="tr('Number of Days')" 
+                    wire:model.live="adjustmentAmount" 
+                    error="adjustmentAmount"
                     :required="true"
-                    class="file:bg-indigo-50 file:text-indigo-600 file:border-0 file:rounded-lg file:px-3 file:py-1.5 file:mr-4 file:font-bold hover:file:bg-indigo-100 cursor-pointer"
+                    placeholder="0.0"
                 />
-                
-                <div wire:loading wire:target="adjustmentFile" class="flex items-center gap-2 text-xs text-indigo-600 font-bold bg-indigo-50 px-3 py-2 rounded-lg">
-                    <i class="fas fa-spinner fa-spin"></i> {{ tr('Uploading attachment...') }}
-                </div>
     
-                @if($adjustmentFile && $adjustmentFile instanceof \Livewire\Features\SupportFileUploads\TemporaryUploadedFile)
-                    <div class="flex items-center gap-2 text-[10px] text-green-600 font-bold bg-green-50 px-3 py-1.5 rounded-lg border border-green-100">
-                        <i class="fas fa-check-circle"></i>
-                        {{ $adjustmentFile->getClientOriginalName() }}
+                @if(isset($employee))
+                    <x-ui.textarea 
+                        id="adjustment_reason"
+                        :label="tr('Adjustment Reason')" 
+                        wire:model="adjustmentReason" 
+                        error="adjustmentReason"
+                        :required="true"
+                        rows="3"
+                        placeholder="{{ tr('Write a detailed reason for this adjustment (e.g. Compensation for weekend work, administrative decision #123)...') }}"
+                    />
+        
+                    <x-ui.input 
+                        id="adjustment_file"
+                        type="file"
+                        :label="tr('Attachment (PDF/Image)')" 
+                        wire:model="adjustmentFile" 
+                        error="adjustmentFile"
+                        :required="true"
+                        class="file:bg-indigo-50 file:text-indigo-600 file:border-0 file:rounded-lg file:px-3 file:py-1.5 file:mr-4 file:font-bold hover:file:bg-indigo-100 cursor-pointer"
+                    />
+                    
+                    <div wire:loading wire:target="adjustmentFile" class="flex items-center gap-2 text-xs text-indigo-600 font-bold bg-indigo-50 px-3 py-2 rounded-lg">
+                        <i class="fas fa-spinner fa-spin"></i> {{ tr('Uploading attachment...') }}
                     </div>
+        
+                    @if($adjustmentFile && $adjustmentFile instanceof \Livewire\Features\SupportFileUploads\TemporaryUploadedFile)
+                        <div class="flex items-center gap-2 text-[10px] text-green-600 font-bold bg-green-50 px-3 py-1.5 rounded-lg border border-green-100">
+                            <i class="fas fa-check-circle"></i>
+                            {{ $adjustmentFile->getClientOriginalName() }}
+                        </div>
+                    @endif
                 @endif
             </div>
     
             <x-slot name="footer">
                 <div class="flex justify-end gap-3 w-full">
-                    <x-ui.secondary-button type="button" @click="$wire.set('showingAdjustmentModal', false)">
+                    <x-ui.secondary-button type="button" wire:click="$set('showingAdjustmentModal', false)">
                         {{ tr('Cancel') }}
                     </x-ui.secondary-button>
                     <x-ui.primary-button type="button" wire:click="confirmLeaveAdjustment" wire:loading.attr="disabled">
