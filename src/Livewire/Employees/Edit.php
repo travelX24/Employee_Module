@@ -957,46 +957,10 @@ if (! empty($allowed)) {
         $this->saveMultipleFiles($this->employee, 'family_documents', 'family_documents');
         $this->saveMultipleFiles($this->employee, 'other_documents', 'other_documents');
 
-        // ✅ Refresh documents from database to update UI immediately
-        $this->employee->load('documents');
-        $this->existing_photo = $this->employee->documents->where('type', 'personal_photo')->first();
-        $this->existing_national_id_photo = $this->employee->documents->where('type', 'national_id_photo')->first();
-        $this->existing_qualification = $this->employee->documents->where('type', 'qualification')->first();
-
-        $this->existing_certificates = $this->employee->documents->where('type', 'certificates')
-            ->map(fn($d) => [
-                'id' => $d->id,
-                'original_name' => $d->title ?? basename($d->file_path),
-                'url' => asset('storage/'.$d->file_path),
-                'size' => 0 
-            ])->values()->toArray();
-
-        $this->existing_family_documents = $this->employee->documents->where('type', 'family_documents')
-            ->map(fn($d) => [
-                'id' => $d->id,
-                'original_name' => $d->title ?? basename($d->file_path),
-                'url' => asset('storage/'.$d->file_path),
-                'size' => 0
-            ])->values()->toArray();
-
-        $this->existing_other_documents = $this->employee->documents->where('type', 'other_documents')
-            ->map(fn($d) => [
-                'id' => $d->id,
-                'original_name' => $d->title ?? basename($d->file_path),
-                'url' => asset('storage/'.$d->file_path),
-                'size' => 0
-            ])->values()->toArray();
-
-        // Reset temporary file properties
-        $this->photo = null;
-        $this->national_id_photo = null;
-        $this->qualification = null;
-        $this->certificates = [];
-        $this->family_documents = [];
-        $this->other_documents = [];
-
         $this->dispatch('toast', type: 'success', title: tr('Saved'), message: tr('Employee updated successfully'));
         $this->dispatch('employee-updated', employeeId: $this->employee->id);
+        // REMOVED logic that reopens the modal automatically
+        // Instead, the view-employee-modal will handle closing on employee-updated via Alpine
     }
 
     private function saveFile($employee, $property, $type): void
@@ -1010,22 +974,28 @@ if (! empty($allowed)) {
             return;
         }
 
-        // ✅ Delete existing records of the same type to ensure the newest one is picked up
-        $employee->documents()->where('type', $type)->delete();
+        // ✅ 1. حذف الملف القديم والسجل المرتبط به لتجنب التكرار
+        $oldDocument = $employee->documents()->where('type', $type)->first();
+        if ($oldDocument) {
+            \Illuminate\Support\Facades\Storage::disk('public')->delete($oldDocument->file_path);
+            $oldDocument->delete();
+        }
 
+        // ✅ 2. حفظ الملف الجديد
         $path = $this->$property->store("employees/{$employee->id}/documents", 'public');
 
-        $employee->documents()->create([
+        $newDoc = $employee->documents()->create([
             'type' => $type,
             'file_path' => $path,
             'title' => $this->$property->getClientOriginalName(),
         ]);
 
-        // ✅ Update legacy columns on employees table for mobile app compatibility
-        if ($type === 'personal_photo') {
-            $employee->update(['personal_photo_path' => $path]);
-        } elseif ($type === 'national_id_photo') {
-            $employee->update(['id_photo_path' => $path]);
+        // ✅ 3. تحديث الحالة في الواجهة فوراً وتصفير الرفع المؤقت
+        $this->$property = null;
+        
+        $existingProp = 'existing_' . $property;
+        if (property_exists($this, $existingProp)) {
+            $this->{$existingProp} = $newDoc;
         }
     }
 
@@ -1193,15 +1163,22 @@ if (! empty($allowed)) {
     #[\Livewire\Attributes\On('remove-existing-file')]
     public function removeExistingFile($field = null, $index = null): void
     {
-        if (!$field || $index === null) {
+        if (!$field) {
             return;
         }
 
         $property = 'existing_' . $field;
 
-        if (property_exists($this, $property) && is_array($this->{$property})) {
-            if (isset($this->{$property}[$index])) {
-                $docData = $this->{$property}[$index];
+        if (!property_exists($this, $property)) {
+            return;
+        }
+
+        $value = $this->{$property};
+
+        // الحالة الأولى: ملفات متعددة (مصفوفة)
+        if (is_array($value)) {
+            if ($index !== null && isset($value[$index])) {
+                $docData = $value[$index];
                 if (isset($docData['id'])) {
                     $document = \Athka\Employees\Models\EmployeeDocument::find($docData['id']);
                     if ($document) {
@@ -1210,13 +1187,31 @@ if (! empty($allowed)) {
                     }
                 }
                 
-                unset($this->{$property}[$index]);
-                $this->{$property} = array_values($this->{$property});
-                
-                // Clear errors for this field as well
-                $this->clearFieldErrorsByPrefix($field);
+                unset($value[$index]);
+                $this->{$property} = array_values($value);
             }
+        } 
+        // الحالة الثانية: ملف واحد (كائن EmployeeDocument)
+        else if ($value) {
+            $document = null;
+            if ($value instanceof \Athka\Employees\Models\EmployeeDocument) {
+                $document = $value;
+            } elseif (is_numeric($value)) {
+                $document = \Athka\Employees\Models\EmployeeDocument::find($value);
+            } elseif (is_array($value) && isset($value['id'])) {
+                $document = \Athka\Employees\Models\EmployeeDocument::find($value['id']);
+            }
+
+            if ($document) {
+                \Illuminate\Support\Facades\Storage::disk('public')->delete($document->file_path);
+                $document->delete();
+            }
+            
+            $this->{$property} = null;
         }
+
+        // مسح الأخطاء لهذا الحقل
+        $this->clearFieldErrorsByPrefix($field);
     }
 
     public function getBranchesProperty(): array

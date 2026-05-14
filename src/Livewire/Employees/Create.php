@@ -850,13 +850,6 @@ class Create extends Component
             'file_path' => $path,
             'title' => $this->$property->getClientOriginalName(),
         ]);
-
-        // ✅ Update legacy columns on employees table for mobile app compatibility
-        if ($type === 'personal_photo') {
-            $employee->update(['personal_photo_path' => $path]);
-        } elseif ($type === 'national_id_photo') {
-            $employee->update(['id_photo_path' => $path]);
-        }
     }
 
     private function saveMultipleFiles($employee, $property, $type): void
