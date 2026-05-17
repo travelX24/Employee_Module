@@ -265,6 +265,7 @@
                     type="button"
                     @click="hide()"
                     :fullWidth="false"
+                    x-show="!editMode"
                 >
                     {{ tr('Close') }}
                 </x-ui.secondary-button>
