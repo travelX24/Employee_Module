@@ -205,15 +205,6 @@
         </div>
         <div class="sticky bottom-0 px-6 py-4 border-t border-gray-200 bg-white shadow-[0_-8px_20px_rgba(0,0,0,0.06)] z-20 rounded-b-2xl">
             <div class="w-full flex justify-end items-center gap-3">
-                <x-ui.secondary-button
-                    type="button"
-                    @click="hide()"
-                    :fullWidth="false"
-                    x-show="!editMode"
-                >
-                    {{ tr('Close') }}
-                </x-ui.secondary-button>
-
                 @if(!$readonly)
                     @can('employees.edit')
                     <x-ui.primary-button
@@ -228,17 +219,6 @@
                         {{ tr('Edit') }}
                     </x-ui.primary-button>
                     @endcan
-
-                    <x-ui.secondary-button
-                        type="button"
-                        x-show="editMode"
-                        x-transition
-                        x-cloak
-                        @click="cancelEdit()"
-                        :fullWidth="false"
-                    >
-                        {{ tr('Cancel Edit') }}
-                    </x-ui.secondary-button>
                 @endif
             </div>
         </div>

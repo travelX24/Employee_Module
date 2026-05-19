@@ -798,6 +798,10 @@ class Create extends Component
                 'annual_leave_days' => $this->annual_leave_days ?: 0,
                 'contract_duration_months' => $this->contract_duration_months ?: 0,
 
+                'is_transferred_employee' => $this->is_transferred_employee ? 1 : 0,
+                'opening_leave_balance' => $this->is_transferred_employee ? (is_numeric($this->opening_leave_balance) ? $this->opening_leave_balance : 0) : 0,
+                'leave_balance_adjustments' => is_numeric($this->leave_balance_adjustments) ? $this->leave_balance_adjustments : 0,
+
                 'mobile' => $this->mobile,
                 'mobile_alt' => $this->mobile_alt,
                 'email_work' => $this->email_work ?: null,

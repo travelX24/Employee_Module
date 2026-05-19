@@ -149,7 +149,9 @@ class EmployeeController extends Controller
                 'personal_photo_path' => $employee->documents->where('type', 'personal_photo')->first()?->file_path 
                     ?? $employee->personal_photo_path 
                     ?? null,
-                'annual_leave_days' => $employee->annual_leave_days ?? 30,
+                'annual_leave_days' => (float) ($employee->is_transferred_employee 
+                    ? (($employee->opening_leave_balance ?? 0) + ($employee->leave_balance_adjustments ?? 0))
+                    : (($employee->annual_leave_days ?? 30) + ($employee->leave_balance_adjustments ?? 0))),
             ] : null,
 
             'company' => $company ? [

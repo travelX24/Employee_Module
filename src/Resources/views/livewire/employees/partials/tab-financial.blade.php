@@ -252,6 +252,7 @@
                         error="adjustmentFile"
                         :required="true"
                         class="file:bg-indigo-50 file:text-indigo-600 file:border-0 file:rounded-lg file:px-3 file:py-1.5 file:mr-4 file:font-bold hover:file:bg-indigo-100 cursor-pointer"
+                        x-effect="if (!show) $el.value = ''"
                     />
                     
                     <div wire:loading wire:target="adjustmentFile" class="flex items-center gap-2 text-xs text-indigo-600 font-bold bg-indigo-50 px-3 py-2 rounded-lg">
