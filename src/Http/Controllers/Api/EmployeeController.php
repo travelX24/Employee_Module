@@ -838,7 +838,7 @@ class EmployeeController extends Controller
             ->get($select)
             ->values();
 
-        // ✅ Transform to match Mobile App Model
+        $transformed = collect();
         $locale = $request->header('Accept-Language') ?: $request->input('locale') ?: 'ar';
         if (str_contains($locale, 'ar')) $locale = 'ar';
         else $locale = 'en';
@@ -899,43 +899,48 @@ class EmployeeController extends Controller
                 ->sum('minutes');
         }
 
-        $transformed = $items->map(function($item) use ($table, $key, $value, $locale, $groupedTasks, $approvers, $monthlyLeaveDays, $monthlyLeaveDaysByPolicy, $monthlyPermissionMinutes) {
+        // ✅ Optimization: Bulk prefetch policies and consumed leave balances outside the loop
+        $policiesMap = [];
+        $consumedMap = [];
+
+        if ($table === 'attendance_leave_requests' && !$items->isEmpty()) {
+            $policyIds = $items->pluck('leave_policy_id')->filter()->unique()->toArray();
+            if (!empty($policyIds)) {
+                $policiesMap = DB::table('leave_policies')
+                    ->whereIn('id', $policyIds)
+                    ->get()
+                    ->keyBy('id')
+                    ->toArray();
+
+                $consumedRows = DB::table('attendance_leave_requests')
+                    ->where('employee_id', $employeeId)
+                    ->whereIn('leave_policy_id', $policyIds)
+                    ->where('status', 'approved')
+                    ->select('leave_policy_id', 'policy_year_id', DB::raw('SUM(requested_days) as consumed'))
+                    ->groupBy('leave_policy_id', 'policy_year_id')
+                    ->get();
+
+                foreach ($consumedRows as $row) {
+                    $consumedMap[$row->leave_policy_id . '_' . ($row->policy_year_id ?? 0)] = (float)$row->consumed;
+                }
+            }
+        }
+
+        $transformed = $items->map(function($item) use ($table, $key, $value, $locale, $groupedTasks, $approvers, $monthlyLeaveDays, $monthlyLeaveDaysByPolicy, $monthlyPermissionMinutes, $policiesMap, $consumedMap, $employeeId) {
             $arr = $this->normalizeRequestItem($item, $table, $locale);
             
-            // Map requested_days for UX specifically if needed (override from normalize if we want smarter computation)
-            if ($table === 'attendance_leave_requests' && !empty($arr['start_date']) && !empty($arr['end_date'])) {
-                try {
-                    $s = \Carbon\Carbon::parse($arr['start_date']);
-                    $e = \Carbon\Carbon::parse($arr['end_date']);
-                    if (empty($arr['from_time']) && empty($arr['to_time'])) {
-                        $arr['requested_days'] = $this->computeRequestedDaysGeneric(
-                            (int)($item->company_id ?? $value->saas_company_id ?? 0), 
-                            $item->leave_policy_id ?? null, $s, $e
-                        );
-                    }
-                } catch (\Exception $ex) {}
-            }
+            // Note: requested_days is already calculated correctly during creation and stored in DB, no need to recalculate it.
 
-            // Balance Calculation (Including Pending Requests)
+            // Balance Calculation (Including Pending Requests) - Bulk Optimized
             $balanceStr = '';
             if ($table === 'attendance_leave_requests' && !empty($arr['leave_policy_id'])) {
-                $employeeId = $value;
-                if ($key === 'user_id') {
-                    $employeeId = DB::table('employees')->where('user_id', $value)->value('id') ?: 0;
-                }
-                
                 $policyId   = $arr['leave_policy_id'];
                 $yearId     = $arr['policy_year_id'] ?? 0;
 
-                $policy = DB::table('leave_policies')->where('id', $policyId)->first();
+                $policy = $policiesMap[$policyId] ?? null;
                 if ($policy) {
                     $total = (float)($policy->days_per_year ?? 0);
-                    $consumed = DB::table('attendance_leave_requests')
-                        ->where('employee_id', $employeeId)
-                        ->where('leave_policy_id', $policyId)
-                        ->where('policy_year_id', $yearId)
-                        ->where('status', 'approved')
-                        ->sum('requested_days');
+                    $consumed = (float)($consumedMap[$policyId . '_' . $yearId] ?? 0);
                     
                     $totalStr    = ($total == (int)$total) ? (int)$total : $total;
                     $consumedStr = ($consumed == (int)$consumed) ? (int)$consumed : $consumed;
