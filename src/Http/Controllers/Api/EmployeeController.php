@@ -870,7 +870,8 @@ class EmployeeController extends Controller
             $employeeId = DB::table('employees')->where('user_id', $value)->value('id') ?: 0;
         }
 
-        $currentMonth = now()->format('Y-m');
+        $startOfMonth = now()->startOfMonth()->toDateString();
+        $endOfMonth = now()->endOfMonth()->toDateString();
         $monthlyLeaveDays = 0;
         $monthlyLeaveDaysByPolicy = [];
         $monthlyPermissionMinutes = 0;
@@ -880,7 +881,7 @@ class EmployeeController extends Controller
                 ->select('leave_policy_id', 'policy_year_id', DB::raw('SUM(requested_days) as total_days'))
                 ->where('employee_id', $employeeId)
                 ->where('status', 'approved')
-                ->where('start_date', 'like', $currentMonth . '%')
+                ->whereBetween('start_date', [$startOfMonth, $endOfMonth])
                 ->groupBy('leave_policy_id', 'policy_year_id')
                 ->get();
 
@@ -895,7 +896,7 @@ class EmployeeController extends Controller
             $monthlyPermissionMinutes = DB::table('attendance_permission_requests')
                 ->where('employee_id', $employeeId)
                 ->where('status', 'approved')
-                ->where('permission_date', 'like', $currentMonth . '%')
+                ->whereBetween('permission_date', [$startOfMonth, $endOfMonth])
                 ->sum('minutes');
         }
 
