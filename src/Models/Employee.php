@@ -308,7 +308,7 @@ public function subordinates(): HasMany
      * - موظف منقول: الرصيد الافتتاحي + التعديلات (يمكن أن يكون سالب)
      * - موظف جديد: حساب نسبي بناءً على تاريخ التوظيف حتى نهاية السنة الحالية
      */
-    public function calculateLeaveBalance()
+    public function calculateLeaveEntitlement()
     {
         if ($this->is_transferred_employee) {
             return ($this->opening_leave_balance ?? 0) + ($this->leave_balance_adjustments ?? 0);
@@ -319,7 +319,10 @@ public function subordinates(): HasMany
 
             // جلب الإجازة السنوية الكاملة من إعدادات الشركة
             $companySettings = \Athka\Saas\Models\SaasCompanyOtherinfo::where('company_id', $this->saas_company_id)->first();
-            $defaultDays = $companySettings->default_annual_leave_days ?? 0;
+            $employeeAnnualDays = (float) ($this->annual_leave_days ?? 0);
+            $defaultDays = $employeeAnnualDays > 0
+                ? $employeeAnnualDays
+                : (float) ($companySettings->default_annual_leave_days ?? 0);
             if ($defaultDays == 0) return ($this->leave_balance_adjustments ?? 0);
 
             $hiredDate = \Carbon\Carbon::parse($this->hired_at);
@@ -342,6 +345,31 @@ public function subordinates(): HasMany
 
             return round($earnedDays, 1) + ($this->leave_balance_adjustments ?? 0);
         }
+    }
+
+    public function approvedAnnualLeaveDays(): float
+    {
+        if (!$this->exists || empty($this->id)) {
+            return 0.0;
+        }
+
+        if (!\Illuminate\Support\Facades\Schema::hasTable('attendance_leave_requests')
+            || !\Illuminate\Support\Facades\Schema::hasTable('leave_policies')) {
+            return 0.0;
+        }
+
+        return (float) \Illuminate\Support\Facades\DB::table('attendance_leave_requests')
+            ->join('leave_policies', 'attendance_leave_requests.leave_policy_id', '=', 'leave_policies.id')
+            ->where('attendance_leave_requests.employee_id', $this->id)
+            ->where('attendance_leave_requests.status', 'approved')
+            ->where('leave_policies.leave_type', 'annual')
+            ->whereYear('attendance_leave_requests.start_date', now()->year)
+            ->sum('attendance_leave_requests.requested_days');
+    }
+
+    public function calculateLeaveBalance()
+    {
+        return $this->calculateLeaveEntitlement() - $this->approvedAnnualLeaveDays();
     }
 }
 
