@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 use App\Services\ExcelExportService;
+use App\Services\Hr\ContractExpiryService;
 use Athka\Employees\Models\Employee;
 use Athka\Employees\Models\EmployeeStatusLog;
 
@@ -70,12 +71,14 @@ class Index extends Component
     public string $exportScope = 'all'; // all | custom
     public array $selectedFields = [];
     
-    public function mount()
+    public function mount(ContractExpiryService $contractExpiryService)
     {
         // One of these permissions is required to see the listing
         if (!Auth::user()->can('employees.view')) {
             abort(403);
         }
+
+        $contractExpiryService->expireDueContracts((int) Auth::user()->saas_company_id);
     }
 
     public function getAvailableFieldsProperty(): array

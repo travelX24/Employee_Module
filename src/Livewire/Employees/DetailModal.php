@@ -2,6 +2,7 @@
 
 namespace Athka\Employees\Livewire\Employees;
 
+use App\Services\Hr\ContractExpiryService;
 use Athka\Employees\Models\Employee;
 use Livewire\Component;
 use Livewire\Attributes\On;
@@ -18,6 +19,7 @@ class DetailModal extends Component
     public function open($id, $readonly = true)
     {
         $companyId = (int) (Auth::user()?->saas_company_id ?? 0);
+        app(ContractExpiryService::class)->expireDueContracts($companyId);
 
        $user = Auth::user();
 
@@ -63,6 +65,8 @@ class DetailModal extends Component
 
         // Only refresh if it's the same employee
         if ($employeeId && (int) $employeeId !== (int) $this->employee->id) return;
+
+        app(ContractExpiryService::class)->expireEmployeeIfDue($this->employee);
 
         $this->employee = Employee::withoutGlobalScope('active_only')
             ->where('id', $this->employee->id)

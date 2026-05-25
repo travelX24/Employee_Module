@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Athka\Saas\Models\Branch;
 
 class Employee extends Model
@@ -310,6 +312,8 @@ public function subordinates(): HasMany
      */
     public function calculateLeaveBalance()
     {
+        return round($this->calculateAnnualLeaveEntitlement() - $this->approvedAnnualLeaveDays(), 1);
+
         if ($this->is_transferred_employee) {
             return ($this->opening_leave_balance ?? 0) + ($this->leave_balance_adjustments ?? 0);
         } else {
@@ -342,6 +346,69 @@ public function subordinates(): HasMany
 
             return round($earnedDays, 1) + ($this->leave_balance_adjustments ?? 0);
         }
+    }
+
+    public function calculateAnnualLeaveEntitlement(): float
+    {
+        if ($this->is_transferred_employee) {
+            return (float) (($this->opening_leave_balance ?? 0) + ($this->leave_balance_adjustments ?? 0));
+        }
+
+        if (!$this->hired_at) {
+            return 0.0;
+        }
+
+        $defaultDays = $this->annual_leave_days;
+        if ($defaultDays === null) {
+            $companySettings = \Athka\Saas\Models\SaasCompanyOtherinfo::where('company_id', $this->saas_company_id)->first();
+            $defaultDays = $companySettings->default_annual_leave_days ?? 0;
+        }
+
+        if ((float) $defaultDays == 0.0) {
+            return (float) ($this->leave_balance_adjustments ?? 0);
+        }
+
+        $hiredDate = \Carbon\Carbon::parse($this->hired_at);
+        $currentYear = now()->year;
+        $hiredYear = $hiredDate->year;
+
+        if ($hiredYear < $currentYear) {
+            $earnedDays = (float) $defaultDays;
+        } elseif ($hiredYear === $currentYear) {
+            $endOfYear = $hiredDate->copy()->endOfYear();
+            $daysInYear = $hiredDate->copy()->startOfYear()->diffInDays($endOfYear) + 1;
+            $daysRemainingInYear = $hiredDate->diffInDays($endOfYear) + 1;
+            $earnedDays = ($daysRemainingInYear / $daysInYear) * (float) $defaultDays;
+        } else {
+            $earnedDays = 0.0;
+        }
+
+        return round($earnedDays, 1) + (float) ($this->leave_balance_adjustments ?? 0);
+    }
+
+    public function approvedAnnualLeaveDays(?int $year = null): float
+    {
+        if (!Schema::hasTable('attendance_leave_requests') || !Schema::hasTable('leave_policies')) {
+            return 0.0;
+        }
+
+        $year = $year ?: now()->year;
+        $start = \Carbon\Carbon::create($year, 1, 1)->toDateString();
+        $end = \Carbon\Carbon::create($year, 12, 31)->toDateString();
+
+        $query = DB::table('attendance_leave_requests as lr')
+            ->join('leave_policies as lp', 'lp.id', '=', 'lr.leave_policy_id')
+            ->where('lr.employee_id', $this->id)
+            ->where('lr.status', 'approved')
+            ->where('lp.leave_type', 'annual')
+            ->whereDate('lr.start_date', '<=', $end)
+            ->whereDate('lr.end_date', '>=', $start);
+
+        if (Schema::hasColumn('attendance_leave_requests', 'company_id')) {
+            $query->where('lr.company_id', $this->saas_company_id);
+        }
+
+        return (float) $query->sum('lr.requested_days');
     }
 }
 
