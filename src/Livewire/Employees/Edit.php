@@ -496,11 +496,6 @@ if (! empty($allowed)) {
         $this->recalculateLeaveBalance();
     }
 
-    public function updatedAnnualLeaveDays($value)
-    {
-        $this->recalculateLeaveBalance();
-    }
-
     public function updatedOpeningLeaveBalance($value)
     {
         $this->recalculateLeaveBalance();
@@ -530,7 +525,6 @@ if (! empty($allowed)) {
         $this->employee->opening_leave_balance = is_numeric($this->opening_leave_balance) ? $this->opening_leave_balance : 0;
         $this->employee->leave_balance_adjustments = is_numeric($this->leave_balance_adjustments) ? (int)$this->leave_balance_adjustments : 0;
         $this->employee->hired_at = $this->hired_at;
-        $this->employee->annual_leave_days = is_numeric($this->annual_leave_days) ? (int)$this->annual_leave_days : 0;
 
         $this->calculated_leave_balance = (int) round((float) $this->employee->calculateLeaveBalance(), 0, PHP_ROUND_HALF_UP);
     }

@@ -957,7 +957,7 @@
             {{-- Step 1: Download Templates --}}
             <div class="space-y-4">
                 <div class="flex items-center gap-3">
-                    <span class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 font-bold text-sm flex items-center justify-center">1</span>
+                    <span class="w-8 h-8 rounded-full bg-orange-100 text-[color:var(--brand-from)] font-bold text-sm flex items-center justify-center">1</span>
                     <h4 class="font-bold text-gray-800">{{ tr('Download Templates & Data Reference') }}</h4>
                 </div>
                 
@@ -982,7 +982,7 @@
             {{-- Step 2: Upload File --}}
             <div class="space-y-4">
                 <div class="flex items-center gap-3">
-                    <span class="w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-bold text-sm flex items-center justify-center">2</span>
+                    <span class="w-8 h-8 rounded-full bg-orange-100 text-[color:var(--brand-from)] font-bold text-sm flex items-center justify-center">2</span>
                     <h4 class="font-bold text-gray-800">{{ tr('Upload Completed File') }}</h4>
                 </div>
                 

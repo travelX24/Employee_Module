@@ -124,25 +124,6 @@ class EmployeeController extends Controller
             }
         }
 
-        $annualLeaveDays = null;
-        if ($employee) {
-            try {
-                $annualLeaveDays = method_exists($employee, 'calculateLeaveEntitlement')
-                    ? (float) $employee->calculateLeaveEntitlement()
-                    : (float) (
-                        $employee->is_transferred_employee
-                            ? (($employee->opening_leave_balance ?? 0) + ($employee->leave_balance_adjustments ?? 0))
-                            : (($employee->annual_leave_days ?? 30) + ($employee->leave_balance_adjustments ?? 0))
-                    );
-            } catch (\Throwable $e) {
-                $annualLeaveDays = (float) (
-                    $employee->is_transferred_employee
-                        ? (($employee->opening_leave_balance ?? 0) + ($employee->leave_balance_adjustments ?? 0))
-                        : (($employee->annual_leave_days ?? 30) + ($employee->leave_balance_adjustments ?? 0))
-                );
-            }
-        }
-
         return response()->json([
             'ok' => true,
             'employee' => $employee ? [
@@ -168,7 +149,9 @@ class EmployeeController extends Controller
                 'personal_photo_path' => $employee->documents->where('type', 'personal_photo')->first()?->file_path 
                     ?? $employee->personal_photo_path 
                     ?? null,
-                'annual_leave_days' => $annualLeaveDays,
+                'annual_leave_days' => (float) ($employee->is_transferred_employee 
+                    ? (($employee->opening_leave_balance ?? 0) + ($employee->leave_balance_adjustments ?? 0))
+                    : (($employee->annual_leave_days ?? 30) + ($employee->leave_balance_adjustments ?? 0))),
             ] : null,
 
             'company' => $company ? [
@@ -887,8 +870,7 @@ class EmployeeController extends Controller
             $employeeId = DB::table('employees')->where('user_id', $value)->value('id') ?: 0;
         }
 
-        $startOfMonth = now()->startOfMonth()->toDateString();
-        $endOfMonth = now()->endOfMonth()->toDateString();
+        $currentMonth = now()->format('Y-m');
         $monthlyLeaveDays = 0;
         $monthlyLeaveDaysByPolicy = [];
         $monthlyPermissionMinutes = 0;
@@ -898,7 +880,7 @@ class EmployeeController extends Controller
                 ->select('leave_policy_id', 'policy_year_id', DB::raw('SUM(requested_days) as total_days'))
                 ->where('employee_id', $employeeId)
                 ->where('status', 'approved')
-                ->whereBetween('start_date', [$startOfMonth, $endOfMonth])
+                ->where('start_date', 'like', $currentMonth . '%')
                 ->groupBy('leave_policy_id', 'policy_year_id')
                 ->get();
 
@@ -913,39 +895,16 @@ class EmployeeController extends Controller
             $monthlyPermissionMinutes = DB::table('attendance_permission_requests')
                 ->where('employee_id', $employeeId)
                 ->where('status', 'approved')
-                ->whereBetween('permission_date', [$startOfMonth, $endOfMonth])
+                ->where('permission_date', 'like', $currentMonth . '%')
                 ->sum('minutes');
         }
 
         // ✅ Optimization: Bulk prefetch policies and consumed leave balances outside the loop
         $policiesMap = [];
         $consumedMap = [];
-        $employeeAnnualLeaveDays = null;
 
         if ($table === 'attendance_leave_requests' && !$items->isEmpty()) {
             $policyIds = $items->pluck('leave_policy_id')->filter()->unique()->toArray();
-            $employeeForBalance = $employeeId > 0
-                ? \Athka\Employees\Models\Employee::find($employeeId)
-                : null;
-
-            if ($employeeForBalance) {
-                try {
-                    $employeeAnnualLeaveDays = method_exists($employeeForBalance, 'calculateLeaveEntitlement')
-                        ? (float) $employeeForBalance->calculateLeaveEntitlement()
-                        : (float) (
-                            $employeeForBalance->is_transferred_employee
-                                ? (($employeeForBalance->opening_leave_balance ?? 0) + ($employeeForBalance->leave_balance_adjustments ?? 0))
-                                : (($employeeForBalance->annual_leave_days ?? 30) + ($employeeForBalance->leave_balance_adjustments ?? 0))
-                        );
-                } catch (\Throwable $e) {
-                    $employeeAnnualLeaveDays = (float) (
-                        $employeeForBalance->is_transferred_employee
-                            ? (($employeeForBalance->opening_leave_balance ?? 0) + ($employeeForBalance->leave_balance_adjustments ?? 0))
-                            : (($employeeForBalance->annual_leave_days ?? 30) + ($employeeForBalance->leave_balance_adjustments ?? 0))
-                    );
-                }
-            }
-
             if (!empty($policyIds)) {
                 $policiesMap = DB::table('leave_policies')
                     ->whereIn('id', $policyIds)
@@ -967,7 +926,7 @@ class EmployeeController extends Controller
             }
         }
 
-        $transformed = $items->map(function($item) use ($table, $key, $value, $locale, $groupedTasks, $approvers, $monthlyLeaveDays, $monthlyLeaveDaysByPolicy, $monthlyPermissionMinutes, $policiesMap, $consumedMap, $employeeId, $employeeAnnualLeaveDays) {
+        $transformed = $items->map(function($item) use ($table, $key, $value, $locale, $groupedTasks, $approvers, $monthlyLeaveDays, $monthlyLeaveDaysByPolicy, $monthlyPermissionMinutes, $policiesMap, $consumedMap, $employeeId) {
             $arr = $this->normalizeRequestItem($item, $table, $locale);
             
             // Note: requested_days is already calculated correctly during creation and stored in DB, no need to recalculate it.
@@ -981,9 +940,6 @@ class EmployeeController extends Controller
                 $policy = $policiesMap[$policyId] ?? null;
                 if ($policy) {
                     $total = (float)($policy->days_per_year ?? 0);
-                    if (($policy->leave_type ?? '') === 'annual' && $employeeAnnualLeaveDays !== null) {
-                        $total = (float) $employeeAnnualLeaveDays;
-                    }
                     $consumed = (float)($consumedMap[$policyId . '_' . $yearId] ?? 0);
                     
                     $totalStr    = ($total == (int)$total) ? (int)$total : $total;
@@ -1264,12 +1220,6 @@ class EmployeeController extends Controller
                         ->first();
                         
                     $remaining = $balance ? (float) $balance->remaining_days : (float) ($policy->days_per_year ?? 0);
-                    if (!$balance && ($policy->leave_type ?? '') === 'annual') {
-                        $employeeForBalanceCheck = \Athka\Employees\Models\Employee::find($value);
-                        if ($employeeForBalanceCheck && method_exists($employeeForBalanceCheck, 'calculateLeaveBalance')) {
-                            $remaining = (float) $employeeForBalanceCheck->calculateLeaveBalance();
-                        }
-                    }
                     
                     if (round($requestedDays, 2) > round($remaining, 2)) {
                         $settings = $policy ? (is_string($policy->settings) ? json_decode($policy->settings, true) : $policy->settings) : [];

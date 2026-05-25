@@ -223,7 +223,6 @@ class Create extends Component
             'saas_company_id' => $this->companyId,
             'branch_id' => $this->branch_id,
             'hired_at' => $this->hired_at,
-            'annual_leave_days' => is_numeric($this->annual_leave_days) ? (int) $this->annual_leave_days : 0,
             'is_transferred_employee' => (bool) $this->is_transferred_employee,
             'opening_leave_balance' => is_numeric($this->opening_leave_balance) ? $this->opening_leave_balance : 0,
             'leave_balance_adjustments' => is_numeric($this->leave_balance_adjustments) ? (int) $this->leave_balance_adjustments : 0,
