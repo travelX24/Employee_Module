@@ -181,14 +181,7 @@
                                 model="status"
                                 :label="tr('Status')"
                                 :placeholder="tr('All Status')"
-                                :options="[
-                                    ['value' => 'ACTIVE', 'label' => tr('Active')],
-                                    ['value' => 'SUSPENDED', 'label' => tr('Not Active')],
-                                    ['value' => 'RESIGNED', 'label' => tr('Resigned')],
-                                    ['value' => 'TERMINATED', 'label' => tr('Terminated')],
-                                    ['value' => 'RETIRED', 'label' => tr('Retired')],
-                                    ['value' => 'ENDED', 'label' => tr('Contract Ended')],
-                                ]"
+                                :options="\Athka\Employees\Support\EmployeeStatus::filterOptions()"
                                 width="full"
                                 :defer="false"
                                 :applyOnChange="true"

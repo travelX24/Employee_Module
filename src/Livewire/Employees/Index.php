@@ -26,7 +26,7 @@ class Index extends Component
  
     public string $departmentId = 'all';
     public string $jobTitleId   = 'all';
-    public string $status       = 'all'; 
+    public string $status       = 'ACTIVE'; 
 
     public string $branchFilterId = 'all';
     public string $contractType   = 'all'; 
@@ -228,7 +228,7 @@ public function setViewMode(string $mode): void
         $this->search = '';
         $this->departmentId = 'all';
         $this->jobTitleId = 'all';
-        $this->status = 'all';
+        $this->status = 'ACTIVE';
 
         $this->branchFilterId = 'all'; 
         $this->contractType   = 'all'; 
