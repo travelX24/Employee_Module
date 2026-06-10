@@ -33,7 +33,7 @@
         .system-logo {
             width: 30px;
             height: 30px;
-            background: #4f46e5;
+            background: #C45A1A;
             border-radius: 6px;
             text-align: center;
             line-height: 30px;
@@ -54,7 +54,7 @@
         .company-name {
             font-size: 13px;
             font-weight: 700;
-            color: #4f46e5;
+            color: #C45A1A;
         }
         .company-details {
             font-size: 8px;
@@ -117,8 +117,8 @@
             font-size: {{ count($fields) > 15 ? '5px' : '7px' }};
             font-weight: bold;
         }
-        .status-active { background-color: #dcfce7; color: #166534; }
-        .status-suspended { background-color: #fee2e2; color: #991b1b; }
+        .status-active { background-color: #ECFDF5; color: #10B981; }
+        .status-suspended { background-color: #FFFBEB; color: #F59E0B; }
         
         .footer {
             position: fixed;

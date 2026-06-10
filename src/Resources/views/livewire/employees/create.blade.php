@@ -77,8 +77,8 @@
                             <svg viewBox="0 0 56 56" class="absolute inset-0 drop-shadow-sm">
                                 <polygon
                                     points="28,4 48,20 40,48 16,48 8,20"
-                                    fill="{{ $isActive ? 'var(--brand-via)' : ($isCompleted ? 'var(--brand-via)' : '#f3f4f6') }}"
-                                    stroke="{{ $isActive ? 'var(--brand-via)' : ($isCompleted ? 'var(--brand-via)' : '#d1d5db') }}"
+                                    fill="{{ $isActive ? 'var(--accent-orange)' : ($isCompleted ? 'var(--accent-orange)' : '#f3f4f6') }}"
+                                    stroke="{{ $isActive ? 'var(--accent-orange)' : ($isCompleted ? 'var(--accent-orange)' : '#d1d5db') }}"
                                     stroke-width="2.5"
                                     class="transition-all duration-200"
                                 />
@@ -90,7 +90,7 @@
                             </div>
                         </div>
                         <div
-                            class="text-[10px] font-semibold text-center leading-tight transition-colors duration-200 max-w-[70px] {{ $isActive || $isCompleted ? 'text-[color:var(--brand-via)]' : 'text-gray-500' }}"
+                            class="text-[10px] font-semibold text-center leading-tight transition-colors duration-200 max-w-[70px] {{ $isActive || $isCompleted ? 'text-[color:var(--accent-orange)]' : 'text-gray-500' }}"
                         >
                             {{ $stepLabel }}
                         </div>
@@ -98,14 +98,14 @@
 
                     @if(!$isLast)
                         <div
-                            class="h-[3px] w-6 rounded-full transition-all duration-300 flex-shrink-0 self-start mt-5 {{ $isCompleted ? 'bg-[color:var(--brand-via)]' : 'bg-gray-200' }}"
+                            class="h-[3px] w-6 rounded-full transition-all duration-300 flex-shrink-0 self-start mt-5 {{ $isCompleted ? 'bg-[color:var(--accent-orange)]' : 'bg-gray-200' }}"
                         ></div>
                     @endif
                 @endforeach
             </div>
 
             <div class="text-center mt-4">
-                <span class="text-sm font-bold text-[color:var(--brand-via)] bg-white/60 px-4 py-1.5 rounded-full inline-block shadow-sm">
+                <span class="text-sm font-bold text-[color:var(--accent-orange)] bg-white/60 px-4 py-1.5 rounded-full inline-block shadow-sm">
                     {{ tr('Step') }} {{ $tab }} {{ tr('of') }} 5: {{ $steps[$tab] ?? '' }}
                 </span>
             </div>

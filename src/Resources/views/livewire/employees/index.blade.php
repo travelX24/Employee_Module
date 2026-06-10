@@ -33,7 +33,7 @@
                         <x-ui.secondary-button
                             wire:click="openExportModal"
                             :fullWidth="false"
-                            class="!border-amber-200 !bg-amber-50/50 !text-amber-700 hover:!bg-amber-100"
+                            class="!border-[color:var(--accent-orange)]/25 !bg-[color:var(--accent-orange)]/5 !text-[color:var(--accent-orange)] hover:!bg-[color:var(--accent-orange)]/10"
                         >
                             <i class="fas fa-file-export"></i>
                             <span class="ms-2">{{ tr('Export') }}</span>
@@ -87,7 +87,7 @@
                                 wire:click="setViewMode('list')"
                                 class="px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200
                                     {{ $viewMode === 'list'
-                                        ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-white shadow-lg hover:shadow-xl hover:from-amber-600 hover:to-yellow-600'
+                                        ? 'bg-[color:var(--accent-orange)] text-white shadow-lg hover:shadow-xl hover:brightness-95'
                                         : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300 shadow-sm' }}"
                                 title="{{ tr('List View') }}"
                             >
@@ -99,7 +99,7 @@
                                 wire:click="setViewMode('cards')"
                                 class="px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200
                                     {{ $viewMode === 'cards'
-                                        ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-white shadow-lg hover:shadow-xl hover:from-amber-600 hover:to-yellow-600'
+                                        ? 'bg-[color:var(--accent-orange)] text-white shadow-lg hover:shadow-xl hover:brightness-95'
                                         : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300 shadow-sm' }}"
                                 title="{{ tr('Card View') }}"
                             >
@@ -429,7 +429,7 @@
                     <x-ui.dropdown-item
                         href="#"
                         wire:click="openDeactivateModal({{ $emp->id }})"
-                        class="text-red-600 hover:bg-red-50"
+                        class="text-[color:var(--error)] hover:bg-[color:var(--error)]/10"
                     >
                         <i class="fas fa-ban w-4 me-2"></i>
                         {{ tr('Deactivate') }}
@@ -438,7 +438,7 @@
                     <x-ui.dropdown-item
                         href="#"
                         wire:click="activateEmployee({{ $emp->id }})"
-                        class="text-green-600 hover:bg-green-50"
+                        class="text-[color:var(--success)] hover:bg-[color:var(--success)]/10"
                     >
                         <i class="fas fa-check-circle w-4 me-2"></i>
                         {{ tr('Activate') }}
@@ -552,7 +552,7 @@
                                         <x-ui.dropdown-item
                                             href="#"
                                             wire:click="openDeactivateModal({{ $emp->id }})"
-                                            class="text-red-600 hover:bg-red-50"
+                                            class="text-[color:var(--error)] hover:bg-[color:var(--error)]/10"
                                         >
                                             <i class="fas fa-ban w-4 me-2"></i>
                                             {{ tr('Deactivate') }}
@@ -561,7 +561,7 @@
                                         <x-ui.dropdown-item
                                             href="#"
                                             wire:click="activateEmployee({{ $emp->id }})"
-                                            class="text-green-600 hover:bg-green-50"
+                                            class="text-[color:var(--success)] hover:bg-[color:var(--success)]/10"
                                         >
                                             <i class="fas fa-check-circle w-4 me-2"></i>
                                             {{ tr('Activate') }}
@@ -677,8 +677,8 @@
         <div class="space-y-6">
             {{-- Employee Info (Read Only) --}}
             @if($selectedEmployee)
-                <div class="bg-blue-50/40 rounded-xl p-5 border border-blue-100">
-                    <h4 class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-4 border-b border-blue-100 pb-2 flex items-center gap-2">
+                <div class="bg-[color:var(--app-soft-bg)] rounded-xl p-5 border border-[color:var(--border-soft)]">
+                    <h4 class="text-xs font-bold text-[color:var(--accent-orange)] uppercase tracking-wider mb-4 border-b border-[color:var(--border-soft)] pb-2 flex items-center gap-2">
                         <i class="fas fa-info-circle"></i>
                         {{ tr('Employee Information') }}
                     </h4>
@@ -717,10 +717,10 @@
                     type="button" 
                     @mouseenter="showTooltip = true" 
                     @mouseleave="showTooltip = false"
-                    class="flex items-center gap-2 text-xs font-bold text-yellow-600 hover:text-yellow-700 transition-colors cursor-help focus:outline-none"
+                    class="flex items-center gap-2 text-xs font-bold text-[color:var(--warning)] hover:brightness-95 transition-colors cursor-help focus:outline-none"
                 >
                     <i class="fas fa-info-circle"></i>
-                    <span class="border-b border-dashed border-yellow-300">{{ tr('View automatic actions upon deactivation') }}</span>
+                    <span class="border-b border-dashed border-[color:var(--warning)]/40">{{ tr('View automatic actions upon deactivation') }}</span>
                 </button>
                 
                 <div 
@@ -735,10 +735,10 @@
                     style="display: none;"
                 >
                     <h5 class="font-bold text-gray-900 mb-2 flex items-center gap-2">
-                        <i class="fas fa-magic text-yellow-500"></i>
+                        <i class="fas fa-magic text-[color:var(--warning)]"></i>
                         {{ tr('System will automatically:') }}
                     </h5>
-                    <ul class="space-y-1.5 list-disc list-inside marker:text-yellow-500">
+                    <ul class="space-y-1.5 list-disc list-inside marker:text-[color:var(--warning)]">
                         <li>{{ tr('Suspend Monthly Salary') }}</li>
                         <li>{{ tr('Suspend Vacation Accruals') }}</li>
                         <li>{{ tr('Revoke System Access') }}</li>
@@ -792,7 +792,7 @@
                 {{ tr('Cancel') }}
             </x-ui.secondary-button>
             
-            <x-ui.primary-button wire:click="deactivateEmployee" wire:loading.attr="disabled" :fullWidth="false" class="bg-red-600 hover:bg-red-700 focus:ring-red-500 active:bg-red-800">
+            <x-ui.primary-button wire:click="deactivateEmployee" wire:loading.attr="disabled" :fullWidth="false" class="!bg-[color:var(--error)] hover:!brightness-90 focus:!ring-[color:var(--error)] active:!brightness-95">
                 <i class="fas fa-ban me-2"></i>
                 <span wire:loading.remove>{{ tr('Confirm Deactivation') }}</span>
                 <span wire:loading>{{ tr('Processing...') }}</span>
@@ -821,8 +821,8 @@
         }">
             {{-- Employee Info (Read Only) --}}
             @if($selectedEmployee)
-                <div class="bg-blue-50/40 rounded-xl p-5 border border-blue-100">
-                    <h4 class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-4 border-b border-blue-100 pb-2 flex items-center gap-2">
+                <div class="bg-[color:var(--app-soft-bg)] rounded-xl p-5 border border-[color:var(--border-soft)]">
+                    <h4 class="text-xs font-bold text-[color:var(--accent-orange)] uppercase tracking-wider mb-4 border-b border-[color:var(--border-soft)] pb-2 flex items-center gap-2">
                         <i class="fas fa-user-circle"></i>
                         {{ tr('Employee Information') }}
                     </h4>
@@ -885,7 +885,7 @@
             {{-- Financial Settlements --}}
             <div class="border-t border-gray-100 pt-5">
                 <h4 class="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-                    <i class="fas fa-calculator text-[color:var(--brand-via)]"></i>
+                    <i class="fas fa-calculator text-[color:var(--accent-orange)]"></i>
                     {{ tr('Financial Settlements') }}
                 </h4>
                 
@@ -918,7 +918,7 @@
                 {{-- Total Calculation --}}
                 <div class="mt-4 bg-gray-50 rounded-xl p-4 flex items-center justify-between border border-gray-200">
                     <span class="text-sm font-bold text-gray-700">{{ tr('Total Dues') }}</span>
-                    <span class="text-xl font-extrabold text-[color:var(--brand-via)]" x-text="totalDues.toFixed(2)">0.00</span>
+                    <span class="text-xl font-extrabold text-[color:var(--accent-orange)]" x-text="totalDues.toFixed(2)">0.00</span>
                 </div>
             </div>
         </div>
@@ -928,7 +928,7 @@
                 {{ tr('Cancel') }}
             </x-ui.secondary-button>
             
-            <x-ui.primary-button wire:click="terminateEmployee" wire:loading.attr="disabled" :fullWidth="false" class="bg-red-600 hover:bg-red-700 focus:ring-red-500 active:bg-red-800">
+            <x-ui.primary-button wire:click="terminateEmployee" wire:loading.attr="disabled" :fullWidth="false" class="!bg-[color:var(--error)] hover:!brightness-90 focus:!ring-[color:var(--error)] active:!brightness-95">
                 <i class="fas fa-sign-out-alt me-2"></i>
                 <span wire:loading.remove>{{ tr('Start Offboarding') }}</span>
                 <span wire:loading>{{ tr('Processing...') }}</span>
@@ -950,7 +950,7 @@
             {{-- Step 1: Download Templates --}}
             <div class="space-y-4">
                 <div class="flex items-center gap-3">
-                    <span class="w-8 h-8 rounded-full bg-orange-100 text-[color:var(--brand-from)] font-bold text-sm flex items-center justify-center">1</span>
+                    <span class="w-8 h-8 rounded-full bg-[color:var(--accent-orange)]/10 text-[color:var(--accent-orange)] font-bold text-sm flex items-center justify-center">1</span>
                     <h4 class="font-bold text-gray-800">{{ tr('Download Templates & Data Reference') }}</h4>
                 </div>
                 
@@ -958,11 +958,11 @@
                     <button 
                         wire:click="downloadTemplate"
                         wire:loading.attr="disabled"
-                        class="flex cursor-pointer items-center gap-4 p-4 rounded-2xl border border-dashed border-[color:var(--brand-via)]/30 bg-[color:var(--brand-via)]/5 hover:bg-[color:var(--brand-via)]/10 hover:border-[color:var(--brand-via)] transition-all group disabled:opacity-75 disabled:cursor-wait"
+                        class="flex cursor-pointer items-center gap-4 p-4 rounded-2xl border border-dashed border-[color:var(--accent-orange)]/30 bg-[color:var(--accent-orange)]/5 hover:bg-[color:var(--accent-orange)]/10 hover:border-[color:var(--accent-orange)] transition-all group disabled:opacity-75 disabled:cursor-wait"
                     >
                         <div class="w-12 h-12 rounded-xl bg-white flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
-                            <div wire:loading wire:target="downloadTemplate" class="w-6 h-6 border-2 border-[color:var(--brand-via)]/30 border-t-[color:var(--brand-via)] animate-spin rounded-full"></div>
-                            <i wire:loading.remove wire:target="downloadTemplate" class="fas fa-file-excel text-[color:var(--brand-via)] text-xl"></i>
+                            <div wire:loading wire:target="downloadTemplate" class="w-6 h-6 border-2 border-[color:var(--accent-orange)]/30 border-t-[color:var(--accent-orange)] animate-spin rounded-full"></div>
+                            <i wire:loading.remove wire:target="downloadTemplate" class="fas fa-file-excel text-[color:var(--accent-orange)] text-xl"></i>
                         </div>
                         <div class="flex flex-col text-start">
                             <span class="text-sm font-bold text-gray-800">{{ tr('Download Employees Template') }}</span>
@@ -975,14 +975,14 @@
             {{-- Step 2: Upload File --}}
             <div class="space-y-4">
                 <div class="flex items-center gap-3">
-                    <span class="w-8 h-8 rounded-full bg-orange-100 text-[color:var(--brand-from)] font-bold text-sm flex items-center justify-center">2</span>
+                    <span class="w-8 h-8 rounded-full bg-[color:var(--accent-orange)]/10 text-[color:var(--accent-orange)] font-bold text-sm flex items-center justify-center">2</span>
                     <h4 class="font-bold text-gray-800">{{ tr('Upload Completed File') }}</h4>
                 </div>
                 
                 <div class="ms-11 relative">
                     <label 
                         class="relative flex flex-col items-center justify-center w-full min-h-[180px] p-6 rounded-3xl border-2 border-dashed transition-all duration-300 cursor-pointer"
-                        :class="isDragging ? 'border-[color:var(--brand-via)] bg-[color:var(--brand-via)]/5' : 'border-gray-200 bg-gray-50/50 hover:bg-gray-50' "
+                        :class="isDragging ? 'border-[color:var(--accent-orange)] bg-[color:var(--accent-orange)]/5' : 'border-gray-200 bg-gray-50/50 hover:bg-gray-50' "
                         @dragover.prevent="isDragging = true"
                         @dragleave.prevent="isDragging = false"
                         @drop.prevent="isDragging = false"
@@ -991,18 +991,18 @@
                         
                         <div class="flex flex-col items-center text-center">
                             @if($importFile)
-                                <div class="w-20 h-20 rounded-2xl bg-[color:var(--brand-via)]/10 flex items-center justify-center mb-4 border border-[color:var(--brand-via)]/20 shadow-sm">
-                                    <i class="fas fa-file-excel text-[color:var(--brand-via)] text-3xl"></i>
+                                <div class="w-20 h-20 rounded-2xl bg-[color:var(--accent-orange)]/10 flex items-center justify-center mb-4 border border-[color:var(--accent-orange)]/20 shadow-sm">
+                                    <i class="fas fa-file-excel text-[color:var(--accent-orange)] text-3xl"></i>
                                 </div>
                                 <span class="text-sm font-bold text-gray-900">{{ $importFile->getClientOriginalName() }}</span>
                                 <span class="text-xs text-gray-500 mt-1.5 px-3 py-1 bg-gray-100 rounded-full font-medium">{{ number_format($importFile->getSize() / 1024, 2) }} KB</span>
-                                <button type="button" class="mt-4 text-xs font-bold text-red-600 hover:text-red-700 transition-colors flex items-center gap-1.5" @click.prevent="$wire.set('importFile', null)">
+                                <button type="button" class="mt-4 text-xs font-bold text-[color:var(--error)] hover:brightness-90 transition-colors flex items-center gap-1.5" @click.prevent="$wire.set('importFile', null)">
                                     <i class="fas fa-trash-alt"></i>
                                     {{ tr('Remove file') }}
                                 </button>
                             @else
                                 <div class="w-20 h-20 rounded-2xl bg-white border border-gray-100 flex items-center justify-center shadow-sm mb-4 group-hover:scale-110 transition-transform">
-                                    <i class="fas fa-cloud-upload-alt text-[color:var(--brand-via)] text-3xl"></i>
+                                    <i class="fas fa-cloud-upload-alt text-[color:var(--accent-orange)] text-3xl"></i>
                                 </div>
                                 <p class="text-sm font-bold text-gray-900">{{ tr('Drop your file here or click to browse') }}</p>
                                 <p class="text-xs text-gray-500 mt-1.5">{{ tr('Excel (.xlsx, .xls) and CSV files are supported') }}</p>
@@ -1012,15 +1012,15 @@
                         {{-- Loading for file upload --}}
                         <div wire:loading.flex wire:target="importFile" class="absolute inset-0 w-full h-full bg-white/90 backdrop-blur-sm rounded-3xl items-center justify-center z-10" style="display: none;">
                             <div class="text-center">
-                                <div class="w-10 h-10 mx-auto rounded-full border-4 border-[color:var(--brand-via)]/20 border-t-[color:var(--brand-via)] animate-spin"></div>
-                                <span class="text-sm font-bold text-[color:var(--brand-via)] mt-3 block">{{ tr('Uploading...') }}</span>
+                                <div class="w-10 h-10 mx-auto rounded-full border-4 border-[color:var(--accent-orange)]/20 border-t-[color:var(--accent-orange)] animate-spin"></div>
+                                <span class="text-sm font-bold text-[color:var(--accent-orange)] mt-3 block">{{ tr('Uploading...') }}</span>
                             </div>
                         </div>
 
                         {{-- Loading for import process --}}
                         <div wire:loading.flex wire:target="import" class="absolute inset-0 w-full h-full bg-white/90 backdrop-blur-sm rounded-3xl items-center justify-center z-20" style="display: none;">
                             <div class="text-center">
-                                <div class="w-12 h-12 mx-auto rounded-full border-4 border-[color:var(--brand-via)]/20 border-t-[color:var(--brand-via)] animate-spin mb-4"></div>
+                                <div class="w-12 h-12 mx-auto rounded-full border-4 border-[color:var(--accent-orange)]/20 border-t-[color:var(--accent-orange)] animate-spin mb-4"></div>
                                 <div class="flex flex-col items-center gap-1 px-6 text-center">
                                     <span class="text-base font-bold text-gray-900 block">{{ tr('Processing Data...') }}</span>
                                     <span class="text-xs text-gray-500 block">{{ tr('Please wait, this may take a moment.') }}</span>
@@ -1030,7 +1030,7 @@
                     </label>
 
                     @error('importFile')
-                        <p class="mt-3 text-xs font-medium text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2 flex items-center gap-2">
+                        <p class="mt-3 text-xs font-medium text-[color:var(--error)] bg-[color:var(--error)]/10 border border-[color:var(--error)]/20 rounded-lg px-3 py-2 flex items-center gap-2">
                             <i class="fas fa-exclamation-circle"></i>
                             {{ $message }}
                         </p>
@@ -1040,20 +1040,20 @@
 
             {{-- Validation Errors --}}
             @if(!empty($importValidationErrors) && count($importValidationErrors) > 0)
-                <div class="mt-8 p-6 bg-red-50/50 border border-red-100 rounded-3xl space-y-3 ms-11">
-                    <div class="flex items-center justify-between gap-2 text-red-700 mb-2 border-b border-red-100/50 pb-3">
+                <div class="mt-8 p-6 bg-[color:var(--error)]/5 border border-[color:var(--error)]/20 rounded-3xl space-y-3 ms-11">
+                    <div class="flex items-center justify-between gap-2 text-[color:var(--error)] mb-2 border-b border-[color:var(--error)]/15 pb-3">
                         <div class="flex items-center gap-2">
                             <i class="fas fa-exclamation-triangle"></i>
                             <h5 class="font-bold text-sm">{{ tr('Import Validation Errors') }}</h5>
                         </div>
-                        <span class="bg-red-200 text-red-800 text-[10px] font-extrabold px-1.5 py-0.5 rounded">
+                        <span class="bg-[color:var(--error)]/15 text-[color:var(--error)] text-[10px] font-extrabold px-1.5 py-0.5 rounded">
                             {{ count($importValidationErrors) }} {{ tr('Issues') }}
                         </span>
                     </div>
                     <ul class="p-0 space-y-1.5 max-h-[160px] overflow-y-auto custom-scrollbar">
                         @foreach($importValidationErrors as $error)
-                            <li class="text-[11px] font-medium text-red-600 bg-white/60 p-2.5 rounded-xl border border-red-50/50 flex items-start gap-2 shadow-sm">
-                                <span class="inline-block w-1.5 h-1.5 rounded-full bg-red-400 mt-1 flex-shrink-0"></span>
+                            <li class="text-[11px] font-medium text-[color:var(--error)] bg-white/60 p-2.5 rounded-xl border border-[color:var(--error)]/10 flex items-start gap-2 shadow-sm">
+                                <span class="inline-block w-1.5 h-1.5 rounded-full bg-[color:var(--error)] mt-1 flex-shrink-0"></span>
                                 {{ $error }}
                             </li>
                         @endforeach
@@ -1072,7 +1072,7 @@
                 wire:loading.attr="disabled"
                 :disabled="!$importFile || $isImporting"
                 :fullWidth="false"
-                class="bg-[color:var(--brand-via)] hover:bg-[color:var(--brand-to)] shadow-lg shadow-[color:var(--brand-via)]/20 px-8"
+                class="px-8"
             >
                 <i class="fas fa-check-circle me-2" wire:loading.remove wire:target="import"></i>
                 <span wire:loading wire:target="import" class="w-4 h-4 border-2 border-white/30 border-t-white animate-spin rounded-full me-2 inline-block"></span>
@@ -1105,8 +1105,8 @@
                     <label class="relative block cursor-pointer group select-none">
                         <input type="radio" wire:model.live="exportFormat" value="excel" class="peer sr-only">
 
-                        <div class="p-3 pe-12 rounded-2xl border-2 border-gray-100 bg-gray-50/50 flex items-center gap-3 transition-all duration-300 peer-checked:border-[color:var(--brand-via)] peer-checked:bg-[color:var(--brand-via)]/[0.05] peer-checked:shadow-md group-hover:bg-white group-hover:shadow-md">
-                            <div class="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center text-green-600 group-hover:scale-110 transition-transform duration-300">
+                        <div class="p-3 pe-12 rounded-2xl border-2 border-gray-100 bg-gray-50/50 flex items-center gap-3 transition-all duration-300 peer-checked:border-[color:var(--accent-orange)] peer-checked:bg-[color:var(--accent-orange)]/[0.05] peer-checked:shadow-md group-hover:bg-white group-hover:shadow-md">
+                            <div class="w-10 h-10 bg-[color:var(--success)]/10 rounded-xl flex items-center justify-center text-[color:var(--success)] group-hover:scale-110 transition-transform duration-300">
                                 <i class="fas fa-file-excel"></i>
                             </div>
 
@@ -1115,15 +1115,15 @@
                             </div>
                         </div>
 
-                        <span class="pointer-events-none absolute top-1/2 end-3 -translate-y-1/2 h-5 w-5 rounded-full border-2 border-gray-300 bg-white transition-all duration-200 peer-checked:border-[color:var(--brand-via)] peer-checked:bg-[color:var(--brand-via)] peer-focus-visible:ring-2 peer-focus-visible:ring-[color:var(--brand-via)]/25"></span>
+                        <span class="pointer-events-none absolute top-1/2 end-3 -translate-y-1/2 h-5 w-5 rounded-full border-2 border-gray-300 bg-white transition-all duration-200 peer-checked:border-[color:var(--accent-orange)] peer-checked:bg-[color:var(--accent-orange)] peer-focus-visible:ring-2 peer-focus-visible:ring-[color:var(--accent-orange)]/25"></span>
                         <i class="fas fa-circle pointer-events-none absolute top-1/2 end-[0.95rem] -translate-y-1/2 text-[7px] text-white opacity-0 transition-opacity duration-200 peer-checked:opacity-100"></i>
                     </label>
 
                     <label class="relative block cursor-pointer group select-none">
                         <input type="radio" wire:model.live="exportFormat" value="pdf" class="peer sr-only">
 
-                        <div class="p-3 pe-12 rounded-2xl border-2 border-gray-100 bg-gray-50/50 flex items-center gap-3 transition-all duration-300 peer-checked:border-[color:var(--brand-via)] peer-checked:bg-[color:var(--brand-via)]/[0.05] peer-checked:shadow-md group-hover:bg-white group-hover:shadow-md">
-                            <div class="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center text-red-600 group-hover:scale-110 transition-transform duration-300">
+                        <div class="p-3 pe-12 rounded-2xl border-2 border-gray-100 bg-gray-50/50 flex items-center gap-3 transition-all duration-300 peer-checked:border-[color:var(--accent-orange)] peer-checked:bg-[color:var(--accent-orange)]/[0.05] peer-checked:shadow-md group-hover:bg-white group-hover:shadow-md">
+                            <div class="w-10 h-10 bg-[color:var(--error)]/10 rounded-xl flex items-center justify-center text-[color:var(--error)] group-hover:scale-110 transition-transform duration-300">
                                 <i class="fas fa-file-pdf"></i>
                             </div>
 
@@ -1132,7 +1132,7 @@
                             </div>
                         </div>
 
-                        <span class="pointer-events-none absolute top-1/2 end-3 -translate-y-1/2 h-5 w-5 rounded-full border-2 border-gray-300 bg-white transition-all duration-200 peer-checked:border-[color:var(--brand-via)] peer-checked:bg-[color:var(--brand-via)] peer-focus-visible:ring-2 peer-focus-visible:ring-[color:var(--brand-via)]/25"></span>
+                        <span class="pointer-events-none absolute top-1/2 end-3 -translate-y-1/2 h-5 w-5 rounded-full border-2 border-gray-300 bg-white transition-all duration-200 peer-checked:border-[color:var(--accent-orange)] peer-checked:bg-[color:var(--accent-orange)] peer-focus-visible:ring-2 peer-focus-visible:ring-[color:var(--accent-orange)]/25"></span>
                         <i class="fas fa-circle pointer-events-none absolute top-1/2 end-[0.95rem] -translate-y-1/2 text-[7px] text-white opacity-0 transition-opacity duration-200 peer-checked:opacity-100"></i>
                     </label>
                 </div>
@@ -1147,9 +1147,9 @@
                     
                     @if($exportScope === 'custom')
                         <div class="flex items-center gap-3">
-                            <button type="button" wire:click="$set('selectedFields', @js(array_keys($this->availableFields)))" class="text-[10px] font-black text-[color:var(--brand-via)] hover:opacity-70">{{ tr('Select All') }}</button>
+                            <button type="button" wire:click="$set('selectedFields', @js(array_keys($this->availableFields)))" class="text-[10px] font-black text-[color:var(--accent-orange)] hover:opacity-70">{{ tr('Select All') }}</button>
                             <span class="w-1 h-1 rounded-full bg-gray-300"></span>
-                            <button type="button" wire:click="$set('selectedFields', [])" class="text-[10px] font-black text-gray-400 hover:text-red-500">{{ tr('Clear') }}</button>
+                            <button type="button" wire:click="$set('selectedFields', [])" class="text-[10px] font-black text-gray-400 hover:text-[color:var(--error)]">{{ tr('Clear') }}</button>
                         </div>
                     @endif
                 </div>
@@ -1158,14 +1158,14 @@
                     <button 
                         type="button"
                         wire:click="$set('exportScope', 'all')"
-                        class="flex-1 py-1.5 px-4 rounded-lg text-xs font-bold transition-all duration-300 {{ $exportScope === 'all' ? 'bg-white text-[color:var(--brand-via)] shadow-sm' : 'text-gray-500 hover:text-gray-700' }}"
+                        class="flex-1 py-1.5 px-4 rounded-lg text-xs font-bold transition-all duration-300 {{ $exportScope === 'all' ? 'bg-white text-[color:var(--accent-orange)] shadow-sm' : 'text-gray-500 hover:text-gray-700' }}"
                     >
                         {{ tr('All Fields') }}
                     </button>
                     <button 
                         type="button"
                         wire:click="$set('exportScope', 'custom')"
-                        class="flex-1 py-1.5 px-4 rounded-lg text-xs font-bold transition-all duration-300 {{ $exportScope === 'custom' ? 'bg-white text-[color:var(--brand-via)] shadow-sm' : 'text-gray-500 hover:text-gray-700' }}"
+                        class="flex-1 py-1.5 px-4 rounded-lg text-xs font-bold transition-all duration-300 {{ $exportScope === 'custom' ? 'bg-white text-[color:var(--accent-orange)] shadow-sm' : 'text-gray-500 hover:text-gray-700' }}"
                     >
                         {{ tr('Customize Fields') }}
                     </button>
@@ -1181,7 +1181,7 @@
         type="checkbox"
         wire:model="selectedFields"
         value="{{ $key }}"
-        class="h-4 w-4 flex-shrink-0 rounded border-gray-300 accent-[color:var(--brand-via)] focus:ring-2 focus:ring-[color:var(--brand-via)]/20"
+        class="h-4 w-4 flex-shrink-0 rounded border-gray-300 accent-[color:var(--accent-orange)] focus:ring-2 focus:ring-[color:var(--accent-orange)]/20"
     >
 
     <span class="text-[11px] font-bold text-gray-600 group-hover:text-gray-900 transition-colors truncate">
@@ -1204,7 +1204,7 @@
                 wire:click="export" 
                 wire:loading.attr="disabled"
                 :fullWidth="false"
-                class="bg-[color:var(--brand-via)] hover:bg-[color:var(--brand-to)] shadow-lg shadow-[color:var(--brand-via)]/10 px-8"
+                class="px-8"
             >
                 <span wire:loading.remove wire:target="export" class="flex items-center gap-2 font-bold text-sm">
                     <i class="fas fa-download"></i>

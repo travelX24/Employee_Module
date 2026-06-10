@@ -117,9 +117,9 @@
                     type="button"
                     @click="open = !open"
                     class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm
-                           focus:outline-none focus:ring-2 focus:ring-[color:var(--brand-via)]/20 focus:border-[color:var(--brand-via)]
+                           focus:outline-none focus:ring-2 focus:ring-[color:var(--accent-orange)]/20 focus:border-[color:var(--accent-orange)]
                            transition flex items-center justify-between"
-                    :class="open ? 'ring-2 ring-[color:var(--brand-via)]/20 border-[color:var(--brand-via)]' : ''"
+                    :class="open ? 'ring-2 ring-[color:var(--accent-orange)]/20 border-[color:var(--accent-orange)]' : ''"
                 >
                     <span class="truncate" :class="selectedLabel() ? 'text-gray-900' : 'text-gray-400'" x-text="selectedLabel() || placeholder"></span>
                     <i class="fas fa-chevron-down text-xs text-gray-400 transition" :class="open ? 'rotate-180' : ''"></i>
@@ -142,7 +142,7 @@
                                 type="text"
                                 x-model="search"
                                 placeholder="{{ tr('Search...') }}"
-                                class="w-full rounded-lg border border-gray-100 bg-gray-50 px-4 py-2 ps-9 text-xs focus:outline-none focus:ring-2 focus:ring-[color:var(--brand-via)]/30"
+                                class="w-full rounded-lg border border-gray-100 bg-gray-50 px-4 py-2 ps-9 text-xs focus:outline-none focus:ring-2 focus:ring-[color:var(--accent-orange)]/30"
                             />
                         </div>
                     </div>
@@ -153,10 +153,10 @@
                             <button
                                 type="button"
                                 @click="choose(opt)"
-                                class="w-full text-start px-4 py-2.5 hover:bg-[color:var(--brand-via)]/5 transition flex items-center justify-between group border-b border-gray-50 last:border-0"
+                                class="w-full text-start px-4 py-2.5 hover:bg-[color:var(--accent-orange)]/5 transition flex items-center justify-between group border-b border-gray-50 last:border-0"
                             >
-                                <span class="text-sm text-gray-700 group-hover:text-[color:var(--brand-via)] font-medium" x-text="opt.name"></span>
-                                <i class="fas fa-check text-xs text-[color:var(--brand-via)]" x-show="String(value) === String(opt.id)"></i>
+                                <span class="text-sm text-gray-700 group-hover:text-[color:var(--accent-orange)] font-medium" x-text="opt.name"></span>
+                                <i class="fas fa-check text-xs text-[color:var(--accent-orange)]" x-show="String(value) === String(opt.id)"></i>
                             </button>
                         </template>
                         <div x-show="filtered().length === 0" class="p-4 text-xs text-gray-400 text-center">{{ tr('No results found') }}</div>
@@ -167,24 +167,24 @@
                             width: 4px;
                         }
                         .custom-scrollbar::-webkit-scrollbar-track {
-                            background: #f1f1f1;
+                            background: var(--app-soft-bg);
                         }
                         .custom-scrollbar::-webkit-scrollbar-thumb {
-                            background: var(--brand-via);
+                            background: var(--accent-orange);
                             border-radius: 10px;
                         }
                     </style>
 
                     {{-- Footer --}}
                     <div class="p-2 border-t border-gray-100 bg-gray-50 flex justify-between items-center">
-                        <button type="button" @click="value = null; open = false;" class="px-3 py-1 text-[10px] font-bold text-gray-500 hover:text-red-600 transition">{{ tr('Clear Selection') }}</button>
+                        <button type="button" @click="value = null; open = false;" class="px-3 py-1 text-[10px] font-bold text-gray-500 hover:text-[color:var(--error)] transition">{{ tr('Clear Selection') }}</button>
                         <button type="button" @click="open = false" class="px-3 py-1 text-[10px] font-bold text-gray-500 hover:text-gray-900 transition">{{ tr('Close') }}</button>
                     </div>
                 </div>
             </div>
             
             @error('manager_id')
-                <div class="text-xs text-red-600 font-semibold">{{ $message }}</div>
+                <div class="text-xs text-[color:var(--error)] font-semibold">{{ $message }}</div>
             @enderror
         </div>
 

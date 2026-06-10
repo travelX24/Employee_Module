@@ -87,7 +87,7 @@
                     href="{{ asset('storage/' . $qualification->file_path) }}"
                     target="_blank"
                     title="{{ $qualificationName }}"
-                    class="flex items-center gap-3 px-4 py-3 bg-blue-50 rounded-xl border border-blue-200 text-blue-700 hover:bg-blue-100 transition-colors overflow-hidden"
+                    class="flex items-center gap-3 px-4 py-3 bg-[color:var(--accent-orange)]/10 rounded-xl border border-[color:var(--accent-orange)]/25 text-[color:var(--accent-orange)] hover:bg-[color:var(--accent-orange)]/15 transition-colors overflow-hidden"
                 >
                     <i class="fas fa-file-pdf shrink-0"></i>
                     <span class="truncate min-w-0">
@@ -118,7 +118,7 @@
                             href="{{ asset('storage/' . $cert->file_path) }}"
                             target="_blank"
                             title="{{ $certName }}"
-                            class="flex items-center gap-3 px-4 py-2.5 bg-green-50 rounded-xl border border-green-200 text-green-700 hover:bg-green-100 transition-colors text-sm overflow-hidden"
+                            class="flex items-center gap-3 px-4 py-2.5 bg-[color:var(--success)]/10 rounded-xl border border-[color:var(--success)]/30 text-[color:var(--success)] hover:bg-[color:var(--success)]/15 transition-colors text-sm overflow-hidden"
                         >
                             <i class="fas fa-file shrink-0"></i>
                             <span class="truncate min-w-0">
@@ -151,7 +151,7 @@
                             href="{{ asset('storage/' . $doc->file_path) }}"
                             target="_blank"
                             title="{{ $familyDocName }}"
-                            class="flex items-center gap-3 px-4 py-2.5 bg-purple-50 rounded-xl border border-purple-200 text-purple-700 hover:bg-purple-100 transition-colors text-sm overflow-hidden"
+                            class="flex items-center gap-3 px-4 py-2.5 bg-[color:var(--app-soft-bg)] rounded-xl border border-[color:var(--border-soft)] text-[color:var(--accent-orange)] hover:bg-[color:var(--accent-orange)]/10 hover:border-[color:var(--accent-orange)]/25 transition-colors text-sm overflow-hidden"
                         >
                             <i class="fas fa-file shrink-0"></i>
                             <span class="truncate min-w-0">

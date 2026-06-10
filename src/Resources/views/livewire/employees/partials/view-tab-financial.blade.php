@@ -9,7 +9,7 @@
     {{-- قسم المعلومات المالية --}}
     <div>
         <h4 class="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-            <i class="fas fa-file-contract text-[color:var(--brand-via)]"></i>
+            <i class="fas fa-file-contract text-[color:var(--accent-orange)]"></i>
             {{ tr('Financial Information') }}
         </h4>
 
@@ -40,7 +40,7 @@
     @if($wages)
         <div>
             <h4 class="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-                <i class="fas fa-calculator text-[color:var(--brand-via)]"></i>
+                <i class="fas fa-calculator text-[color:var(--accent-orange)]"></i>
                 {{ tr('Calculated Wages') }}
                 <span class="text-xs text-gray-500 font-normal">({{ tr('Based on work schedule') }})</span>
             </h4>
@@ -78,8 +78,8 @@
             </p>
         </div>
     @else
-        <div class="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <p class="text-sm text-yellow-800 flex items-center gap-2">
+        <div class="p-4 bg-[color:var(--warning)]/10 border border-[color:var(--warning)]/30 rounded-lg">
+            <p class="text-sm text-[color:var(--warning)] flex items-center gap-2">
                 <i class="fas fa-exclamation-triangle"></i>
                 {{ tr('Calculated wages are not available. Please assign a work schedule to this employee.') }}
             </p>
@@ -89,7 +89,7 @@
     {{-- قسم رصيد الإجازات --}}
     <div>
         <h4 class="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-            <i class="fas fa-calendar-check text-[color:var(--brand-via)]"></i>
+            <i class="fas fa-calendar-check text-[color:var(--accent-orange)]"></i>
             {{ tr('Leave Balance Details') }}
         </h4>
         <div class="p-5 bg-gray-50 rounded-xl border-2 border-gray-200">
@@ -100,12 +100,12 @@
                     <div class="p-3 bg-white rounded-lg border border-gray-200">
                         @if($employee->is_transferred_employee)
                             <span class="inline-flex items-center gap-2 text-sm font-bold text-gray-800">
-                                <i class="fas fa-exchange-alt text-[color:var(--brand-via)]"></i>
+                                <i class="fas fa-exchange-alt text-[color:var(--accent-orange)]"></i>
                                 {{ tr('Transferred Employee') }}
                             </span>
                         @else
                             <span class="inline-flex items-center gap-2 text-sm font-bold text-gray-800">
-                                <i class="fas fa-user-plus text-[color:var(--brand-via)]"></i>
+                                <i class="fas fa-user-plus text-[color:var(--accent-orange)]"></i>
                                 {{ tr('New Employee') }}
                             </span>
                         @endif
@@ -117,7 +117,7 @@
                     <div>
                         <div class="text-xs font-semibold text-gray-600 mb-2">{{ tr('Opening Balance') }}</div>
                         <div class="p-3 bg-white rounded-lg border border-gray-200 text-center">
-                            <span class="text-xl font-bold {{ $employee->opening_leave_balance < 0 ? 'text-red-600' : 'text-gray-800' }}">
+                            <span class="text-xl font-bold {{ $employee->opening_leave_balance < 0 ? 'text-[color:var(--error)]' : 'text-gray-800' }}">
                                 {{ $employee->opening_leave_balance ?? 0 }}
                             </span>
                             <p class="text-xs text-gray-500">{{ tr('days') }}</p>
@@ -128,7 +128,7 @@
                     <div>
                         <div class="text-xs font-semibold text-gray-600 mb-2">{{ tr('Adjustments') }}</div>
                         <div class="p-3 bg-white rounded-lg border border-gray-200 text-center">
-                            <span class="text-xl font-bold {{ $employee->leave_balance_adjustments < 0 ? 'text-red-600' : ($employee->leave_balance_adjustments > 0 ? 'text-[color:var(--brand-via)]' : 'text-gray-800') }}">
+                            <span class="text-xl font-bold {{ $employee->leave_balance_adjustments < 0 ? 'text-[color:var(--error)]' : ($employee->leave_balance_adjustments > 0 ? 'text-[color:var(--accent-orange)]' : 'text-gray-800') }}">
                                 {{ $employee->leave_balance_adjustments > 0 ? '+' : '' }}{{ $employee->leave_balance_adjustments ?? 0 }}
                             </span>
                             <p class="text-xs text-gray-500">{{ tr('days') }}</p>
@@ -137,9 +137,9 @@
                 @else
                     {{-- عدد أيام العمل --}}
                     <div class="col-span-2">
-                        <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                            <p class="text-xs text-blue-800">
-                                <i class="fas fa-info-circle mr-2"></i>
+                        <div class="p-3 bg-[color:var(--app-soft-bg)] border border-[color:var(--border-soft)] rounded-lg">
+                            <p class="text-xs text-[color:var(--text-secondary)]">
+                                <i class="fas fa-info-circle mr-2 text-[color:var(--accent-orange)]"></i>
                                 {{ tr('Balance calculated automatically based on hire date') }}:
                                 <strong>{{ $employee->hired_at ? $employee->hired_at->format('Y-m-d') : '—' }}</strong>
                             </p>
@@ -153,12 +153,12 @@
                 <div class="text-center">
                     <div class="text-xs font-semibold text-gray-600 mb-2">{{ tr('Current Leave Balance') }}</div>
                     <div class="p-4 bg-white rounded-xl shadow-sm border-2 border-gray-200">
-                        <span class="text-4xl font-extrabold {{ $leaveBalance < 0 ? 'text-red-600' : 'text-[color:var(--brand-via)]' }}">
+                        <span class="text-4xl font-extrabold {{ $leaveBalance < 0 ? 'text-[color:var(--error)]' : 'text-[color:var(--accent-orange)]' }}">
                             {{ $leaveBalance }}
                         </span>
                         <p class="text-sm text-gray-600 font-medium mt-2">{{ tr('Available Days') }}</p>
                         @if($leaveBalance < 0)
-                            <p class="text-xs text-red-500 mt-1">
+                            <p class="text-xs text-[color:var(--error)] mt-1">
                                 <i class="fas fa-exclamation-circle"></i>
                                 {{ tr('Negative balance') }}
                             </p>

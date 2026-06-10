@@ -20,8 +20,8 @@
                         <svg viewBox="0 0 56 56" class="absolute inset-0 drop-shadow-sm">
                             <polygon
                                 points="28,4 48,20 40,48 16,48 8,20"
-                                :fill="tab === {{ $stepNum }} ? 'var(--brand-via)' : (tab > {{ $stepNum }} ? 'var(--brand-via)' : '#f3f4f6')"
-                                :stroke="tab === {{ $stepNum }} ? 'var(--brand-via)' : (tab > {{ $stepNum }} ? 'var(--brand-via)' : '#d1d5db')"
+                                :fill="tab === {{ $stepNum }} ? 'var(--accent-orange)' : (tab > {{ $stepNum }} ? 'var(--accent-orange)' : '#f3f4f6')"
+                                :stroke="tab === {{ $stepNum }} ? 'var(--accent-orange)' : (tab > {{ $stepNum }} ? 'var(--accent-orange)' : '#d1d5db')"
                                 stroke-width="2.5"
                                 class="transition-all duration-200"
                             />
@@ -36,7 +36,7 @@
                     </div>
                     <div
                         class="text-[10px] font-semibold text-center leading-tight transition-colors duration-200 max-w-[70px]"
-                        :class="tab === {{ $stepNum }} || tab > {{ $stepNum }} ? 'text-[color:var(--brand-via)]' : 'text-gray-500'"
+                        :class="tab === {{ $stepNum }} || tab > {{ $stepNum }} ? 'text-[color:var(--accent-orange)]' : 'text-gray-500'"
                     >
                         {{ $stepLabel }}
                     </div>
@@ -45,7 +45,7 @@
                 @if(!$loop->last)
                     <div
                         class="h-[3px] w-6 rounded-full transition-all duration-300 flex-shrink-0 self-start mt-5"
-                        :class="tab > {{ $stepNum }} ? 'bg-[color:var(--brand-via)]' : 'bg-gray-200'"
+                        :class="tab > {{ $stepNum }} ? 'bg-[color:var(--accent-orange)]' : 'bg-gray-200'"
                     ></div>
                 @endif
             @endforeach
@@ -119,7 +119,7 @@
                     type="button"
                     @click="tab++"
                     x-show="tab < 5"
-                    class="px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-[color:var(--brand-from)] via-[color:var(--brand-via)] to-[color:var(--brand-to)] rounded-2xl hover:shadow-lg active:scale-[0.97] transition-all duration-200 shadow-sm"
+                    class="px-6 py-3 text-sm font-semibold text-white bg-[color:var(--accent-orange)] rounded-2xl hover:shadow-lg hover:brightness-95 active:scale-[0.97] transition-all duration-200 shadow-sm"
                 >
                     {{ tr('Next') }}
                     <i class="fas fa-arrow-left ms-2"></i>
@@ -129,7 +129,7 @@
                     type="submit"
                     x-show="tab === 5"
                     wire:loading.attr="disabled"
-                    class="px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-[color:var(--brand-from)] via-[color:var(--brand-via)] to-[color:var(--brand-to)] rounded-2xl hover:shadow-lg active:scale-[0.97] transition-all duration-200 shadow-sm disabled:opacity-50"
+                    class="px-6 py-3 text-sm font-semibold text-white bg-[color:var(--accent-orange)] rounded-2xl hover:shadow-lg hover:brightness-95 active:scale-[0.97] transition-all duration-200 shadow-sm disabled:opacity-50"
                 >
                     <span wire:loading.remove wire:target="save">
                         <i class="fas fa-save me-2"></i>

@@ -109,8 +109,8 @@
                         <svg viewBox="0 0 56 56" class="absolute inset-0 drop-shadow-sm">
                             <polygon
                                 points="28,4 48,20 40,48 16,48 8,20"
-                                :fill="activeTab === {{ $stepNum }} ? 'var(--brand-via)' : (activeTab > {{ $stepNum }} ? 'var(--brand-via)' : '#f3f4f6')"
-                                :stroke="activeTab === {{ $stepNum }} ? 'var(--brand-via)' : (activeTab > {{ $stepNum }} ? 'var(--brand-via)' : '#d1d5db')"
+                                :fill="activeTab === {{ $stepNum }} ? 'var(--accent-orange)' : (activeTab > {{ $stepNum }} ? 'var(--accent-orange)' : '#f3f4f6')"
+                                :stroke="activeTab === {{ $stepNum }} ? 'var(--accent-orange)' : (activeTab > {{ $stepNum }} ? 'var(--accent-orange)' : '#d1d5db')"
                                 stroke-width="2.5"
                                 class="transition-all duration-200"
                             />
@@ -125,7 +125,7 @@
                     </div>
                     <div
                         class="text-[10px] font-semibold text-center leading-tight transition-colors duration-200 max-w-[70px]"
-                        :class="activeTab === {{ $stepNum }} || activeTab > {{ $stepNum }} ? 'text-[color:var(--brand-via)]' : 'text-gray-500'"
+                        :class="activeTab === {{ $stepNum }} || activeTab > {{ $stepNum }} ? 'text-[color:var(--accent-orange)]' : 'text-gray-500'"
                     >
                         {{ $stepLabel }}
                     </div>
@@ -134,14 +134,14 @@
                 @if(!$loop->last)
                     <div
                         class="h-[3px] w-6 rounded-full transition-all duration-300 flex-shrink-0 self-start mt-5"
-                        :class="activeTab > {{ $stepNum }} ? 'bg-[color:var(--brand-via)]' : 'bg-gray-200'"
+                        :class="activeTab > {{ $stepNum }} ? 'bg-[color:var(--accent-orange)]' : 'bg-gray-200'"
                     ></div>
                 @endif
             @endforeach
         </div>
 
         <div class="text-center mt-4">
-            <span class="text-sm font-bold text-[color:var(--brand-via)] bg-white/60 px-4 py-1.5 rounded-full inline-block shadow-sm">
+            <span class="text-sm font-bold text-[color:var(--accent-orange)] bg-white/60 px-4 py-1.5 rounded-full inline-block shadow-sm">
                 {{ tr('Step') }} <span x-text="activeTab"></span> {{ tr('of') }} 6:
                 <span x-text="['{{ $steps[1] }}', '{{ $steps[2] }}', '{{ $steps[3] }}', '{{ $steps[4] }}', '{{ $steps[5] }}', '{{ $steps[6] }}'][activeTab - 1]"></span>
             </span>

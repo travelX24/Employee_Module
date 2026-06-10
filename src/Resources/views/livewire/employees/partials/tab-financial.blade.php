@@ -17,7 +17,7 @@
     @if(isset($daily_wage) && $daily_wage !== null)
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
             <div class="col-span-full mb-2">
-                <h4 class="text-sm font-bold text-[color:var(--brand-via)] flex items-center gap-2">
+                <h4 class="text-sm font-bold text-[color:var(--accent-orange)] flex items-center gap-2">
                     <i class="fas fa-calculator"></i>
                     {{ tr('Calculated Wages') }} <span class="text-xs text-gray-500 font-normal">({{ tr('Auto-calculated based on work schedule') }})</span>
                 </h4>
@@ -71,10 +71,10 @@
 
     {{-- قسم الإجازة السنوية المتقدم --}}
     @if(true)
-        <div class="p-5 border-2 border-[color:var(--brand-via)]/20 rounded-xl bg-gradient-to-br from-[color:var(--brand-via)]/5 to-transparent">
+        <div class="p-5 border-2 border-[color:var(--accent-orange)]/20 rounded-xl bg-gradient-to-br from-[color:var(--accent-orange)]/5 to-transparent">
             <div class="flex items-center justify-between mb-4">
                 <h3 class="text-base font-bold text-gray-800 flex items-center gap-2">
-                    <i class="fas fa-calendar-alt text-[color:var(--brand-via)]"></i>
+                    <i class="fas fa-calendar-alt text-[color:var(--accent-orange)]"></i>
                     {{ tr('Annual Leave Balance Management') }}
                 </h3>
             </div>
@@ -85,7 +85,7 @@
                     <input 
                         type="checkbox" 
                         wire:model.live="is_transferred_employee" 
-                        class="w-5 h-5 text-[color:var(--brand-via)] rounded border-gray-300 focus:ring-[color:var(--brand-via)]"
+                        class="w-5 h-5 text-[color:var(--accent-orange)] rounded border-gray-300 focus:ring-[color:var(--accent-orange)]"
                     />
                     <span class="mr-3 text-sm font-semibold text-gray-700">{{ tr('Transferred Employee') }}</span>
                     <span class="text-xs text-gray-500">({{ tr('Employee transferred from another system') }})</span>
@@ -108,8 +108,8 @@
                     </div>
                 @else
                     <div>
-                        <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg h-full flex items-center">
-                            <p class="text-sm text-blue-800">
+                        <div class="p-3 bg-[color:var(--app-soft-bg)] border border-[color:var(--border-soft)] rounded-lg h-full flex items-center">
+                            <p class="text-sm text-[color:var(--text-secondary)]">
                                 <i class="fas fa-info-circle mr-2"></i>
                                 {{ tr('Leave balance will be calculated automatically based on hire date') }}
                             </p>
@@ -120,22 +120,22 @@
                 {{-- الرصيد النهائي مع أزرار التحكم --}}
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">{{ tr('Current Balance / Adjustments') }}</label>
-                    <div class="p-4 bg-white rounded-lg border-2 border-dashed border-[color:var(--brand-via)]/30 flex items-center justify-between">
+                    <div class="p-4 bg-white rounded-lg border-2 border-dashed border-[color:var(--accent-orange)]/30 flex items-center justify-between">
                         <div class="flex items-center gap-3">
-                            <button type="button" wire:click="subtractLeaveDay" class="w-8 h-8 rounded-full bg-red-100 text-red-600 flex items-center justify-center hover:bg-red-200 transition-colors">
+                            <button type="button" wire:click="subtractLeaveDay" class="w-8 h-8 rounded-full bg-[color:var(--error)]/10 text-[color:var(--error)] flex items-center justify-center hover:bg-[color:var(--error)]/15 transition-colors">
                                 <i class="fas fa-minus"></i>
                             </button>
                             <div class="text-center px-4">
-                                <span class="text-3xl font-extrabold text-[color:var(--brand-via)]">{{ $calculated_leave_balance }}</span>
+                                <span class="text-3xl font-extrabold text-[color:var(--accent-orange)]">{{ $calculated_leave_balance }}</span>
                                 <p class="text-[10px] text-gray-500 uppercase tracking-wider font-bold">{{ tr('Available Days') }}</p>
                             </div>
-                            <button type="button" wire:click="addLeaveDay" class="w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center hover:bg-green-200 transition-colors">
+                            <button type="button" wire:click="addLeaveDay" class="w-8 h-8 rounded-full bg-[color:var(--success)]/10 text-[color:var(--success)] flex items-center justify-center hover:bg-[color:var(--success)]/15 transition-colors">
                                 <i class="fas fa-plus"></i>
                             </button>
                         </div>
                         
                         <div class="text-xs text-gray-400 border-r pr-3">
-                            {{ tr('Adjustments') }}: <span class="font-bold {{ ($leave_balance_adjustments ?? 0) >= 0 ? 'text-green-500' : 'text-red-500' }}">{{ ($leave_balance_adjustments ?? 0) > 0 ? '+' : '' }}{{ $leave_balance_adjustments ?? 0 }}</span>
+                            {{ tr('Adjustments') }}: <span class="font-bold {{ ($leave_balance_adjustments ?? 0) >= 0 ? 'text-[color:var(--success)]' : 'text-[color:var(--error)]' }}">{{ ($leave_balance_adjustments ?? 0) > 0 ? '+' : '' }}{{ $leave_balance_adjustments ?? 0 }}</span>
                         </div>
                     </div>
                     </div>
@@ -154,8 +154,8 @@
                             <div class="flex items-start gap-3 p-3 bg-white border border-gray-100 rounded-xl hover:border-gray-200 transition-colors group">
                                 <div @class([
                                     'w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 shadow-sm',
-                                    'bg-green-50 text-green-600' => $adj->amount > 0,
-                                    'bg-red-50 text-red-600' => $adj->amount < 0,
+                                    'bg-[color:var(--success)]/10 text-[color:var(--success)]' => $adj->amount > 0,
+                                    'bg-[color:var(--error)]/10 text-[color:var(--error)]' => $adj->amount < 0,
                                 ])>
                                     <i class="fas {{ $adj->amount > 0 ? 'fa-plus' : 'fa-minus' }} text-[10px]"></i>
                                 </div>
@@ -167,13 +167,13 @@
                                     <p class="text-[11px] text-gray-600 mt-1 leading-relaxed">{{ $adj->reason }}</p>
                                     <div class="flex items-center justify-between mt-2">
                                         <div class="flex items-center gap-1.5">
-                                            <div class="w-5 h-5 rounded-full bg-gray-50 border border-gray-100 flex items-center justify-center group-hover:bg-indigo-50 group-hover:border-indigo-100 transition-colors">
-                                                <i class="fas fa-user-shield text-[9px] text-gray-400 group-hover:text-indigo-500"></i>
+                                            <div class="w-5 h-5 rounded-full bg-gray-50 border border-gray-100 flex items-center justify-center group-hover:bg-[color:var(--accent-orange)]/5 group-hover:border-[color:var(--accent-orange)]/20 transition-colors">
+                                                <i class="fas fa-user-shield text-[9px] text-gray-400 group-hover:text-[color:var(--accent-orange)]"></i>
                                             </div>
                                             <span class="text-[10px] text-gray-500 font-medium">{{ $adj->performer?->name ?? tr('System') }}</span>
                                         </div>
                                         @if($adj->file_path)
-                                            <a href="{{ asset('storage/'.$adj->file_path) }}" target="_blank" class="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 bg-indigo-50 group-hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition-colors">
+                                            <a href="{{ asset('storage/'.$adj->file_path) }}" target="_blank" class="text-[10px] font-bold text-[color:var(--accent-orange)] hover:brightness-90 flex items-center gap-1 bg-[color:var(--accent-orange)]/5 group-hover:bg-[color:var(--accent-orange)]/10 px-2.5 py-1 rounded-lg transition-colors">
                                                 <i class="fas fa-file-download text-[11px]"></i>
                                                 {{ tr('View File') }}
                                             </a>
@@ -194,12 +194,12 @@
             <x-slot name="title">
                 <div class="flex items-center gap-2">
                     @if($adjustmentType === 'add')
-                        <div class="w-8 h-8 rounded-lg bg-green-100 text-green-600 flex items-center justify-center">
+                        <div class="w-8 h-8 rounded-lg bg-[color:var(--success)]/10 text-[color:var(--success)] flex items-center justify-center">
                             <i class="fas fa-plus-circle"></i>
                         </div>
                         <span class="text-gray-800">{{ tr('Increase Leave Balance') }}</span>
                     @else
-                        <div class="w-8 h-8 rounded-lg bg-red-100 text-red-600 flex items-center justify-center">
+                        <div class="w-8 h-8 rounded-lg bg-[color:var(--error)]/10 text-[color:var(--error)] flex items-center justify-center">
                             <i class="fas fa-minus-circle"></i>
                         </div>
                         <span class="text-gray-800">{{ tr('Decrease Leave Balance') }}</span>
@@ -208,11 +208,11 @@
             </x-slot>
     
             <div class="space-y-4 p-5">
-                <div class="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 flex items-start gap-3">
-                    <i class="fas fa-info-circle text-indigo-500 mt-1"></i>
-                    <div class="text-xs text-indigo-800 leading-relaxed">
+                <div class="bg-[color:var(--app-soft-bg)] border border-[color:var(--border-soft)] rounded-xl p-4 flex items-start gap-3">
+                    <i class="fas fa-info-circle text-[color:var(--accent-orange)] mt-1"></i>
+                    <div class="text-xs text-[color:var(--text-secondary)] leading-relaxed">
                         {{ tr('You are about to') }} 
-                        <span class="font-bold {{ $adjustmentType === 'add' ? 'text-green-600' : 'text-red-600' }}">
+                        <span class="font-bold {{ $adjustmentType === 'add' ? 'text-[color:var(--success)]' : 'text-[color:var(--error)]' }}">
                             {{ $adjustmentType === 'add' ? tr('ADD') : tr('SUBTRACT') }} {{ $adjustmentAmount ?: 0 }} {{ tr('days') }}
                         </span>
                         {{ tr('from the employee balance.') }}
@@ -251,16 +251,16 @@
                         wire:model="adjustmentFile" 
                         error="adjustmentFile"
                         :required="true"
-                        class="file:bg-indigo-50 file:text-indigo-600 file:border-0 file:rounded-lg file:px-3 file:py-1.5 file:mr-4 file:font-bold hover:file:bg-indigo-100 cursor-pointer"
+                        class="file:bg-[color:var(--accent-orange)]/10 file:text-[color:var(--accent-orange)] file:border-0 file:rounded-lg file:px-3 file:py-1.5 file:mr-4 file:font-bold hover:file:bg-[color:var(--accent-orange)]/15 cursor-pointer"
                         x-effect="if (!show) $el.value = ''"
                     />
                     
-                    <div wire:loading wire:target="adjustmentFile" class="flex items-center gap-2 text-xs text-indigo-600 font-bold bg-indigo-50 px-3 py-2 rounded-lg">
+                    <div wire:loading wire:target="adjustmentFile" class="flex items-center gap-2 text-xs text-[color:var(--accent-orange)] font-bold bg-[color:var(--accent-orange)]/5 px-3 py-2 rounded-lg">
                         <i class="fas fa-spinner fa-spin"></i> {{ tr('Uploading attachment...') }}
                     </div>
         
                     @if($adjustmentFile && $adjustmentFile instanceof \Livewire\Features\SupportFileUploads\TemporaryUploadedFile)
-                        <div class="flex items-center gap-2 text-[10px] text-green-600 font-bold bg-green-50 px-3 py-1.5 rounded-lg border border-green-100">
+                        <div class="flex items-center gap-2 text-[10px] text-[color:var(--success)] font-bold bg-[color:var(--success)]/10 px-3 py-1.5 rounded-lg border border-[color:var(--success)]/25">
                             <i class="fas fa-check-circle"></i>
                             {{ $adjustmentFile->getClientOriginalName() }}
                         </div>

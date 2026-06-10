@@ -105,8 +105,8 @@
                                     <svg viewBox="0 0 56 56" class="absolute inset-0 drop-shadow-sm">
                                         <polygon
                                             points="28,4 48,20 40,48 16,48 8,20"
-                                            :fill="activeTab === {{ $stepNum }} ? 'var(--brand-via)' : (activeTab > {{ $stepNum }} ? 'var(--brand-via)' : '#f3f4f6')"
-                                            :stroke="activeTab === {{ $stepNum }} ? 'var(--brand-via)' : (activeTab > {{ $stepNum }} ? 'var(--brand-via)' : '#d1d5db')"
+                                            :fill="activeTab === {{ $stepNum }} ? 'var(--accent-orange)' : (activeTab > {{ $stepNum }} ? 'var(--accent-orange)' : '#f3f4f6')"
+                                            :stroke="activeTab === {{ $stepNum }} ? 'var(--accent-orange)' : (activeTab > {{ $stepNum }} ? 'var(--accent-orange)' : '#d1d5db')"
                                             stroke-width="2.5"
                                             class="transition-all duration-200"
                                         />
@@ -123,7 +123,7 @@
 
                                 <div
                                     class="text-[11px] font-semibold text-center leading-tight max-w-[110px] transition-colors duration-200"
-                                    :class="activeTab === {{ $stepNum }} || activeTab > {{ $stepNum }} ? 'text-[color:var(--brand-via)]' : 'text-gray-500'"
+                                    :class="activeTab === {{ $stepNum }} || activeTab > {{ $stepNum }} ? 'text-[color:var(--accent-orange)]' : 'text-gray-500'"
                                 >
                                     {{ $stepLabel }}
                                 </div>
@@ -132,7 +132,7 @@
                             @if(!$isLast)
                                 <div
                                     class="h-[3px] w-16 md:w-20 lg:w-24 mx-3 md:mx-4 mt-6 rounded-full transition-all duration-300"
-                                    :class="activeTab > {{ $stepNum }} ? 'bg-gradient-to-r from-[color:var(--brand-via)] to-[color:var(--brand-via)]/80 shadow-sm' : 'bg-gray-200'"
+                                    :class="activeTab > {{ $stepNum }} ? 'bg-[color:var(--accent-orange)] shadow-sm' : 'bg-gray-200'"
                                 ></div>
                             @endif
                         @endforeach
@@ -140,7 +140,7 @@
                 </div>
 
                 <div class="text-center mt-4">
-                    <span class="text-sm font-bold text-[color:var(--brand-via)] bg-white/60 px-4 py-1.5 rounded-full inline-block shadow-sm">
+                    <span class="text-sm font-bold text-[color:var(--accent-orange)] bg-white/60 px-4 py-1.5 rounded-full inline-block shadow-sm">
                         {{ tr('Step') }} <span x-text="activeTab"></span> {{ tr('of') }} 5:
                         <span x-text="['{{ $steps[1] }}', '{{ $steps[2] }}', '{{ $steps[3] }}', '{{ $steps[4] }}', '{{ $steps[5] }}'][activeTab - 1]"></span>
                     </span>
@@ -164,8 +164,8 @@
                                     <svg viewBox="0 0 56 56" class="absolute inset-0">
                                         <polygon
                                             points="28,4 48,20 40,48 16,48 8,20"
-                                            :fill="activeTab === {{ $stepNum }} ? 'var(--brand-via)' : (activeTab > {{ $stepNum }} ? 'var(--brand-via)' : '#f3f4f6')"
-                                            :stroke="activeTab === {{ $stepNum }} ? 'var(--brand-via)' : (activeTab > {{ $stepNum }} ? 'var(--brand-via)' : '#d1d5db')"
+                                            :fill="activeTab === {{ $stepNum }} ? 'var(--accent-orange)' : (activeTab > {{ $stepNum }} ? 'var(--accent-orange)' : '#f3f4f6')"
+                                            :stroke="activeTab === {{ $stepNum }} ? 'var(--accent-orange)' : (activeTab > {{ $stepNum }} ? 'var(--accent-orange)' : '#d1d5db')"
                                             stroke-width="2.5"
                                         />
                                     </svg>
@@ -183,7 +183,7 @@
                             @if(!$isLast)
                                 <div
                                     class="h-[3px] w-7 rounded-full transition-all duration-300"
-                                    :class="activeTab > {{ $stepNum }} ? 'bg-[color:var(--brand-via)]' : 'bg-gray-200'"
+                                    :class="activeTab > {{ $stepNum }} ? 'bg-[color:var(--accent-orange)]' : 'bg-gray-200'"
                                 ></div>
                             @endif
                         @endforeach
@@ -191,7 +191,7 @@
                 </div>
 
                 <div class="text-center mt-3">
-                    <span class="text-xs font-bold text-[color:var(--brand-via)] bg-white/60 px-3 py-1 rounded-full inline-block">
+                    <span class="text-xs font-bold text-[color:var(--accent-orange)] bg-white/60 px-3 py-1 rounded-full inline-block">
                         {{ tr('Step') }} <span x-text="activeTab"></span> / 5 —
                         <span x-text="['{{ $steps[1] }}', '{{ $steps[2] }}', '{{ $steps[3] }}', '{{ $steps[4] }}', '{{ $steps[5] }}'][activeTab - 1]"></span>
                     </span>

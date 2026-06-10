@@ -10,9 +10,9 @@
                         {{-- Icon Indicator --}}
                         <div @class([
                             'absolute left-0 w-8 h-8 rounded-full border-4 border-white flex items-center justify-center shadow-sm z-10',
-                            'bg-red-500' => $log->action_type === 'TERMINATED',
-                            'bg-amber-500' => $log->action_type === 'SUSPENDED',
-                            'bg-green-500' => $log->action_type === 'ACTIVATED',
+                            'bg-[color:var(--error)]' => $log->action_type === 'TERMINATED',
+                            'bg-[color:var(--warning)]' => $log->action_type === 'SUSPENDED',
+                            'bg-[color:var(--success)]' => $log->action_type === 'ACTIVATED',
                         ])>
                             <i @class([
                                 'fas text-white text-[10px]',
@@ -28,7 +28,7 @@
                                     <h4 class="text-sm font-bold text-gray-900 flex items-center gap-2">
                                         {{ tr($log->action_type) }}
                                         @if($log->action_type === 'TERMINATED')
-                                            <span class="px-2 py-0.5 rounded-full bg-red-50 text-red-600 text-[10px] font-bold">{{ tr('Final Exit') }}</span>
+                                            <span class="px-2 py-0.5 rounded-full bg-[color:var(--error)]/10 text-[color:var(--error)] text-[10px] font-bold">{{ tr('Final Exit') }}</span>
                                         @endif
                                     </h4>
                                     <div class="flex items-center gap-3 mt-1">
@@ -42,9 +42,9 @@
                                         </span>
                                     </div>
                                 </div>
-                                <div class="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-xl border border-gray-100 group-hover:bg-indigo-50/30 group-hover:border-indigo-100 transition-colors">
-                                    <div class="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center">
-                                        <i class="fas fa-shield-alt text-indigo-600 text-[10px]"></i>
+                                <div class="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-xl border border-gray-100 group-hover:bg-[color:var(--app-soft-bg)] group-hover:border-[color:var(--accent-orange)]/20 transition-colors">
+                                    <div class="w-6 h-6 rounded-full bg-[color:var(--accent-orange)]/10 flex items-center justify-center">
+                                        <i class="fas fa-shield-alt text-[color:var(--accent-orange)] text-[10px]"></i>
                                     </div>
                                     <div class="flex flex-col">
                                         <span class="text-[9px] text-gray-400 font-bold uppercase tracking-wider">{{ tr('Performed By') }}</span>
