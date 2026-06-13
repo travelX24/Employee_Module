@@ -1321,7 +1321,7 @@ class EmployeeController extends Controller
         $id = DB::table($table)->insertGetId($data);
 
         $tasksCompanyId = (int) ($data['company_id'] ?? $user->saas_company_id ?? 1);
-        $this->ensureTasksAfterResponse('leaves', $id, $tasksCompanyId);
+        // $this->ensureTasksAfterResponse('leaves', $id, $tasksCompanyId);
 
         $row = DB::table($table)->where('id', $id)->first();
 
