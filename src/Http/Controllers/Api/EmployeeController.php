@@ -1319,10 +1319,9 @@ class EmployeeController extends Controller
         }
 
         $id = DB::table($table)->insertGetId($data);
-        if (class_exists(\Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController::class)) {
-            $companyId = $data['company_id'] ?? $user->saas_company_id ?? 1;
-            app(\Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController::class)->ensureTasksForRequest((int)$companyId, 'leaves', $id);
-        }
+
+        $tasksCompanyId = (int) ($data['company_id'] ?? $user->saas_company_id ?? 1);
+        $this->ensureTasksAfterResponse('leaves', $id, $tasksCompanyId);
 
         $row = DB::table($table)->where('id', $id)->first();
 
@@ -1700,26 +1699,32 @@ class EmployeeController extends Controller
 
         try {
             $id = DB::table($table)->insertGetId($data);
-            if ($approvalRequired && class_exists(\Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController::class)) {
-                $companyId = $data['company_id'] ?? $user->saas_company_id ?? 1;
-                app(\Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController::class)->ensureTasksForRequest((int)$companyId, 'permissions', $id);
-            } elseif (!$approvalRequired) {
-                try {
-                    if (class_exists(\App\Notifications\ApprovalTaskNotification::class)) {
-                        $dummyTask = new \Athka\SystemSettings\Models\ApprovalTask([
-                            'operation_key' => 'permissions',
-                            'approvable_type' => 'permissions',
-                            'approvable_id' => $id,
-                            'request_employee_id' => $user->employee_id ?? $user->id,
-                            'status' => 'approved',
-                        ]);
-                        $dummyTask->id = 0; // Prevent null ID issue
-                        $user->notify(new \App\Notifications\ApprovalTaskNotification($dummyTask, 'submitted'));
-                        $user->notify(new \App\Notifications\ApprovalTaskNotification($dummyTask, 'resolution'));
+
+            $tasksCompanyId = (int) ($data['company_id'] ?? $user->saas_company_id ?? 1);
+
+            if ($approvalRequired) {
+                $this->ensureTasksAfterResponse('permissions', $id, $tasksCompanyId);
+            } else {
+                app()->terminating(function () use ($user, $id) {
+                    try {
+                        if (class_exists(\App\Notifications\ApprovalTaskNotification::class)) {
+                            $dummyTask = new \Athka\SystemSettings\Models\ApprovalTask([
+                                'operation_key' => 'permissions',
+                                'approvable_type' => 'permissions',
+                                'approvable_id' => $id,
+                                'request_employee_id' => $user->employee_id ?? $user->id,
+                                'status' => 'approved',
+                            ]);
+
+                            $dummyTask->id = 0;
+
+                            $user->notify(new \App\Notifications\ApprovalTaskNotification($dummyTask, 'submitted'));
+                            $user->notify(new \App\Notifications\ApprovalTaskNotification($dummyTask, 'resolution'));
+                        }
+                    } catch (\Throwable $e) {
+                        \Illuminate\Support\Facades\Log::error("Auto-approval notification failed after response (Permission API): " . $e->getMessage());
                     }
-                } catch (\Exception $e) {
-                    \Illuminate\Support\Facades\Log::error("Auto-approval notification failed (Permission API): " . $e->getMessage());
-                }
+                });
             }
         } catch (\Exception $ex) {
             return response()->json([
@@ -2342,14 +2347,8 @@ class EmployeeController extends Controller
 
         $id = DB::table($table)->insertGetId($data);
 
-        // ✅ NEW: Trigger lazy task generation immediately
-        try {
-            if (class_exists('Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController')) {
-                 $this->ensureTasksForReq('missions', $id);
-            }
-        } catch (\Throwable $e) {
-            // Log or ignore if settings module not available
-        }
+        $tasksCompanyId = (int) ($companyId ?? $user->saas_company_id ?? 1);
+        $this->ensureTasksAfterResponse('missions', $id, $tasksCompanyId);
 
         $row = DB::table($table)->where('id', $id)->first();
 
@@ -2430,6 +2429,29 @@ class EmployeeController extends Controller
     /**
      * ✅ Helper to trigger task generation via ApprovalInboxController
      */
+    /**
+ * Run approval task generation after the API response is sent.
+ * This keeps mobile create requests fast while preserving approval workflow.
+ */
+    protected function ensureTasksAfterResponse(string $type, int $id, int $companyId): void
+    {
+        app()->terminating(function () use ($type, $id, $companyId) {
+            try {
+                if (class_exists(\Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController::class)) {
+                    app(\Athka\SystemSettings\Http\Controllers\Api\Employee\ApprovalInboxController::class)
+                        ->ensureTasksForRequest($companyId, $type, $id);
+                }
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Approval task generation failed after response', [
+                    'type' => $type,
+                    'request_id' => $id,
+                    'company_id' => $companyId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        });
+    }
+
     protected function ensureTasksForReq(string $type, int $id): void
     {
         try {
