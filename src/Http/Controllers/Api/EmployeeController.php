@@ -1321,7 +1321,7 @@ class EmployeeController extends Controller
         $id = DB::table($table)->insertGetId($data);
 
         $tasksCompanyId = (int) ($data['company_id'] ?? $user->saas_company_id ?? 1);
-        // $this->ensureTasksAfterResponse('leaves', $id, $tasksCompanyId);
+        \App\Jobs\GenerateApprovalTasksJob::dispatch('leaves', $id, $tasksCompanyId);
 
         $row = DB::table($table)->where('id', $id)->first();
 
@@ -1703,7 +1703,7 @@ class EmployeeController extends Controller
             $tasksCompanyId = (int) ($data['company_id'] ?? $user->saas_company_id ?? 1);
 
             if ($approvalRequired) {
-                $this->ensureTasksAfterResponse('permissions', $id, $tasksCompanyId);
+                \App\Jobs\GenerateApprovalTasksJob::dispatch('permissions', $id, $tasksCompanyId);
             } else {
                 app()->terminating(function () use ($user, $id) {
                     try {
@@ -2348,7 +2348,7 @@ class EmployeeController extends Controller
         $id = DB::table($table)->insertGetId($data);
 
         $tasksCompanyId = (int) ($companyId ?? $user->saas_company_id ?? 1);
-        $this->ensureTasksAfterResponse('missions', $id, $tasksCompanyId);
+        \App\Jobs\GenerateApprovalTasksJob::dispatch('missions', $id, $tasksCompanyId);
 
         $row = DB::table($table)->where('id', $id)->first();
 
