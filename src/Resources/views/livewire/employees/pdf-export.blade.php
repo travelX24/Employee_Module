@@ -33,7 +33,7 @@
         .system-logo {
             width: 30px;
             height: 30px;
-            background: #C45A1A;
+            background: #903749;
             border-radius: 6px;
             text-align: center;
             line-height: 30px;
@@ -54,7 +54,7 @@
         .company-name {
             font-size: 13px;
             font-weight: 700;
-            color: #C45A1A;
+            color: #903749;
         }
         .company-details {
             font-size: 8px;
