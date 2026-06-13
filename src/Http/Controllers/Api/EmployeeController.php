@@ -1321,8 +1321,18 @@ class EmployeeController extends Controller
         $id = DB::table($table)->insertGetId($data);
 
         $tasksCompanyId = (int) ($data['company_id'] ?? $user->saas_company_id ?? 1);
-        \App\Jobs\GenerateApprovalTasksJob::dispatch('leaves', $id, $tasksCompanyId);
-
+        try {
+            \App\Jobs\GenerateApprovalTasksJob::dispatch('leaves', $id, $tasksCompanyId);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Dispatch approval job failed for leave request', [
+                'type' => 'leaves',
+                'request_id' => $id,
+                'company_id' => $tasksCompanyId,
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+        }
         $row = DB::table($table)->where('id', $id)->first();
 
         return response()->json([
@@ -1703,8 +1713,19 @@ class EmployeeController extends Controller
             $tasksCompanyId = (int) ($data['company_id'] ?? $user->saas_company_id ?? 1);
 
             if ($approvalRequired) {
-                \App\Jobs\GenerateApprovalTasksJob::dispatch('permissions', $id, $tasksCompanyId);
-            } else {
+                try {
+                    \App\Jobs\GenerateApprovalTasksJob::dispatch('permissions', $id, $tasksCompanyId);
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::error('Dispatch approval job failed for permission request', [
+                        'type' => 'permissions',
+                        'request_id' => $id,
+                        'company_id' => $tasksCompanyId,
+                        'error' => $e->getMessage(),
+                        'file' => $e->getFile(),
+                        'line' => $e->getLine(),
+                    ]);
+                }
+                            } else {
                 app()->terminating(function () use ($user, $id) {
                     try {
                         if (class_exists(\App\Notifications\ApprovalTaskNotification::class)) {
@@ -2348,7 +2369,18 @@ class EmployeeController extends Controller
         $id = DB::table($table)->insertGetId($data);
 
         $tasksCompanyId = (int) ($companyId ?? $user->saas_company_id ?? 1);
-        \App\Jobs\GenerateApprovalTasksJob::dispatch('missions', $id, $tasksCompanyId);
+        try {
+            \App\Jobs\GenerateApprovalTasksJob::dispatch('missions', $id, $tasksCompanyId);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Dispatch approval job failed for mission request', [
+                'type' => 'missions',
+                'request_id' => $id,
+                'company_id' => $tasksCompanyId,
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+        }
 
         $row = DB::table($table)->where('id', $id)->first();
 
