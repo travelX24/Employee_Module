@@ -410,6 +410,88 @@ public function subordinates(): HasMany
 
         return (float) $query->sum('lr.requested_days');
     }
+    public function calculateLeaveEntitlementForPolicy($policy): float
+    {
+        if (!$policy) {
+            return 0.0;
+        }
+        $excluded = $policy->excluded_contract_types ?? [];
+        if (is_string($excluded)) {
+            $excluded = json_decode($excluded, true) ?: [];
+        }
+        $excluded = (array) $excluded;
+
+        if (in_array($this->contract_type, $excluded, true)) {
+            return 0.0;
+        }
+
+        $settings = $policy->settings ?? [];
+        if (is_string($settings)) {
+            $settings = json_decode($settings, true) ?: [];
+        }
+
+        if (data_get($settings, 'meta.system_key') === 'annual_default') {
+            return $this->calculateAnnualLeaveEntitlement();
+        }
+
+        return (float) ($policy->days_per_year ?? 0);
+    }
+
+    public function leaveBalanceRows(?int $year = null)
+    {
+        if (!Schema::hasTable('leave_policies') || !Schema::hasTable('attendance_leave_requests')) {
+            return collect();
+        }
+
+        $year = $year ?: now()->year;
+        $policyYears = [];
+
+        if (Schema::hasTable('leave_policy_years')) {
+            $policyYears = DB::table('leave_policy_years')
+                ->where('company_id', $this->saas_company_id)
+                ->where('year', $year)
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+        }
+
+        $policies = DB::table('leave_policies')
+            ->where('company_id', $this->saas_company_id)
+            ->when(!empty($policyYears), fn ($q) => $q->whereIn('policy_year_id', $policyYears))
+            ->when(Schema::hasColumn('leave_policies', 'is_active'), fn ($q) => $q->where('is_active', true))
+            ->orderBy('id')
+            ->get();
+
+        if ($policies->isEmpty()) {
+            return collect();
+        }
+
+        $policyIds = $policies->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $taken = DB::table('attendance_leave_requests')
+            ->select('leave_policy_id', DB::raw('SUM(requested_days) as total_taken'))
+            ->where('company_id', $this->saas_company_id)
+            ->where('employee_id', $this->id)
+            ->where('status', 'approved')
+            ->whereIn('leave_policy_id', $policyIds)
+            ->when(!empty($policyYears), fn ($q) => $q->whereIn('policy_year_id', $policyYears))
+            ->groupBy('leave_policy_id')
+            ->pluck('total_taken', 'leave_policy_id');
+
+        return $policies->map(function ($policy) use ($taken) {
+            $entitled = $this->calculateLeaveEntitlementForPolicy($policy);
+            $takenDays = (float) ($taken[(int) $policy->id] ?? 0);
+
+            return (object) [
+                'policy_id' => (int) $policy->id,
+                'policy_name' => $policy->name ?? '-',
+                'leave_type' => $policy->leave_type ?? '',
+                'entitled_days' => $entitled,
+                'taken_days' => $takenDays,
+                'remaining_days' => max($entitled - $takenDays, 0),
+                'usage_percentage' => $entitled > 0 ? round(($takenDays / $entitled) * 100, 2) : null,
+            ];
+        });
+    }
 }
 
 

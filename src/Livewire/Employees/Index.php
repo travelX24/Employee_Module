@@ -262,12 +262,16 @@ public function setViewMode(string $mode): void
 
     public function openExportModal()
     {
+        $this->authorize('employees.export');
+
         $this->selectedFields = array_keys($this->availableFields);
         $this->showExportModal = true;
     }
 
     public function export()
     {
+        $this->authorize('employees.export');
+
         $companyId = auth()->user()->saas_company_id;
         
         $allowed = DB::table('branch_user_access')
@@ -772,7 +776,7 @@ public function setViewMode(string $mode): void
     $this->selectedEmployee = Employee::withoutGlobalScope('active_only')
         ->where('saas_company_id', $companyId)
         ->when(! empty($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
-        ->when(!Auth::user()->can('employees.view'), function ($q) {
+        ->when(!Auth::user()->can('employees.view.all'), function ($q) {
             $user = Auth::user();
             $q->where(function ($qq) use ($user) {
                 if ($user->employee_id) $qq->where('manager_id', $user->employee_id);
@@ -1040,6 +1044,8 @@ public function setViewMode(string $mode): void
  
     public function downloadTemplate()
     {
+        $this->authorize('employees.import');
+
         set_time_limit(0);
         ini_set('memory_limit', '1024M');
 
@@ -1154,6 +1160,8 @@ public function setViewMode(string $mode): void
  
     public function downloadDepartmentsCodes()
     {
+        $this->authorize('employees.import');
+
         $companyId = $this->getCompanyId();
         $Department = $this->departmentModelClass();
         $departments = $Department::forCompany($companyId)->get(['name', 'code']);
@@ -1179,6 +1187,8 @@ public function setViewMode(string $mode): void
  
     public function downloadJobTitlesCodes()
     {
+        $this->authorize('employees.import');
+
         $companyId = $this->getCompanyId();
         $JobTitle = $this->jobTitleModelClass();
         $jobTitles = $JobTitle::forCompany($companyId)->get(['name', 'code']);

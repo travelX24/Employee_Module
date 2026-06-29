@@ -36,6 +36,18 @@
             4 => tr('Personal Information'),
             5 => tr('Documents'),
         ];
+
+        if (! auth()->user()->can('employees.contracts.manage')) {
+            unset($steps[3]);
+        }
+
+        if (! auth()->user()->can('employees.documents.manage')) {
+            unset($steps[5]);
+        }
+
+        $lastEditableTab = max(array_keys($steps));
+        $currentStepPosition = array_search($tab, array_keys($steps), true);
+        $currentStepNumber = $currentStepPosition === false ? 1 : $currentStepPosition + 1;
     @endphp
 <div class="space-y-4">
     {{-- ✅ Single Card --}}
@@ -106,7 +118,7 @@
 
             <div class="text-center mt-4">
                 <span class="text-sm font-bold text-[color:var(--accent-orange)] bg-white/60 px-4 py-1.5 rounded-full inline-block shadow-sm">
-                    {{ tr('Step') }} {{ $tab }} {{ tr('of') }} 5: {{ $steps[$tab] ?? '' }}
+                    {{ tr('Step') }} {{ $currentStepNumber }} {{ tr('of') }} {{ count($steps) }}: {{ $steps[$tab] ?? '' }}
                 </span>
             </div>
 
@@ -139,11 +151,15 @@
             @elseif($tab === 2)
                 <div wire:key="tab-2-content">@include('employees::livewire.employees.partials.tab-job')</div>
             @elseif($tab === 3)
-                <div wire:key="tab-3-content">@include('employees::livewire.employees.partials.tab-financial')</div>
+                @can('employees.contracts.manage')
+                    <div wire:key="tab-3-content">@include('employees::livewire.employees.partials.tab-financial')</div>
+                @endcan
             @elseif($tab === 4)
                 <div wire:key="tab-4-content">@include('employees::livewire.employees.partials.tab-personal')</div>
             @elseif($tab === 5)
-                <div wire:key="tab-5-content">@include('employees::livewire.employees.partials.tab-documents')</div>
+                @can('employees.documents.manage')
+                    <div wire:key="tab-5-content">@include('employees::livewire.employees.partials.tab-documents')</div>
+                @endcan
             @endif
         </div>
 
@@ -165,7 +181,7 @@
                 </div>
 
                 <div class="w-full sm:w-auto sm:inline-flex">
-                    @if($tab < 5)
+                    @if($tab < $lastEditableTab)
                         <x-ui.primary-button
                             type="button"
                             wire:click="nextTab"

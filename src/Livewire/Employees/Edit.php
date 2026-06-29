@@ -133,6 +133,58 @@ class Edit extends Component
             : \Athka\SystemSettings\Models\JobTitle::class;
     }
 
+    private function canManageContracts(): bool
+    {
+        return (bool) Auth::user()?->can('employees.contracts.manage');
+    }
+
+    private function canManageDocuments(): bool
+    {
+        return (bool) Auth::user()?->can('employees.documents.manage');
+    }
+
+    private function editableTabs(): array
+    {
+        $tabs = [1, 2, 4];
+
+        if ($this->canManageContracts()) {
+            $tabs[] = 3;
+        }
+
+        if ($this->canManageDocuments()) {
+            $tabs[] = 5;
+        }
+
+        sort($tabs);
+
+        return $tabs;
+    }
+
+    private function nextEditableTab(): int
+    {
+        foreach ($this->editableTabs() as $tab) {
+            if ($tab > $this->tab) {
+                return $tab;
+            }
+        }
+
+        return $this->tab;
+    }
+
+    private function previousEditableTab(): int
+    {
+        $previous = $this->tab;
+
+        foreach ($this->editableTabs() as $tab) {
+            if ($tab >= $this->tab) {
+                break;
+            }
+
+            $previous = $tab;
+        }
+
+        return $previous;
+    }
     public function mount(int $employeeId): void
 {
     $this->authorize('employees.edit');
@@ -428,6 +480,8 @@ if (! empty($allowed)) {
 
     public function addLeaveDay()
     {
+        $this->authorize('employees.contracts.manage');
+
         $this->adjustmentType = 'add';
         $this->resetAdjustmentForm();
         $this->showingAdjustmentModal = true;
@@ -435,6 +489,8 @@ if (! empty($allowed)) {
 
     public function subtractLeaveDay()
     {
+        $this->authorize('employees.contracts.manage');
+
         $this->adjustmentType = 'subtract';
         $this->resetAdjustmentForm();
         $this->showingAdjustmentModal = true;
@@ -450,6 +506,8 @@ if (! empty($allowed)) {
 
     public function confirmLeaveAdjustment()
     {
+        $this->authorize('employees.contracts.manage');
+
         $this->validate([
             'adjustmentAmount' => 'required|numeric|min:0.5',
             'adjustmentReason' => 'required|string|min:4',
@@ -754,9 +812,9 @@ if (! empty($allowed)) {
         $rules = match ($this->tab) {
             1 => $this->rulesTab1(),
             2 => $this->rulesTab2(),
-            3 => $this->rulesTab3(),
+            3 => $this->canManageContracts() ? $this->rulesTab3() : [],
             4 => $this->rulesTab4(),
-            5 => $this->rulesTab5(),
+            5 => $this->canManageDocuments() ? $this->rulesTab5() : [],
             default => [],
         };
 
@@ -764,16 +822,12 @@ if (! empty($allowed)) {
             $this->validate($rules);
         }
 
-        if ($this->tab < 5) {
-            $this->tab++;
-        }
+        $this->tab = $this->nextEditableTab();
     }
 
     public function previousTab(): void
     {
-        if ($this->tab > 1) {
-            $this->tab--;
-        }
+        $this->tab = $this->previousEditableTab();
     }
 
     public function save(): void
@@ -808,10 +862,18 @@ if (! empty($allowed)) {
             $tabRules = [
                 1 => $this->rulesTab1(),
                 2 => $this->rulesTab2(),
-                3 => $this->rulesTab3(),
                 4 => $this->rulesTab4(),
-                5 => $this->rulesTab5(),
             ];
+
+            if ($this->canManageContracts()) {
+                $tabRules[3] = $this->rulesTab3();
+            }
+
+            if ($this->canManageDocuments()) {
+                $tabRules[5] = $this->rulesTab5();
+            }
+
+            ksort($tabRules);
 
             $tabNames = [
                 1 => $this->txt('المعلومات الأساسية', 'Basic Information'),
@@ -884,6 +946,24 @@ if (! empty($allowed)) {
 
             $finalBranchId = ($finalBranchId === '' || $finalBranchId === null) ? null : (int) $finalBranchId;
 
+            if (!$this->canManageContracts()) {
+                $this->contract_type = $this->employee->contract_type ?? '';
+                $this->basic_salary = $this->employee->basic_salary;
+                $this->daily_wage = $this->employee->daily_wage;
+                $this->hourly_wage = $this->employee->hourly_wage;
+                $this->minute_wage = $this->employee->minute_wage;
+                $this->contract_duration_months = $this->employee->contract_duration_months;
+                $this->allowance = $this->employee->allowances;
+                $this->annual_leave_days = $this->employee->annual_leave_days;
+                $this->is_transferred_employee = (bool) $this->employee->is_transferred_employee;
+                $this->opening_leave_balance = $this->employee->opening_leave_balance;
+                $this->leave_balance_adjustments = (int) ($this->employee->leave_balance_adjustments ?? 0);
+            }
+
+            if (!$this->canManageDocuments()) {
+                $this->document_verified = (bool) $this->employee->documents_verified;
+            }
+
             $this->employee->update([
             // Tab 1
             'name_ar' => $this->name_ar,
@@ -949,13 +1029,15 @@ if (! empty($allowed)) {
             ])->save();
         }
         // Save Documents (Tab 5)
-        $this->saveFile($this->employee, 'photo', 'personal_photo');
-        $this->saveFile($this->employee, 'national_id_photo', 'national_id_photo');
-        $this->saveFile($this->employee, 'qualification', 'qualification');
-        
-        $this->saveMultipleFiles($this->employee, 'certificates', 'certificates');
-        $this->saveMultipleFiles($this->employee, 'family_documents', 'family_documents');
-        $this->saveMultipleFiles($this->employee, 'other_documents', 'other_documents');
+        if ($this->canManageDocuments()) {
+            $this->saveFile($this->employee, 'photo', 'personal_photo');
+            $this->saveFile($this->employee, 'national_id_photo', 'national_id_photo');
+            $this->saveFile($this->employee, 'qualification', 'qualification');
+            
+            $this->saveMultipleFiles($this->employee, 'certificates', 'certificates');
+            $this->saveMultipleFiles($this->employee, 'family_documents', 'family_documents');
+            $this->saveMultipleFiles($this->employee, 'other_documents', 'other_documents');
+        }
 
         $this->dispatch('toast', type: 'success', title: tr('Saved'), message: tr('Employee updated successfully'));
         $this->dispatch('employee-updated', employeeId: $this->employee->id);

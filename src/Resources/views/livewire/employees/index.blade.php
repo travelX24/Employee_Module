@@ -396,7 +396,7 @@
                                 <td class="py-3 px-3">
     <x-ui.dropdown-menu>
         @if($isLockedEmployee)
-            @can('employees.view')
+            @can('employees.view-details')
                 <x-ui.dropdown-item
                     href="#"
                     wire:click="$dispatch('open-employee-detail', { id: {{ $emp->id }}, readonly: true })"
@@ -414,7 +414,7 @@
                     <i class="fas fa-eye w-4 me-2"></i>
                     {{ tr('View & Edit') }}
                 </x-ui.dropdown-item>
-            @elsecan('employees.view')
+            @elsecan('employees.view-details')
                 <x-ui.dropdown-item
                     href="#"
                     wire:click="$dispatch('open-employee-detail', { id: {{ $emp->id }}, readonly: true })"
@@ -537,7 +537,7 @@
                                         <i class="fas fa-eye w-4 me-2"></i>
                                         {{ tr('View & Edit') }}
                                     </x-ui.dropdown-item>
-                                    @elsecan('employees.view')
+                                    @elsecan('employees.view-details')
                                     <x-ui.dropdown-item
                                         href="#"
                                         wire:click="$dispatch('open-employee-detail', { id: {{ $emp->id }}, readonly: true })"

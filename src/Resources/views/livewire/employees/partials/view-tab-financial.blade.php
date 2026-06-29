@@ -2,7 +2,11 @@
 
 @php
     $wages = $employee->calculateWages();
-    $leaveBalance = $employee->calculateLeaveBalance();
+    $annualLeaveBalance = $employee->calculateLeaveBalance();
+    $leaveBalanceRows = method_exists($employee, 'leaveBalanceRows') ? $employee->leaveBalanceRows() : collect();
+    $leaveBalance = $leaveBalanceRows->isNotEmpty()
+        ? round((float) $leaveBalanceRows->sum('remaining_days'), 1)
+        : $annualLeaveBalance;
 @endphp
 
 <div class="space-y-6">
@@ -165,6 +169,31 @@
                         @endif
                     </div>
                 </div>
+
+                @if($leaveBalanceRows->isNotEmpty())
+                    <div class="mt-4 overflow-hidden rounded-xl border border-gray-200 bg-white">
+                        <table class="w-full text-xs">
+                            <thead class="bg-gray-50 text-gray-500">
+                                <tr>
+                                    <th class="p-2 text-start">{{ tr('Leave Type') }}</th>
+                                    <th class="p-2 text-center">{{ tr('Entitled') }}</th>
+                                    <th class="p-2 text-center">{{ tr('Taken') }}</th>
+                                    <th class="p-2 text-center">{{ tr('Remaining') }}</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                @foreach($leaveBalanceRows as $row)
+                                    <tr>
+                                        <td class="p-2 font-bold text-gray-700">{{ $row->policy_name }}</td>
+                                        <td class="p-2 text-center font-mono">{{ number_format((float) $row->entitled_days, 2) }}</td>
+                                        <td class="p-2 text-center font-mono">{{ number_format((float) $row->taken_days, 2) }}</td>
+                                        <td class="p-2 text-center font-mono font-black text-gray-900">{{ number_format((float) $row->remaining_days, 2) }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
             </div>
         </div>
     </div>

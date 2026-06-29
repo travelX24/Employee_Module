@@ -94,6 +94,58 @@ class Create extends Component
     public $family_documents = [];
     public $other_documents = [];
 
+    private function canManageContracts(): bool
+    {
+        return (bool) Auth::user()?->can('employees.contracts.manage');
+    }
+
+    private function canManageDocuments(): bool
+    {
+        return (bool) Auth::user()?->can('employees.documents.manage');
+    }
+
+    private function editableTabs(): array
+    {
+        $tabs = [1, 2, 4];
+
+        if ($this->canManageContracts()) {
+            $tabs[] = 3;
+        }
+
+        if ($this->canManageDocuments()) {
+            $tabs[] = 5;
+        }
+
+        sort($tabs);
+
+        return $tabs;
+    }
+
+    private function nextEditableTab(): int
+    {
+        foreach ($this->editableTabs() as $tab) {
+            if ($tab > $this->tab) {
+                return $tab;
+            }
+        }
+
+        return $this->tab;
+    }
+
+    private function previousEditableTab(): int
+    {
+        $previous = $this->tab;
+
+        foreach ($this->editableTabs() as $tab) {
+            if ($tab >= $this->tab) {
+                break;
+            }
+
+            $previous = $tab;
+        }
+
+        return $previous;
+    }
     public function mount(): void
     {
         $this->authorize('employees.create');
@@ -191,6 +243,8 @@ class Create extends Component
 
     public function addLeaveDay()
     {
+        $this->authorize('employees.contracts.manage');
+
         $this->adjustmentType = 'add';
         $this->adjustmentAmount = 1;
         $this->showingAdjustmentModal = true;
@@ -198,6 +252,8 @@ class Create extends Component
 
     public function subtractLeaveDay()
     {
+        $this->authorize('employees.contracts.manage');
+
         $this->adjustmentType = 'subtract';
         $this->adjustmentAmount = 1;
         $this->showingAdjustmentModal = true;
@@ -205,6 +261,8 @@ class Create extends Component
 
     public function confirmLeaveAdjustment()
     {
+        $this->authorize('employees.contracts.manage');
+
         $this->validate([
             'adjustmentAmount' => 'required|numeric|min:0.5',
         ]);
@@ -584,20 +642,23 @@ class Create extends Component
             'manager_id' => ['nullable', 'exists:employees,id'],
             'hired_at' => ['required', 'date'],
 
-            'contract_type' => ['required', Rule::in(['permanent', 'temporary', 'probation', 'contractor', 'freelancer'])],
-            'contract_duration_months' => Rule::when(
-                ($this->contract_type !== '' && $this->contract_type !== 'permanent'),
-                ['required', 'integer', 'min:1'],
-                ['nullable', 'integer', 'min:1']
-            ),
-
             'sub_department_id' => ['nullable', 'exists:departments,id'],
         ];
     }
 
     private function rulesTab3(): array
     {
+        if (! $this->canManageContracts()) {
+            return [];
+        }
+
         return [
+            'contract_type' => ['required', Rule::in(['permanent', 'temporary', 'probation', 'contractor', 'freelancer'])],
+            'contract_duration_months' => Rule::when(
+                ($this->contract_type !== '' && $this->contract_type !== 'permanent'),
+                ['required', 'integer', 'min:1'],
+                ['nullable', 'integer', 'min:1']
+            ),
             'basic_salary' => ['required', 'numeric', 'min:0'],
             'allowance' => ['nullable', 'numeric', 'min:0'],
             'annual_leave_days' => ['nullable', 'integer', 'min:0'],
@@ -650,6 +711,10 @@ class Create extends Component
 
     private function rulesTab5(): array
     {
+        if (! $this->canManageDocuments()) {
+            return [];
+        }
+
         return [
             'photo' => ['required', 'image', 'max:2048'],
             'national_id_photo' => ['required', 'image', 'max:2048'],
@@ -665,9 +730,9 @@ class Create extends Component
         return match ($tab) {
             1 => $this->rulesTab1(),
             2 => $this->rulesTab2(),
-            3 => $this->rulesTab3(),
+            3 => $this->canManageContracts() ? $this->rulesTab3() : [],
             4 => $this->rulesTab4(),
-            5 => $this->rulesTab5(),
+            5 => $this->canManageDocuments() ? $this->rulesTab5() : [],
             default => [],
         };
     }
@@ -675,6 +740,10 @@ class Create extends Component
     public function goToTab(int $target): void
     {
         $target = max(1, min(5, $target));
+
+        if (! in_array($target, $this->editableTabs(), true)) {
+            return;
+        }
 
         if ($target < $this->tab) {
             $this->tab = $target;
@@ -726,12 +795,12 @@ class Create extends Component
             $this->validationAttributes()
         );
 
-        $this->tab = min(5, $this->tab + 1);
+        $this->tab = $this->nextEditableTab();
     }
 
     public function prevTab(): void
     {
-        $this->tab = max(1, $this->tab - 1);
+        $this->tab = $this->previousEditableTab();
     }
 
     public function store()
@@ -754,13 +823,21 @@ class Create extends Component
                 );
             }
 
-            $this->validate(array_merge(
+            $rules = array_merge(
                 $this->rulesTab1(),
                 $this->rulesTab2(),
-                $this->rulesTab3(),
                 $this->rulesTab4(),
-                $this->rulesTab5(),
-            ), $this->validationMessages(), $this->validationAttributes());
+            );
+
+            if ($this->canManageContracts()) {
+                $rules = array_merge($rules, $this->rulesTab3());
+            }
+
+            if ($this->canManageDocuments()) {
+                $rules = array_merge($rules, $this->rulesTab5());
+            }
+
+            $this->validate($rules, $this->validationMessages(), $this->validationAttributes());
 
             $jobTitle = JobTitle::find($this->job_title_id);
 
@@ -792,15 +869,15 @@ class Create extends Component
                 'hired_at' => $this->hired_at,
 
                 'status' => 'ACTIVE',
-                'contract_type' => $this->contract_type,
-                'basic_salary' => $this->basic_salary,
-                'allowances' => $this->allowance ?: 0,
-                'annual_leave_days' => $this->annual_leave_days ?: 0,
-                'contract_duration_months' => $this->contract_duration_months ?: 0,
+                'contract_type' => $this->canManageContracts() ? $this->contract_type : 'permanent',
+                'basic_salary' => $this->canManageContracts() ? $this->basic_salary : 0,
+                'allowances' => $this->canManageContracts() ? ($this->allowance ?: 0) : 0,
+                'annual_leave_days' => $this->canManageContracts() ? ($this->annual_leave_days ?: 0) : ($this->getDefaultAnnualLeaveDays() ?: 0),
+                'contract_duration_months' => $this->canManageContracts() ? ($this->contract_duration_months ?: 0) : 0,
 
-                'is_transferred_employee' => $this->is_transferred_employee ? 1 : 0,
-                'opening_leave_balance' => $this->is_transferred_employee ? (is_numeric($this->opening_leave_balance) ? $this->opening_leave_balance : 0) : 0,
-                'leave_balance_adjustments' => is_numeric($this->leave_balance_adjustments) ? $this->leave_balance_adjustments : 0,
+                'is_transferred_employee' => $this->canManageContracts() && $this->is_transferred_employee ? 1 : 0,
+                'opening_leave_balance' => ($this->canManageContracts() && $this->is_transferred_employee) ? (is_numeric($this->opening_leave_balance) ? $this->opening_leave_balance : 0) : 0,
+                'leave_balance_adjustments' => $this->canManageContracts() && is_numeric($this->leave_balance_adjustments) ? $this->leave_balance_adjustments : 0,
 
                 'mobile' => $this->mobile,
                 'mobile_alt' => $this->mobile_alt,
@@ -820,13 +897,15 @@ class Create extends Component
 
             $employee = Employee::create($data);
 
-            $this->saveFile($employee, 'photo', 'personal_photo');
-            $this->saveFile($employee, 'national_id_photo', 'national_id_photo');
-            $this->saveFile($employee, 'qualification', 'qualification');
+            if ($this->canManageDocuments()) {
+                $this->saveFile($employee, 'photo', 'personal_photo');
+                $this->saveFile($employee, 'national_id_photo', 'national_id_photo');
+                $this->saveFile($employee, 'qualification', 'qualification');
 
-            $this->saveMultipleFiles($employee, 'certificates', 'certificates');
-            $this->saveMultipleFiles($employee, 'family_documents', 'family_documents');
-            $this->saveMultipleFiles($employee, 'other_documents', 'other_documents');
+                $this->saveMultipleFiles($employee, 'certificates', 'certificates');
+                $this->saveMultipleFiles($employee, 'family_documents', 'family_documents');
+                $this->saveMultipleFiles($employee, 'other_documents', 'other_documents');
+            }
 
             session()->flash('status', tr('Employee created successfully'));
             session()->flash('employee_id', $employee->id);

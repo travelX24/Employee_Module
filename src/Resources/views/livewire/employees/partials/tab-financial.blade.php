@@ -190,7 +190,7 @@
 
     {{-- Leave Adjustment Modal --}}
     @if(isset($showingAdjustmentModal))
-        <x-ui.modal wire:model="showingAdjustmentModal" maxWidth="md">
+        <x-ui.modal wire:model="showingAdjustmentModal" maxWidth="3xl">
             <x-slot name="title">
                 <div class="flex items-center gap-2">
                     @if($adjustmentType === 'add')
@@ -222,49 +222,66 @@
                     </div>
                 </div>
 
-                <x-ui.input 
-                    id="adjustment_amount"
-                    type="number"
-                    step="0.5"
-                    :label="tr('Number of Days')" 
-                    wire:model.live="adjustmentAmount" 
-                    error="adjustmentAmount"
-                    :required="true"
-                    placeholder="0.0"
-                />
-    
                 @if(isset($employee))
-                    <x-ui.textarea 
-                        id="adjustment_reason"
-                        :label="tr('Adjustment Reason')" 
-                        wire:model="adjustmentReason" 
-                        error="adjustmentReason"
-                        :required="true"
-                        rows="3"
-                        placeholder="{{ tr('Write a detailed reason for this adjustment (e.g. Compensation for weekend work, administrative decision #123)...') }}"
-                    />
-        
-                    <x-ui.input 
-                        id="adjustment_file"
-                        type="file"
-                        :label="tr('Attachment (PDF/Image)')" 
-                        wire:model="adjustmentFile" 
-                        error="adjustmentFile"
-                        :required="true"
-                        class="file:bg-[color:var(--accent-orange)]/10 file:text-[color:var(--accent-orange)] file:border-0 file:rounded-lg file:px-3 file:py-1.5 file:mr-4 file:font-bold hover:file:bg-[color:var(--accent-orange)]/15 cursor-pointer"
-                        x-effect="if (!show) $el.value = ''"
-                    />
-                    
-                    <div wire:loading wire:target="adjustmentFile" class="flex items-center gap-2 text-xs text-[color:var(--accent-orange)] font-bold bg-[color:var(--accent-orange)]/5 px-3 py-2 rounded-lg">
-                        <i class="fas fa-spinner fa-spin"></i> {{ tr('Uploading attachment...') }}
-                    </div>
-        
-                    @if($adjustmentFile && $adjustmentFile instanceof \Livewire\Features\SupportFileUploads\TemporaryUploadedFile)
-                        <div class="flex items-center gap-2 text-[10px] text-[color:var(--success)] font-bold bg-[color:var(--success)]/10 px-3 py-1.5 rounded-lg border border-[color:var(--success)]/25">
-                            <i class="fas fa-check-circle"></i>
-                            {{ $adjustmentFile->getClientOriginalName() }}
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                        <x-ui.input 
+                            id="adjustment_amount"
+                            type="number"
+                            step="0.5"
+                            :label="tr('Number of Days')" 
+                            wire:model.live="adjustmentAmount" 
+                            error="adjustmentAmount"
+                            :required="true"
+                            placeholder="0.0"
+                        />
+
+                        <div class="space-y-2">
+                            <x-ui.input 
+                                id="adjustment_file"
+                                type="file"
+                                :label="tr('Attachment (PDF/Image)')" 
+                                wire:model="adjustmentFile" 
+                                error="adjustmentFile"
+                                :required="true"
+                                class="file:bg-[color:var(--accent-orange)]/10 file:text-[color:var(--accent-orange)] file:border-0 file:rounded-lg file:px-3 file:py-1.5 file:mr-4 file:font-bold hover:file:bg-[color:var(--accent-orange)]/15 cursor-pointer"
+                                x-effect="if (!show) $el.value = ''"
+                            />
+
+                            <div wire:loading wire:target="adjustmentFile" class="flex items-center gap-2 text-xs text-[color:var(--accent-orange)] font-bold bg-[color:var(--accent-orange)]/5 px-3 py-2 rounded-lg">
+                                <i class="fas fa-spinner fa-spin"></i> {{ tr('Uploading attachment...') }}
+                            </div>
+
+                            @if($adjustmentFile && $adjustmentFile instanceof \Livewire\Features\SupportFileUploads\TemporaryUploadedFile)
+                                <div class="flex items-center gap-2 text-[10px] text-[color:var(--success)] font-bold bg-[color:var(--success)]/10 px-3 py-1.5 rounded-lg border border-[color:var(--success)]/25">
+                                    <i class="fas fa-check-circle"></i>
+                                    {{ $adjustmentFile->getClientOriginalName() }}
+                                </div>
+                            @endif
                         </div>
-                    @endif
+
+                        <div class="md:col-span-2">
+                            <x-ui.textarea 
+                                id="adjustment_reason"
+                                :label="tr('Adjustment Reason')" 
+                                wire:model="adjustmentReason" 
+                                error="adjustmentReason"
+                                :required="true"
+                                rows="3"
+                                placeholder="{{ tr('Write a detailed reason for this adjustment (e.g. Compensation for weekend work, administrative decision #123)...') }}"
+                            />
+                        </div>
+                    </div>
+                @else
+                    <x-ui.input 
+                        id="adjustment_amount"
+                        type="number"
+                        step="0.5"
+                        :label="tr('Number of Days')" 
+                        wire:model.live="adjustmentAmount" 
+                        error="adjustmentAmount"
+                        :required="true"
+                        placeholder="0.0"
+                    />
                 @endif
             </div>
     

@@ -1,4 +1,7 @@
 <div x-data="{ tab: @entangle('tab') }">
+    @php
+        $lastEditableTab = auth()->user()->can('employees.documents.manage') ? 5 : 4;
+    @endphp
     {{-- Stepper Navigation --}}
     <div class="mb-6">
         <div class="stepper-scroll-wrap">
@@ -9,6 +12,8 @@
                 4 => tr('Personal Information'),
                 5 => tr('Documents'),
             ] as $stepNum => $stepLabel)
+                @continue($stepNum === 3 && !auth()->user()->can('employees.contracts.manage'))
+                @continue($stepNum === 5 && !auth()->user()->can('employees.documents.manage'))
                 <button
                     type="button"
                     @click="tab = {{ $stepNum }}"
@@ -87,9 +92,11 @@
             </div>
 
             {{-- Tab 3: Financial Information --}}
+            @can('employees.contracts.manage')
             <div x-show="tab === 3" x-transition>
                 @include('employees::livewire.employees.partials.tab-financial')
             </div>
+            @endcan
 
             {{-- Tab 4: Personal Information --}}
             <div x-show="tab === 4" x-transition>
@@ -97,15 +104,19 @@
             </div>
 
             {{-- Tab 5: Documents --}}
-            <div x-show="tab === 5" x-transition>
+            @can('employees.documents.manage')
+            <div x-show="tab === {{ $lastEditableTab }}" x-transition>
                 @include('employees::livewire.employees.partials.tab-documents-edit')
             </div>
+            @endcan
+
+
 
             {{-- Navigation Buttons --}}
             <div class="flex justify-between gap-3 pt-4 border-t border-gray-200">
                 <button
                     type="button"
-                    @click="tab--"
+                    wire:click="previousTab"
                     x-show="tab > 1"
                     class="px-6 py-3 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-2xl hover:bg-gray-50 hover:border-gray-400 hover:shadow-md active:scale-[0.97] transition-all duration-200 shadow-sm"
                 >
@@ -117,8 +128,8 @@
 
                 <button
                     type="button"
-                    @click="tab++"
-                    x-show="tab < 5"
+                    wire:click="nextTab"
+                    x-show="tab < {{ $lastEditableTab }}"
                     class="px-6 py-3 text-sm font-semibold text-white bg-[color:var(--accent-orange)] rounded-2xl hover:shadow-lg hover:brightness-95 active:scale-[0.97] transition-all duration-200 shadow-sm"
                 >
                     {{ tr('Next') }}
@@ -127,7 +138,7 @@
 
                 <button
                     type="submit"
-                    x-show="tab === 5"
+                    x-show="tab === {{ $lastEditableTab }}"
                     wire:loading.attr="disabled"
                     class="px-6 py-3 text-sm font-semibold text-white bg-[color:var(--accent-orange)] rounded-2xl hover:shadow-lg hover:brightness-95 active:scale-[0.97] transition-all duration-200 shadow-sm disabled:opacity-50"
                 >

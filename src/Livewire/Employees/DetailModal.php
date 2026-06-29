@@ -23,6 +23,11 @@ class DetailModal extends Component
 
        $user = Auth::user();
 
+        if ($readonly) {
+            abort_unless($user?->can('employees.view-details') || $user?->can('employees.edit'), 403);
+        } else {
+            abort_unless($user?->can('employees.edit'), 403);
+        }
         $allowed = null;
 
         // ✅ لو عندك restrictedBranchIds في User استخدمه
@@ -50,6 +55,19 @@ class DetailModal extends Component
         $this->employee = Employee::withoutGlobalScope('active_only')
             ->where('saas_company_id', $companyId)
             ->when(is_array($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
+            ->when(!$user?->can('employees.view.all'), function ($q) use ($user) {
+                $q->where(function ($qq) use ($user) {
+                    if ($user?->employee_id) {
+                        $qq->where('manager_id', $user->employee_id);
+                    }
+                    if ($user?->department_id) {
+                        $qq->orWhere('department_id', $user->department_id);
+                    }
+                    if (!$user?->employee_id && !$user?->department_id) {
+                        $qq->where('id', 0);
+                    }
+                });
+            })
             ->with(['department', 'jobTitle', 'documents', 'manager'])
             ->findOrFail($id);
 

@@ -195,34 +195,36 @@
             :required="true"
         />
 
-        {{-- Contract Type --}}
-        <x-ui.select
-            :label="tr('Contract Type')"
-            wire:model.live="contract_type"
-            error="contract_type"
-            :required="true"
-        >
-            <option value="">{{ tr('Select Contract Type') }}</option>
-            <option value="permanent"  {{ $contract_type == 'permanent' ? 'selected' : '' }}>{{ tr('Permanent') }}</option>
-            <option value="temporary"  {{ $contract_type == 'temporary' ? 'selected' : '' }}>{{ tr('Temporary') }}</option>
-            <option value="probation"  {{ $contract_type == 'probation' ? 'selected' : '' }}>{{ tr('Probation') }}</option>
-            <option value="contractor" {{ $contract_type == 'contractor' ? 'selected' : '' }}>{{ tr('Contractor') }}</option>
-            <option value="freelancer" {{ $contract_type == 'freelancer' ? 'selected' : '' }}>{{ tr('Freelancer') }}</option>
-        </x-ui.select>
+        @can('employees.contracts.manage')
+            {{-- Contract Type --}}
+            <x-ui.select
+                :label="tr('Contract Type')"
+                wire:model.live="contract_type"
+                error="contract_type"
+                :required="true"
+            >
+                <option value="">{{ tr('Select Contract Type') }}</option>
+                <option value="permanent"  {{ $contract_type == 'permanent' ? 'selected' : '' }}>{{ tr('Permanent') }}</option>
+                <option value="temporary"  {{ $contract_type == 'temporary' ? 'selected' : '' }}>{{ tr('Temporary') }}</option>
+                <option value="probation"  {{ $contract_type == 'probation' ? 'selected' : '' }}>{{ tr('Probation') }}</option>
+                <option value="contractor" {{ $contract_type == 'contractor' ? 'selected' : '' }}>{{ tr('Contractor') }}</option>
+                <option value="freelancer" {{ $contract_type == 'freelancer' ? 'selected' : '' }}>{{ tr('Freelancer') }}</option>
+            </x-ui.select>
 
-        {{-- Contract Duration --}}
-       <x-ui.input
-    id="contract_duration_input"
-    type="number"
-    :label="tr('Contract Duration (Months)')"
-    wire:model.live="contract_duration_months"
-    value="{{ $contract_duration_months }}"
-    error="contract_duration_months"
-    min="1"
-    :placeholder="($contract_type === 'permanent') ? '' : '12'"
-    :required="($contract_type && $contract_type !== 'permanent')"
-    :disabled="($contract_type === 'permanent')"
-/>
+            {{-- Contract Duration --}}
+            <x-ui.input
+                id="contract_duration_input"
+                type="number"
+                :label="tr('Contract Duration (Months)')"
+                wire:model.live="contract_duration_months"
+                value="{{ $contract_duration_months }}"
+                error="contract_duration_months"
+                min="1"
+                :placeholder="($contract_type === 'permanent') ? '' : '12'"
+                :required="($contract_type && $contract_type !== 'permanent')"
+                :disabled="($contract_type === 'permanent')"
+            />
+        @endcan
     </div>
 
 
