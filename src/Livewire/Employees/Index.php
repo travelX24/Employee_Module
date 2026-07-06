@@ -1333,8 +1333,80 @@ public function setViewMode(string $mode): void
                 return trim((string)$val);
             };
 
+            $getFriendlyErrorMessage = function(\Throwable $e) {
+                $msg = $e->getMessage();
+                $isAr = app()->getLocale() === 'ar';
+                
+                // Duplicate entries
+                if (stripos($msg, 'Duplicate entry') !== false) {
+                    if (stripos($msg, 'national_id') !== false) {
+                        return $isAr ? 'رقم الهوية الوطنية مكرر ومسجل لموظف آخر بالفعل' : 'National ID already exists for another employee';
+                    }
+                    if (stripos($msg, 'email_work') !== false) {
+                        return $isAr ? 'البريد الإلكتروني للعمل مكرر ومسجل لموظف آخر بالفعل' : 'Work email already exists for another employee';
+                    }
+                    if (stripos($msg, 'mobile') !== false) {
+                        return $isAr ? 'رقم الجوال مكرر ومسجل لموظف آخر بالفعل' : 'Mobile number already exists for another employee';
+                    }
+                    if (stripos($msg, 'employee_no') !== false) {
+                        return $isAr ? 'رقم الموظف مكرر ومسجل بالفعل' : 'Employee number already exists';
+                    }
+                    return $isAr ? 'يوجد حقل مكرر ومسجل مسبقاً في النظام' : 'Duplicate entry found in database';
+                }
+                
+                // Null column constraint violations
+                if (stripos($msg, 'cannot be null') !== false || stripos($msg, 'violates not-null constraint') !== false) {
+                    preg_match("/Column '(.*?)'/i", $msg, $matches);
+                    $column = $matches[1] ?? '';
+                    if (empty($column)) {
+                        preg_match("/column \"(.*?)\"/i", $msg, $matches);
+                        $column = $matches[1] ?? '';
+                    }
+                    
+                    if ($column) {
+                        $columnNames = [
+                            'name_ar' => $isAr ? 'الاسم باللغة العربية' : 'Name AR',
+                            'name_en' => $isAr ? 'الاسم باللغة الإنجليزية' : 'Name EN',
+                            'national_id' => $isAr ? 'رقم الهوية/الإقامة' : 'National ID',
+                            'nationality' => $isAr ? 'الجنسية' : 'Nationality',
+                            'birth_date' => $isAr ? 'تاريخ الميلاد' : 'Birth Date',
+                            'gender' => $isAr ? 'الجنس' : 'Gender',
+                            'marital_status' => $isAr ? 'الحالة الاجتماعية' : 'Marital Status',
+                            'mobile' => $isAr ? 'رقم الجوال' : 'Mobile',
+                            'email_work' => $isAr ? 'البريد الإلكتروني للعمل' : 'Work Email',
+                            'emergency_contact_name' => $isAr ? 'اسم جهة اتصال الطوارئ' : 'Emergency Contact Name',
+                            'emergency_contact_phone' => $isAr ? 'رقم هاتف الطوارئ' : 'Emergency Contact Phone',
+                            'emergency_contact_relation' => $isAr ? 'صلة قرابة جهة الطوارئ' : 'Emergency Relation',
+                            'city' => $isAr ? 'المدينة' : 'City',
+                            'department_id' => $isAr ? 'القسم الرئيسي' : 'Department',
+                            'job_title_id' => $isAr ? 'المسمى الوظيفي' : 'Job Title',
+                            'hired_at' => $isAr ? 'تاريخ التوظيف' : 'Hiring Date',
+                            'contract_type' => $isAr ? 'نوع العقد' : 'Contract Type',
+                        ];
+                        $friendlyCol = $columnNames[$column] ?? $column;
+                        return $isAr ? "الحقل المسمى ($friendlyCol) مطلوب ولا يمكن تركه فارغاً" : "The field ($friendlyCol) is required and cannot be empty";
+                    }
+                }
+                
+                // Foreign key constraint violations
+                if (stripos($msg, 'foreign key constraint fails') !== false) {
+                    if (stripos($msg, 'department_id') !== false) {
+                        return $isAr ? 'القسم المحدد غير موجود بقاعدة البيانات' : 'The selected Department was not found';
+                    }
+                    if (stripos($msg, 'job_title_id') !== false) {
+                        return $isAr ? 'المسمى الوظيفي المحدد غير موجود بقاعدة البيانات' : 'The selected Job Title was not found';
+                    }
+                    if (stripos($msg, 'manager_id') !== false) {
+                        return $isAr ? 'المدير المباشر المحدد غير موجود بقاعدة البيانات' : 'The selected Manager was not found';
+                    }
+                }
+
+                // General fallback
+                return $isAr ? "خطأ في البيانات أو قاعدة البيانات: " . substr($msg, 0, 100) : "Database save failed: " . substr($msg, 0, 100);
+            };
+
             $processRow = function(array $data) use (
-                $clean, $parseDate, $extractCode,
+                $clean, $parseDate, $extractCode, $getFriendlyErrorMessage,
                 $companyId, $defaultBranchId, $defaultAnnualLeaveDays,
                 $forcedDeptId, $forcedManagerId,
                 $deptMap, $jobMap, $managerMap, $existingDataMap,
@@ -1375,26 +1447,74 @@ public function setViewMode(string $mode): void
                 ];
 
                 // --- Validations ---
+                $isAr = app()->getLocale() === 'ar';
+
                 if (empty($rowRaw['name_ar'])) {
-                    $this->importValidationErrors[] = $this->trp('Row :row: Name AR is required.', ['row' => $rowCount]);
+                    $this->importValidationErrors[] = $isAr
+                        ? "الصف {$rowCount}: الاسم باللغة العربية مطلوب ولا يمكن تركه فارغاً."
+                        : "Row {$rowCount}: Name AR is required and cannot be empty.";
                     return;
                 }
                 if (empty($rowRaw['national_id'])) {
-                    $this->importValidationErrors[] = $this->trp('Row :row: National ID is required.', ['row' => $rowCount]);
+                    $this->importValidationErrors[] = $isAr
+                        ? "الصف {$rowCount}: رقم الهوية/الإقامة مطلوب ولا يمكن تركه فارغاً."
+                        : "Row {$rowCount}: National ID is required and cannot be empty.";
+                    return;
+                }
+                if (empty($rowRaw['mobile'])) {
+                    $this->importValidationErrors[] = $isAr
+                        ? "الصف {$rowCount}: رقم الهاتف (الجوال) مطلوب ولا يمكن تركه فارغاً."
+                        : "Row {$rowCount}: Mobile number is required and cannot be empty.";
                     return;
                 }
 
+                // Check invalid email format
+                if (!empty($rowRaw['email_work']) && !filter_var($rowRaw['email_work'], FILTER_VALIDATE_EMAIL)) {
+                    $this->importValidationErrors[] = $isAr
+                        ? "الصف {$rowCount}: البريد الإلكتروني للعمل غير صالح."
+                        : "Row {$rowCount}: Work email is invalid.";
+                    return;
+                }
+                if (!empty($rowRaw['email_personal']) && !filter_var($rowRaw['email_personal'], FILTER_VALIDATE_EMAIL)) {
+                    $this->importValidationErrors[] = $isAr
+                        ? "الصف {$rowCount}: البريد الإلكتروني الشخصي غير صالح."
+                        : "Row {$rowCount}: Personal email is invalid.";
+                    return;
+                }
+
+                // Check invalid dates
+                $checkDate = function($rawVal, $parsedVal, $fieldNameAr, $fieldNameEn) use ($rowCount, $isAr) {
+                    $rawClean = trim((string)$rawVal);
+                    if (!empty($rawClean) && empty($parsedVal)) {
+                        $this->importValidationErrors[] = $isAr
+                            ? "الصف {$rowCount}: صيغة التاريخ غير صحيحة في حقل ({$fieldNameAr}). يرجى استخدام صيغة YYYY-MM-DD"
+                            : "Row {$rowCount}: Invalid date format in ({$fieldNameEn}). Please use YYYY-MM-DD format";
+                        return false;
+                    }
+                    return true;
+                };
+
+                if (!$checkDate($data[3] ?? '', $rowRaw['national_id_expiry'], 'تاريخ انتهاء الهوية', 'National ID Expiry')) return;
+                if (!$checkDate($data[5] ?? '', $rowRaw['birth_date'], 'تاريخ الميلاد', 'Birth Date')) return;
+                if (!$checkDate($data[16] ?? '', $rowRaw['hired_at'], 'تاريخ التوظيف', 'Hiring Date')) return;
+
                 // Check Duplicates
                 if (isset($existingDataMap['national_ids'][$rowRaw['national_id']])) {
-                    $this->importValidationErrors[] = $this->trp('Row :row: Duplicate National ID (:val).', ['row' => $rowCount, 'val' => $rowRaw['national_id']]);
+                    $this->importValidationErrors[] = $isAr
+                        ? "الصف {$rowCount}: رقم الهوية/الإقامة مكرر ومسجل لموظف آخر بالفعل ({$rowRaw['national_id']})."
+                        : "Row {$rowCount}: Duplicate National ID ({$rowRaw['national_id']}).";
                     return;
                 }
                 if ($rowRaw['email_work'] && isset($existingDataMap['emails'][strtolower($rowRaw['email_work'])])) {
-                    $this->importValidationErrors[] = $this->trp('Row :row: Email already exists (:val).', ['row' => $rowCount, 'val' => $rowRaw['email_work']]);
+                    $this->importValidationErrors[] = $isAr
+                        ? "الصف {$rowCount}: البريد الإلكتروني للعمل مكرر ومسجل لموظف آخر بالفعل ({$rowRaw['email_work']})."
+                        : "Row {$rowCount}: Work email already exists ({$rowRaw['email_work']}).";
                     return;
                 }
                 if ($rowRaw['mobile'] && isset($existingDataMap['mobiles'][$rowRaw['mobile']])) {
-                    $this->importValidationErrors[] = $this->trp('Row :row: Mobile already exists (:val).', ['row' => $rowCount, 'val' => $rowRaw['mobile']]);
+                    $this->importValidationErrors[] = $isAr
+                        ? "الصف {$rowCount}: رقم الجوال مكرر ومسجل لموظف آخر بالفعل ({$rowRaw['mobile']})."
+                        : "Row {$rowCount}: Mobile number already exists ({$rowRaw['mobile']}).";
                     return;
                 }
 
@@ -1410,15 +1530,28 @@ public function setViewMode(string $mode): void
                 $jobId = $getMappedId($rowRaw['job_code_raw'], $jobMap);
                 $managerId = $getMappedId($rowRaw['manager_raw'], $managerMap);
 
+                $hasMapErrors = false;
                 if (!empty($rowRaw['dept_code_raw']) && !$deptId) {
-                    $this->importValidationErrors[] = $this->trp('Row :row: Main Department ":val" not found.', ['row' => $rowCount, 'val' => $rowRaw['dept_code_raw']]);
+                    $this->importValidationErrors[] = $isAr
+                        ? "الصف {$rowCount}: القسم الرئيسي ({$rowRaw['dept_code_raw']}) غير موجود بقاعدة البيانات."
+                        : "Row {$rowCount}: Main Department \"{$rowRaw['dept_code_raw']}\" not found.";
+                    $hasMapErrors = true;
                 }
                 if (!empty($rowRaw['sub_dept_code_raw']) && !$subDeptId) {
-                    $this->importValidationErrors[] = $this->trp('Row :row: Sub Department ":val" not found.', ['row' => $rowCount, 'val' => $rowRaw['sub_dept_code_raw']]);
+                    $this->importValidationErrors[] = $isAr
+                        ? "الصف {$rowCount}: القسم الفرعي ({$rowRaw['sub_dept_code_raw']}) غير موجود بقاعدة البيانات."
+                        : "Row {$rowCount}: Sub Department \"{$rowRaw['sub_dept_code_raw']}\" not found.";
+                    $hasMapErrors = true;
                 }
                 if (!empty($rowRaw['job_code_raw']) && !$jobId) {
-                    $this->importValidationErrors[] = $this->trp('Row :row: Job Title ":val" not found.', ['row' => $rowCount, 'val' => $rowRaw['job_code_raw']]);
-                    if (empty($this->importValidationErrors)) return; // Stop if errors
+                    $this->importValidationErrors[] = $isAr
+                        ? "الصف {$rowCount}: المسمى الوظيفي ({$rowRaw['job_code_raw']}) غير موجود بقاعدة البيانات."
+                        : "Row {$rowCount}: Job Title \"{$rowRaw['job_code_raw']}\" not found.";
+                    $hasMapErrors = true;
+                }
+
+                if ($hasMapErrors) {
+                    return; // Stop if department or job title is not resolved
                 }
 
                 // Field Mappings
@@ -1472,7 +1605,9 @@ public function setViewMode(string $mode): void
                     ]);
                     $importedCount++;
                 } catch (\Exception $e) {
-                    $this->importValidationErrors[] = $this->trp('Row :row: Failed to save. Error: :err', ['row' => $rowCount, 'err' => substr($e->getMessage(), 0, 80)]);
+                    $this->importValidationErrors[] = $isAr
+                        ? "الصف {$rowCount}: فشل حفظ البيانات. السبب: " . $getFriendlyErrorMessage($e)
+                        : "Row {$rowCount}: Failed to save. Reason: " . $getFriendlyErrorMessage($e);
                 }
             };
 
