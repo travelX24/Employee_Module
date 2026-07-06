@@ -511,7 +511,7 @@
                                 <div class="flex items-start gap-3 flex-1 min-w-0">
                                     <div class="w-12 h-12 rounded-xl flex-shrink-0 overflow-hidden {{ $emp->documents->firstWhere('type', 'personal_photo') ? 'border border-gray-200' : 'bg-gradient-to-br from-[color:var(--brand-from)] via-[color:var(--brand-via)] to-[color:var(--brand-to)] flex items-center justify-center' }}">
                                         @if($photo = $emp->documents->firstWhere('type', 'personal_photo'))
-                                            <img src="{{ asset('storage/' . $photo->file_path) }}" alt="{{ $primaryName }}" class="w-full h-full object-cover">
+                                            <img src="{{ \Illuminate\Support\Facades\Storage::url($photo->file_path) }}" alt="{{ $primaryName }}" class="w-full h-full object-cover">
                                         @else
                                             <i class="fas fa-user text-white text-lg"></i>
                                         @endif

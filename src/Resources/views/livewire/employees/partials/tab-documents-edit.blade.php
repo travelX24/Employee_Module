@@ -10,7 +10,7 @@
                 maxKb="2048"
                 accept="image/*"
                 hint="{{ tr('JPG/PNG — max 2MB') }}"
-                :existingImage="$existing_photo ? asset('storage/' . $existing_photo->file_path) : null"
+                :existingImage="$existing_photo ? \Illuminate\Support\Facades\Storage::url($existing_photo->file_path) : null"
             />
         </div>
 
@@ -25,7 +25,7 @@
                     maxKb="2048"
                     accept="image/*"
                     hint="{{ tr('JPG/PNG — max 2MB') }}"
-                    :existingImage="$existing_national_id_photo ? asset('storage/' . $existing_national_id_photo->file_path) : null"
+                    :existingImage="$existing_national_id_photo ? \Illuminate\Support\Facades\Storage::url($existing_national_id_photo->file_path) : null"
                 />
             </div>
 
@@ -38,7 +38,7 @@
                     maxKb="5120"
                     accept=".pdf,.jpg,.png,.jpeg"
                     hint="{{ tr('PDF/JPG/PNG — max 5MB') }}"
-                    :existingFile="$existing_qualification ? ['original_name' => $existing_qualification->title ?? basename($existing_qualification->file_path), 'url' => asset('storage/' . $existing_qualification->file_path)] : null"
+                    :existingFile="$existing_qualification ? ['original_name' => $existing_qualification->title ?? basename($existing_qualification->file_path), 'url' => \Illuminate\Support\Facades\Storage::url($existing_qualification->file_path)] : null"
                 />
             </div>
         </div>

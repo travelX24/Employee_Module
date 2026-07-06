@@ -1620,12 +1620,18 @@ public function setViewMode(string $mode): void
                         $processRow($rowData);
                     }
                 } else {
-                    $tempFile = fopen($path, 'r');
-                    fgetcsv($tempFile); // Skip header
-                    while (($data = fgetcsv($tempFile)) !== FALSE) {
-                        $processRow($data);
+                    $tempDiskPath = $this->importFile->store('temp-imports', 'local');
+                    $stream = \Illuminate\Support\Facades\Storage::disk('local')->readStream($tempDiskPath);
+
+                    if ($stream) {
+                        fgetcsv($stream); // Skip header
+                        while (($data = fgetcsv($stream)) !== FALSE) {
+                            $processRow($data);
+                        }
+                        fclose($stream);
                     }
-                    fclose($tempFile);
+
+                    \Illuminate\Support\Facades\Storage::disk('local')->delete($tempDiskPath);
                 }
             });
 

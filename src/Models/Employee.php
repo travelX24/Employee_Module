@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Athka\Saas\Models\Branch;
+use Athka\Employees\Observers\EmployeeCacheObserver;
 
 class Employee extends Model
 {
@@ -19,6 +20,8 @@ class Employee extends Model
 
     protected static function booted()
     {
+        static::observe(EmployeeCacheObserver::class);
+
         static::creating(function ($employee) {
             if (!$employee->employee_no) {
                 // Handle both formats: EMP-XXX and company_id-EMP-XXX
