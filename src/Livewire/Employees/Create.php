@@ -642,6 +642,13 @@ class Create extends Component
             'manager_id' => ['nullable', 'exists:employees,id'],
             'hired_at' => ['required', 'date'],
 
+            'contract_type' => ['required', Rule::in(['permanent', 'temporary', 'probation', 'contractor', 'freelancer'])],
+            'contract_duration_months' => Rule::when(
+                ($this->contract_type !== '' && $this->contract_type !== 'permanent'),
+                ['required', 'integer', 'min:1'],
+                ['nullable', 'integer', 'min:1']
+            ),
+
             'sub_department_id' => ['nullable', 'exists:departments,id'],
         ];
     }
@@ -653,12 +660,6 @@ class Create extends Component
         }
 
         return [
-            'contract_type' => ['required', Rule::in(['permanent', 'temporary', 'probation', 'contractor', 'freelancer'])],
-            'contract_duration_months' => Rule::when(
-                ($this->contract_type !== '' && $this->contract_type !== 'permanent'),
-                ['required', 'integer', 'min:1'],
-                ['nullable', 'integer', 'min:1']
-            ),
             'basic_salary' => ['required', 'numeric', 'min:0'],
             'allowance' => ['nullable', 'numeric', 'min:0'],
             'annual_leave_days' => ['nullable', 'integer', 'min:0'],
