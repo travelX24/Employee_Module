@@ -1022,6 +1022,7 @@ class EmployeeController extends Controller
             'from_time'  => ['nullable', 'date_format:H:i'],
             'to_time'    => ['nullable', 'date_format:H:i'],
             'leave_policy_id' => ['nullable', 'integer'],
+            'work_schedule_period_id' => ['nullable', 'integer'],
         ]);
 
         // لو واحد موجود والثاني لا
@@ -1077,6 +1078,9 @@ class EmployeeController extends Controller
         $leavePolicyId = $validated['leave_policy_id'] ?? null;
         $companyId = (int) ($user->saas_company_id ?? 0);
 
+        $policy = null;
+        $pSettings = [];
+
         // Fetch policy details if ID is provided
         if ($leavePolicyId) {
             $policy = DB::table('leave_policies')
@@ -1114,6 +1118,7 @@ class EmployeeController extends Controller
                 }
 
                 $pSettings = is_string($policy->settings) ? json_decode($policy->settings, true) : ($policy->settings ?? []);
+                $pSettings = is_array($pSettings) ? $pSettings : [];
 
                 // Check Backdating
                 $allowRetro = (bool)($pSettings['allow_retroactive'] ?? false);
@@ -1188,16 +1193,23 @@ class EmployeeController extends Controller
         if (in_array('reason', $cols, true))     $data['reason'] = $validated['reason'] ?? '';
         if (in_array('start_date', $cols, true)) $data['start_date'] = $validated['start_date'];
         if (in_array('end_date', $cols, true))   $data['end_date'] = $validated['end_date'];
+        $duration = $this->prepareMobileLeaveDuration($request, $validated, $cols, $companyId, (int) $value, $policy, $minutes);
+        if (!($duration['ok'] ?? false)) {
+            return response()->json([
+                'ok' => false,
+                'error' => $duration['error'] ?? 'invalid_leave_duration',
+                'message' => $duration['message'] ?? 'Invalid leave duration.',
+            ], 422);
+        }
 
-        if ($request->filled('from_time') && in_array('from_time', $cols, true)) $data['from_time'] = $validated['from_time'];
-        if ($request->filled('to_time') && in_array('to_time', $cols, true))     $data['to_time'] = $validated['to_time'];
-        if (!is_null($minutes) && in_array('minutes', $cols, true))              $data['minutes'] = $minutes;
+        $data = array_merge($data, $duration['data'] ?? []);
+        $requestedDaysOverride = $duration['requested_days'] ?? null;
 
         // ✅ Calculate requested_days
         if (in_array('requested_days', $cols, true)) {
             $start = Carbon::parse($validated['start_date']);
             $end = Carbon::parse($validated['end_date']);
-            $requestedDays = $this->computeRequestedDaysGeneric($companyId, $leavePolicyId, $start, $end);
+            $requestedDays = $requestedDaysOverride ?? $this->computeRequestedDaysGeneric($companyId, $leavePolicyId, $start, $end);
             $data['requested_days'] = $requestedDays;
 
             if ($leavePolicyId) {
@@ -1764,6 +1776,119 @@ class EmployeeController extends Controller
         ], 201);
     }
 
+    protected function prepareMobileLeaveDuration(Request $request, array $validated, array $cols, int $companyId, int $employeeId, ?object $policy, ?int $rawMinutes): array
+    {
+        $settings = $policy ? (is_string($policy->settings) ? json_decode($policy->settings, true) : ($policy->settings ?? [])) : [];
+        $settings = is_array($settings) ? $settings : [];
+        $durationUnit = (string) ($settings['duration_unit'] ?? 'full_day');
+        $durationUnit = in_array($durationUnit, ['full_day', 'half_day', 'hours'], true) ? $durationUnit : 'full_day';
+
+        $data = [];
+        if (in_array('duration_unit', $cols, true)) {
+            $data['duration_unit'] = $durationUnit;
+        }
+
+        if ($durationUnit === 'half_day') {
+            $start = Carbon::parse($validated['start_date'])->startOfDay();
+            $end = Carbon::parse($validated['end_date'])->startOfDay();
+            if (!$start->isSameDay($end)) {
+                return ['ok' => false, 'error' => 'half_day_single_date_required', 'message' => function_exists('tr') ? tr('Half-day leave must be on one date only.') : 'Half-day leave must be on one date only.'];
+            }
+
+            $resolved = $this->resolveMobileLeaveWorkPeriod($companyId, $employeeId, $start, (int) ($validated['work_schedule_period_id'] ?? 0), $validated['from_time'] ?? null, $validated['to_time'] ?? null);
+            if (!($resolved['ok'] ?? false)) {
+                return $resolved;
+            }
+
+            $period = $resolved['period'];
+            if (in_array('half_day_part', $cols, true)) $data['half_day_part'] = 'work_period';
+            if (in_array('from_time', $cols, true)) $data['from_time'] = $period['start_time'];
+            if (in_array('to_time', $cols, true)) $data['to_time'] = $period['end_time'];
+            if (in_array('minutes', $cols, true)) $data['minutes'] = $period['minutes'];
+            if (in_array('work_schedule_period_id', $cols, true)) $data['work_schedule_period_id'] = $period['id'];
+
+            return ['ok' => true, 'data' => $data, 'requested_days' => 0.5];
+        }
+
+        if ($request->filled('work_schedule_period_id')) {
+            return ['ok' => false, 'error' => 'period_leave_not_allowed', 'message' => function_exists('tr') ? tr('This leave type does not allow selecting a work period.') : 'This leave type does not allow selecting a work period.'];
+        }
+
+        if ($request->filled('from_time') || $request->filled('to_time')) {
+            if ($durationUnit !== 'hours') {
+                return ['ok' => false, 'error' => 'partial_leave_not_allowed', 'message' => function_exists('tr') ? tr('This leave type does not allow partial-day requests.') : 'This leave type does not allow partial-day requests.'];
+            }
+
+            if (in_array('from_time', $cols, true)) $data['from_time'] = $validated['from_time'];
+            if (in_array('to_time', $cols, true)) $data['to_time'] = $validated['to_time'];
+            if (!is_null($rawMinutes) && in_array('minutes', $cols, true)) $data['minutes'] = $rawMinutes;
+        }
+
+        return ['ok' => true, 'data' => $data, 'requested_days' => null];
+    }
+
+    protected function resolveMobileLeaveWorkPeriod(int $companyId, int $employeeId, Carbon $date, int $periodId = 0, ?string $fromTime = null, ?string $toTime = null): array
+    {
+        if (!class_exists(\Athka\SystemSettings\Services\WorkScheduleService::class) || !class_exists(\Athka\Employees\Models\Employee::class)) {
+            return ['ok' => false, 'error' => 'work_schedule_unavailable', 'message' => 'Work schedule service is unavailable.'];
+        }
+
+        $employee = \Athka\Employees\Models\Employee::find($employeeId);
+        if (!$employee) {
+            return ['ok' => false, 'error' => 'employee_not_found', 'message' => 'Employee not found.'];
+        }
+
+        $service = app(\Athka\SystemSettings\Services\WorkScheduleService::class);
+        $dateStr = $date->toDateString();
+        $schedule = $service->getEffectiveSchedule($companyId, $employee, $dateStr);
+        $holidays = $service->getHolidays($companyId, $dateStr, $dateStr);
+        $metrics = $service->getMetricsForDate($dateStr, $schedule, $holidays, $employee, [
+            'leaves' => collect(),
+            'missions' => collect(),
+            'permissions' => collect(),
+        ]);
+
+        $periods = collect($metrics['periods'] ?? [])->map(function ($period) use ($date) {
+            $start = substr((string) ($period['start_time'] ?? ''), 0, 5);
+            $end = substr((string) ($period['end_time'] ?? ''), 0, 5);
+            $isNight = (bool) ($period['is_night_shift'] ?? false);
+            return [
+                'id' => (int) ($period['id'] ?? 0),
+                'start_time' => $start,
+                'end_time' => $end,
+                'minutes' => $this->mobilePeriodMinutes($date, $start, $end, $isNight),
+            ];
+        })->filter(fn ($period) => $period['id'] > 0 && $period['start_time'] !== '' && $period['end_time'] !== '')->values();
+
+        if ($periods->count() <= 1) {
+            return ['ok' => false, 'error' => 'period_leave_requires_multiple_periods', 'message' => function_exists('tr') ? tr('Half-day leave is only available when the employee schedule has more than one work period.') : 'Half-day leave is only available when the employee schedule has more than one work period.'];
+        }
+
+        $period = $periodId > 0
+            ? $periods->first(fn ($p) => (int) $p['id'] === $periodId)
+            : $periods->first(fn ($p) => $fromTime && $toTime && $p['start_time'] === substr($fromTime, 0, 5) && $p['end_time'] === substr($toTime, 0, 5));
+
+        if (!$period) {
+            return ['ok' => false, 'error' => 'invalid_work_period', 'message' => function_exists('tr') ? tr('Selected work period is not available for this employee.') : 'Selected work period is not available for this employee.'];
+        }
+
+        return ['ok' => true, 'period' => $period];
+    }
+
+    protected function mobilePeriodMinutes(Carbon $date, string $start, string $end, bool $isNight): int
+    {
+        if ($start === '' || $end === '') {
+            return 0;
+        }
+
+        $startAt = Carbon::parse($date->toDateString() . ' ' . $start);
+        $endAt = Carbon::parse($date->toDateString() . ' ' . $end);
+        if ($isNight || $endAt->lte($startAt)) {
+            $endAt->addDay();
+        }
+
+        return max(0, (int) $startAt->diffInMinutes($endAt, false));
+    }
     protected function computeRequestedDaysGeneric($companyId, $leavePolicyId, Carbon $start, Carbon $end): float
     {
         $policy = $leavePolicyId ? DB::table('leave_policies')->where('id', $leavePolicyId)->first() : null;
@@ -1905,6 +2030,7 @@ class EmployeeController extends Controller
             'from_time'  => ['nullable', 'date_format:H:i'],
             'to_time'    => ['nullable', 'date_format:H:i'],
             'leave_policy_id' => ['nullable', 'integer'],
+            'work_schedule_period_id' => ['nullable', 'integer'],
         ]);
 
         if ($request->filled('from_time') xor $request->filled('to_time')) {
@@ -1935,30 +2061,42 @@ class EmployeeController extends Controller
         $leavePolicyId = $validated['leave_policy_id'] ?? $leaveRequest->leave_policy_id;
         $companyId = (int) ($user->saas_company_id ?? 0);
 
+        $policy = $leavePolicyId
+            ? DB::table('leave_policies')->where('id', $leavePolicyId)->where('company_id', $companyId)->first()
+            : null;
+
+        if (!$policy) {
+            return response()->json([
+                'ok'      => false,
+                'error'   => 'policy_not_found',
+                'message' => function_exists('tr') ? tr('Leave policy not found.') : 'Leave policy not found.',
+            ], 404);
+        }
+
         if (isset($validated['leave_policy_id'])) {
-            $policy = DB::table('leave_policies')
-                ->where('id', $leavePolicyId)
-                ->where('company_id', $companyId)
-                ->first();
-            
-            if ($policy) {
-                if (in_array('leave_policy_id', $cols, true)) $data['leave_policy_id'] = $policy->id;
-                if (in_array('policy_year_id', $cols, true)) $data['policy_year_id'] = $policy->policy_year_id;
-            }
+            if (in_array('leave_policy_id', $cols, true)) $data['leave_policy_id'] = $policy->id;
+            if (in_array('policy_year_id', $cols, true)) $data['policy_year_id'] = $policy->policy_year_id;
         }
 
         if (array_key_exists('reason', $validated) && in_array('reason', $cols, true)) $data['reason'] = $validated['reason'];
         if (in_array('start_date', $cols, true)) $data['start_date'] = $validated['start_date'];
         if (in_array('end_date', $cols, true))   $data['end_date'] = $validated['end_date'];
+        $duration = $this->prepareMobileLeaveDuration($request, $validated, $cols, $companyId, (int) $value, $policy, $minutes);
+        if (!($duration['ok'] ?? false)) {
+            return response()->json([
+                'ok' => false,
+                'error' => $duration['error'] ?? 'invalid_leave_duration',
+                'message' => $duration['message'] ?? 'Invalid leave duration.',
+            ], 422);
+        }
 
-        if ($request->filled('from_time') && in_array('from_time', $cols, true)) $data['from_time'] = $validated['from_time'];
-        if ($request->filled('to_time') && in_array('to_time', $cols, true))     $data['to_time'] = $validated['to_time'];
-        if (!is_null($minutes) && in_array('minutes', $cols, true))              $data['minutes'] = $minutes;
+        $data = array_merge($data, $duration['data'] ?? []);
+        $requestedDaysOverride = $duration['requested_days'] ?? null;
 
         if (in_array('requested_days', $cols, true)) {
             $start = Carbon::parse($validated['start_date']);
             $end = Carbon::parse($validated['end_date']);
-            $data['requested_days'] = $this->computeRequestedDaysGeneric($companyId, $leavePolicyId, $start, $end);
+            $data['requested_days'] = $requestedDaysOverride ?? $this->computeRequestedDaysGeneric($companyId, $leavePolicyId, $start, $end);
         }
 
         if (in_array('updated_at', $cols, true)) $data['updated_at'] = $now;
