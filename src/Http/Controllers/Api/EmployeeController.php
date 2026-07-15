@@ -1023,6 +1023,7 @@ class EmployeeController extends Controller
             'to_time'    => ['nullable', 'date_format:H:i'],
             'leave_policy_id' => ['nullable', 'integer'],
             'work_schedule_period_id' => ['nullable', 'integer'],
+            'request_duration_unit' => ['nullable', 'in:full_day,half_day'],
         ]);
 
         // لو واحد موجود والثاني لا
@@ -1783,12 +1784,21 @@ class EmployeeController extends Controller
         $durationUnit = (string) ($settings['duration_unit'] ?? 'full_day');
         $durationUnit = in_array($durationUnit, ['full_day', 'half_day', 'hours'], true) ? $durationUnit : 'full_day';
 
+        $requestedDurationUnit = (string) $request->input('request_duration_unit', 'full_day');
+        $requestedDurationUnit = in_array($requestedDurationUnit, ['full_day', 'half_day'], true) ? $requestedDurationUnit : 'full_day';
+        $wantsHalfDay = $durationUnit === 'half_day' && (
+            $requestedDurationUnit === 'half_day'
+            || $request->filled('work_schedule_period_id')
+            || $request->filled('from_time')
+            || $request->filled('to_time')
+        );
+
         $data = [];
         if (in_array('duration_unit', $cols, true)) {
-            $data['duration_unit'] = $durationUnit;
+            $data['duration_unit'] = $wantsHalfDay ? 'half_day' : ($durationUnit === 'hours' ? 'hours' : 'full_day');
         }
 
-        if ($durationUnit === 'half_day') {
+        if ($wantsHalfDay) {
             $start = Carbon::parse($validated['start_date'])->startOfDay();
             $end = Carbon::parse($validated['end_date'])->startOfDay();
             if (!$start->isSameDay($end)) {
@@ -1808,6 +1818,10 @@ class EmployeeController extends Controller
             if (in_array('work_schedule_period_id', $cols, true)) $data['work_schedule_period_id'] = $period['id'];
 
             return ['ok' => true, 'data' => $data, 'requested_days' => 0.5];
+        }
+
+        if ($requestedDurationUnit === 'half_day' && $durationUnit !== 'half_day') {
+            return ['ok' => false, 'error' => 'period_leave_not_allowed', 'message' => function_exists('tr') ? tr('This leave type does not allow selecting a work period.') : 'This leave type does not allow selecting a work period.'];
         }
 
         if ($request->filled('work_schedule_period_id')) {
@@ -2031,6 +2045,7 @@ class EmployeeController extends Controller
             'to_time'    => ['nullable', 'date_format:H:i'],
             'leave_policy_id' => ['nullable', 'integer'],
             'work_schedule_period_id' => ['nullable', 'integer'],
+            'request_duration_unit' => ['nullable', 'in:full_day,half_day'],
         ]);
 
         if ($request->filled('from_time') xor $request->filled('to_time')) {
