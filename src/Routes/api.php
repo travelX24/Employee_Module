@@ -11,19 +11,19 @@ Route::middleware(['api', 'auth:sanctum'])
         Route::get('/work-schedule', [EmployeeController::class, 'workSchedule'])->name('work_schedule');
         Route::get('/leave-types', [EmployeeController::class, 'leaveTypes'])->name('leave_types');
         Route::get('/leave-requests', [EmployeeController::class, 'leaveRequests'])->name('leave_requests');
-        Route::post('/leave-requests', [EmployeeController::class, 'createLeaveRequest'])->name('leave_requests.create');
-        Route::put('/leave-requests/{id}', [EmployeeController::class, 'updateLeaveRequest'])->name('leave_requests.update');
-        Route::delete('/leave-requests/{id}', [EmployeeController::class, 'deleteLeaveRequest'])->name('leave_requests.delete');
+        Route::post('/leave-requests', [EmployeeController::class, 'createLeaveRequest'])->middleware('throttle:self-service-action')->name('leave_requests.create');
+        Route::put('/leave-requests/{id}', [EmployeeController::class, 'updateLeaveRequest'])->middleware('throttle:self-service-action')->name('leave_requests.update');
+        Route::delete('/leave-requests/{id}', [EmployeeController::class, 'deleteLeaveRequest'])->middleware('throttle:self-service-action')->name('leave_requests.delete');
 
         Route::get('/permission-requests', [EmployeeController::class, 'permissionRequests'])->name('permission_requests');
         Route::get('/permission-policy', [EmployeeController::class, 'permissionPolicy'])->name('permission_policy');
-        Route::post('/permission-requests', [EmployeeController::class, 'createPermissionRequest'])->name('permission_requests.create');
-        Route::put('/permission-requests/{id}', [EmployeeController::class, 'updatePermissionRequest'])->name('permission_requests.update');
-        Route::delete('/permission-requests/{id}', [EmployeeController::class, 'deletePermissionRequest'])->name('permission_requests.delete');
+        Route::post('/permission-requests', [EmployeeController::class, 'createPermissionRequest'])->middleware('throttle:self-service-action')->name('permission_requests.create');
+        Route::put('/permission-requests/{id}', [EmployeeController::class, 'updatePermissionRequest'])->middleware('throttle:self-service-action')->name('permission_requests.update');
+        Route::delete('/permission-requests/{id}', [EmployeeController::class, 'deletePermissionRequest'])->middleware('throttle:self-service-action')->name('permission_requests.delete');
 
         Route::get('/mission-requests', [EmployeeController::class, 'missionRequests'])->name('mission_requests');
-        Route::post('/mission-requests', [EmployeeController::class, 'createMissionRequest'])->name('mission_requests.create');
-        Route::put('/mission-requests/{id}', [EmployeeController::class, 'updateMissionRequest'])->name('mission_requests.update');
-        Route::delete('/mission-requests/{id}', [EmployeeController::class, 'deleteMissionRequest'])->name('mission_requests.delete');
+        Route::post('/mission-requests', [EmployeeController::class, 'createMissionRequest'])->middleware('throttle:self-service-action')->name('mission_requests.create');
+        Route::put('/mission-requests/{id}', [EmployeeController::class, 'updateMissionRequest'])->middleware('throttle:self-service-action')->name('mission_requests.update');
+        Route::delete('/mission-requests/{id}', [EmployeeController::class, 'deleteMissionRequest'])->middleware('throttle:self-service-action')->name('mission_requests.delete');
     });
 
