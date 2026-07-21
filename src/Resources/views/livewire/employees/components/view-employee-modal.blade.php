@@ -200,7 +200,7 @@
         </div>
 
         {{-- Content --}}
-        <div class="flex-1 overflow-y-auto p-6">
+        <div class="flex-1 overflow-y-auto" :class="editMode ? 'p-3 sm:p-4' : 'p-6'">
             {{-- View Mode --}}
             <div x-show="!editMode" x-transition>
                 <div x-show="activeTab === 1" x-transition>

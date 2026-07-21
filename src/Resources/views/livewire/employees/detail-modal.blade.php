@@ -170,7 +170,7 @@
         </div>
 
         {{-- Content --}}
-        <div class="p-6 pb-32">
+        <div :class="editMode ? 'p-3 sm:p-4 pb-28' : 'p-6 pb-32'">
             {{-- View Mode --}}
             <div x-show="!editMode" x-transition>
                 <div x-show="activeTab === 1" x-transition>

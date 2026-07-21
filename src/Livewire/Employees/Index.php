@@ -11,6 +11,7 @@ use App\Services\ExcelExportService;
 use App\Services\Hr\ContractExpiryService;
 use Athka\Employees\Models\Employee;
 use Athka\Employees\Models\EmployeeStatusLog;
+use Athka\Saas\Models\SaasCompanyOtherinfo;
 
 use Livewire\Attributes\Lazy;
 use Livewire\Attributes\Layout;
@@ -31,6 +32,10 @@ class Index extends Component
     public string $branchFilterId = 'all';
     public string $contractType   = 'all'; 
     public string $managerId      = 'all'; 
+
+    public bool $showGeneralManagerModal = false;
+    public ?int $generalManagerEmployeeId = null;
+    public $selectedGeneralManagerId = null;
 
 
  
@@ -165,6 +170,115 @@ private function blockLockedEmployeeAction(): void
         type: 'warning',
         title: tr('Action not allowed'),
         message: tr('This employee can only be viewed after final suspension or termination.')
+    );
+}
+
+private function isAr(): bool
+{
+    return substr((string) app()->getLocale(), 0, 2) === 'ar';
+}
+
+private function txt(string $ar, string $en): string
+{
+    return $this->isAr() ? $ar : $en;
+}
+
+private function hasGeneralManagerColumn(): bool
+{
+    try {
+        return class_exists(SaasCompanyOtherinfo::class)
+            && Schema::hasTable('saas_company_otherinfo')
+            && Schema::hasColumn('saas_company_otherinfo', 'general_manager_employee_id');
+    } catch (\Throwable $e) {
+        return false;
+    }
+}
+
+private function getGeneralManagerEmployeeId(?int $companyId = null): ?int
+{
+    $companyId = $companyId ?: $this->getCompanyId();
+
+    if (! $companyId || ! $this->hasGeneralManagerColumn()) {
+        return null;
+    }
+
+    $id = SaasCompanyOtherinfo::query()
+        ->where('company_id', $companyId)
+        ->value('general_manager_employee_id');
+
+    return $id ? (int) $id : null;
+}
+
+public function openGeneralManagerModal(): void
+{
+    $this->authorize('employees.edit');
+
+    $this->generalManagerEmployeeId = $this->getGeneralManagerEmployeeId();
+    $this->selectedGeneralManagerId = $this->generalManagerEmployeeId;
+    $this->resetErrorBag('selectedGeneralManagerId');
+    $this->showGeneralManagerModal = true;
+}
+
+public function closeGeneralManagerModal(): void
+{
+    $this->showGeneralManagerModal = false;
+    $this->selectedGeneralManagerId = null;
+    $this->resetErrorBag('selectedGeneralManagerId');
+}
+
+public function saveGeneralManager(): void
+{
+    $this->authorize('employees.edit');
+
+    if (! $this->hasGeneralManagerColumn()) {
+        $this->dispatch('toast',
+            type: 'error',
+            title: $this->txt("\u{062A}\u{0639}\u{0630}\u{0631} \u{0627}\u{0644}\u{062D}\u{0641}\u{0638}", 'Save failed'),
+            message: $this->txt("\u{064A}\u{0631}\u{062C}\u{0649} \u{062A}\u{0634}\u{063A}\u{064A}\u{0644} \u{0627}\u{0644}\u{0645}\u{0627}\u{064A}\u{062C}\u{0631}\u{064A}\u{0634}\u{0646} \u{0627}\u{0644}\u{062E}\u{0627}\u{0635} \u{0628}\u{062A}\u{0639}\u{064A}\u{064A}\u{0646} \u{0627}\u{0644}\u{0645}\u{062F}\u{064A}\u{0631} \u{0627}\u{0644}\u{0639}\u{0627}\u{0645}.", 'Please run the general manager migration first.')
+        );
+        return;
+    }
+
+    $this->validate([
+        'selectedGeneralManagerId' => ['required', 'integer'],
+    ], [
+        'selectedGeneralManagerId.required' => $this->txt("\u{064A}\u{0631}\u{062C}\u{0649} \u{0627}\u{062E}\u{062A}\u{064A}\u{0627}\u{0631} \u{0627}\u{0644}\u{0645}\u{062F}\u{064A}\u{0631} \u{0627}\u{0644}\u{0639}\u{0627}\u{0645}.", 'Please select the general manager.'),
+        'selectedGeneralManagerId.integer' => $this->txt("\u{0627}\u{0644}\u{0645}\u{062F}\u{064A}\u{0631} \u{0627}\u{0644}\u{0639}\u{0627}\u{0645} \u{0627}\u{0644}\u{0645}\u{062D}\u{062F}\u{062F} \u{063A}\u{064A}\u{0631} \u{0635}\u{062D}\u{064A}\u{062D}.", 'The selected general manager is invalid.'),
+    ]);
+
+    $companyId = $this->getCompanyId();
+    $employeeId = (int) $this->selectedGeneralManagerId;
+
+    $employee = Employee::withoutGlobalScope('active_only')
+        ->forCompany($companyId)
+        ->where('status', 'ACTIVE')
+        ->find($employeeId);
+
+    if (! $employee) {
+        $this->addError('selectedGeneralManagerId', $this->txt("\u{0627}\u{0644}\u{0645}\u{0648}\u{0638}\u{0641} \u{0627}\u{0644}\u{0645}\u{062D}\u{062F}\u{062F} \u{063A}\u{064A}\u{0631} \u{0645}\u{0648}\u{062C}\u{0648}\u{062F} \u{0623}\u{0648} \u{063A}\u{064A}\u{0631} \u{0646}\u{0634}\u{0637}.", 'The selected employee was not found or is inactive.'));
+        return;
+    }
+
+    DB::transaction(function () use ($companyId, $employeeId) {
+        SaasCompanyOtherinfo::query()->firstOrCreate(['company_id' => $companyId]);
+
+        SaasCompanyOtherinfo::query()
+            ->where('company_id', $companyId)
+            ->update(['general_manager_employee_id' => $employeeId]);
+
+        Employee::withoutGlobalScope('active_only')
+            ->where('saas_company_id', $companyId)
+            ->where('id', $employeeId)
+            ->update(['manager_id' => null]);
+    });
+
+    $this->generalManagerEmployeeId = $employeeId;
+    $this->showGeneralManagerModal = false;
+    $this->dispatch('employee-updated');
+    $this->dispatch('toast',
+        type: 'success',
+        title: tr('Success'),
+        message: $this->txt("\u{062A}\u{0645} \u{062A}\u{0639}\u{064A}\u{064A}\u{0646} \u{0627}\u{0644}\u{0645}\u{062F}\u{064A}\u{0631} \u{0627}\u{0644}\u{0639}\u{0627}\u{0645} \u{0648}\u{062A}\u{0635}\u{0641}\u{064A}\u{0631} \u{0645}\u{062F}\u{064A}\u{0631}\u{0647} \u{0627}\u{0644}\u{0645}\u{0628}\u{0627}\u{0634}\u{0631}.", 'The general manager was assigned and their direct manager was cleared.')
     );
 }
 
@@ -667,6 +781,8 @@ public function setViewMode(string $mode): void
             })
             ->toArray();
 
+        $this->generalManagerEmployeeId = $this->getGeneralManagerEmployeeId($companyId);
+
         // Query الموظفين
         $allowed = DB::table('branch_user_access')
             ->where('user_id', Auth::id())
@@ -752,6 +868,7 @@ public function setViewMode(string $mode): void
             'branchesOptions'    => $branchesOptions,
             'branchesMap'        => $branchesMap,
             'managersOptions'    => $managersOptions,
+            'generalManagerEmployeeId' => $this->generalManagerEmployeeId,
         ])->layout('layouts.company-admin');
             
     }

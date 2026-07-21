@@ -11,6 +11,7 @@ use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Illuminate\Support\Facades\DB;
 use Athka\Employees\Models\Employee;
 use Athka\Employees\Models\EmployeeLeaveAdjustment;
+use Athka\Saas\Models\SaasCompanyOtherinfo;
 
 class Edit extends Component
 {
@@ -51,6 +52,7 @@ class Edit extends Component
     public $grade = null;
     public $manager_id = null;
     public $manager_name = '';
+    public ?int $generalManagerEmployeeId = null;
     public string $hired_at = '';
     public ?string $procedures_start_at = null;
 
@@ -185,10 +187,30 @@ class Edit extends Component
 
         return $previous;
     }
+
+    private function nationalityValues(): array
+    {
+        return collect($this->nationalityOptions ?? [])
+            ->map(fn ($option) => is_array($option) ? ($option['value'] ?? null) : null)
+            ->filter(fn ($value) => is_string($value) && trim($value) !== '')
+            ->map(fn ($value) => (string) $value)
+            ->values()
+            ->all();
+    }
+
+    private function normalizeNationalitySelection(): void
+    {
+        $values = $this->nationalityValues();
+
+        if ($this->nationality !== '' && ! empty($values) && ! in_array((string) $this->nationality, $values, true)) {
+            $this->nationality = '';
+        }
+    }
     public function mount(int $employeeId): void
 {
     $this->authorize('employees.edit');
     $this->companyId = $this->getCompanyId();
+    $this->generalManagerEmployeeId = $this->getGeneralManagerEmployeeId();
     $this->loadNationalities();
 
     $this->employee = Employee::withoutGlobalScope('active_only')
@@ -268,6 +290,7 @@ if (! empty($allowed)) {
         }
         $this->national_id_expiry = $this->employee->national_id_expiry ? $this->employee->national_id_expiry->format('Y-m-d') : '';
         $this->nationality = $this->employee->nationality ?? '';
+        $this->normalizeNationalitySelection();
         $this->gender = $this->employee->gender ?? '';
         $this->social_status = $this->employee->marital_status ?? '';
         $this->birth_place = $this->employee->birth_place ?? '';
@@ -287,7 +310,7 @@ if (! empty($allowed)) {
         $this->job_title_id = $this->employee->job_title_id;
 
         $this->grade = $this->employee->grade;
-        $this->manager_id = $this->employee->manager_id;
+        $this->manager_id = $this->isGeneralManagerEmployee() ? null : $this->employee->manager_id;
         // Load manager name
         if ($this->manager_id) {
             $manager = Employee::find($this->manager_id);
@@ -437,6 +460,11 @@ if (! empty($allowed)) {
         $this->sub_departments = [];
 
         if (!$value) {
+            return;
+        }
+
+        if ($this->isGeneralManagerEmployee()) {
+            $this->loadSubDepartments($value);
             return;
         }
 
@@ -597,6 +625,37 @@ if (! empty($allowed)) {
         return $this->isAr() ? $ar : $en;
     }
 
+    private function hasGeneralManagerColumn(): bool
+    {
+        try {
+            return class_exists(SaasCompanyOtherinfo::class)
+                && Schema::hasTable('saas_company_otherinfo')
+                && Schema::hasColumn('saas_company_otherinfo', 'general_manager_employee_id');
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    private function getGeneralManagerEmployeeId(): ?int
+    {
+        if (! $this->companyId || ! $this->hasGeneralManagerColumn()) {
+            return null;
+        }
+
+        $id = SaasCompanyOtherinfo::query()
+            ->where('company_id', $this->companyId)
+            ->value('general_manager_employee_id');
+
+        return $id ? (int) $id : null;
+    }
+
+    public function isGeneralManagerEmployee(): bool
+    {
+        return $this->generalManagerEmployeeId !== null
+            && isset($this->employee)
+            && (int) $this->generalManagerEmployeeId === (int) $this->employee->id;
+    }
+
     private function hasAtLeastThreeNameParts(?string $value): bool
     {
         $value = trim((string) $value);
@@ -625,6 +684,14 @@ if (! empty($allowed)) {
                 'string' => $this->txt('يجب أن يكون طول النص :attribute على الأقل :min حروف.', 'The :attribute must be at least :min characters.'),
             ],
             'regex' => $this->txt('يجب أن يحتوي :attribute على أرقام فقط.', 'The :attribute must contain digits only.'),
+            'unique' => $this->txt("\u{0647}\u{0630}\u{0647} \u{0627}\u{0644}\u{0642}\u{064A}\u{0645}\u{0629} \u{0645}\u{0633}\u{062A}\u{062E}\u{062F}\u{0645}\u{0629} \u{0645}\u{0633}\u{0628}\u{0642}\u{0627}.", 'This value is already used.'),
+            'in' => $this->txt("\u{0627}\u{0644}\u{0642}\u{064A}\u{0645}\u{0629} \u{0627}\u{0644}\u{0645}\u{062E}\u{062A}\u{0627}\u{0631}\u{0629} \u{0641}\u{064A} :attribute \u{063A}\u{064A}\u{0631} \u{0635}\u{062D}\u{064A}\u{062D}\u{0629}.", 'The selected :attribute is invalid.'),
+            'nationality.required' => $this->txt("\u{0627}\u{0644}\u{062C}\u{0646}\u{0633}\u{064A}\u{0629} \u{062D}\u{0642}\u{0644} \u{0625}\u{062C}\u{0628}\u{0627}\u{0631}\u{064A}\u{060C} \u{064A}\u{0631}\u{062C}\u{0649} \u{0627}\u{062E}\u{062A}\u{064A}\u{0627}\u{0631} \u{0642}\u{064A}\u{0645}\u{0629} \u{0642}\u{0628}\u{0644} \u{0627}\u{0644}\u{0645}\u{062A}\u{0627}\u{0628}\u{0639}\u{0629}.", 'Nationality is required. Please select a value before continuing.'),
+            'nationality.in' => $this->txt("\u{0627}\u{0644}\u{062C}\u{0646}\u{0633}\u{064A}\u{0629} \u{0627}\u{0644}\u{0645}\u{062E}\u{062A}\u{0627}\u{0631}\u{0629} \u{063A}\u{064A}\u{0631} \u{0635}\u{062D}\u{064A}\u{062D}\u{0629}\u{060C} \u{064A}\u{0631}\u{062C}\u{0649} \u{0627}\u{062E}\u{062A}\u{064A}\u{0627}\u{0631} \u{0642}\u{064A}\u{0645}\u{0629} \u{0645}\u{0646} \u{0627}\u{0644}\u{0642}\u{0627}\u{0626}\u{0645}\u{0629}.", 'The selected nationality is invalid. Please choose a value from the list.'),
+            'mobile.unique' => $this->txt("\u{0631}\u{0642}\u{0645} \u{0627}\u{0644}\u{0647}\u{0627}\u{062A}\u{0641} \u{0645}\u{0633}\u{062A}\u{062E}\u{062F}\u{0645} \u{0645}\u{0633}\u{0628}\u{0642}\u{0627}.", 'This mobile number is already used.'),
+            'email_work.unique' => $this->txt("\u{0627}\u{0644}\u{0628}\u{0631}\u{064A}\u{062F} \u{0627}\u{0644}\u{0625}\u{0644}\u{0643}\u{062A}\u{0631}\u{0648}\u{0646}\u{064A} \u{0644}\u{0644}\u{0639}\u{0645}\u{0644} \u{0645}\u{0633}\u{062A}\u{062E}\u{062F}\u{0645} \u{0645}\u{0633}\u{0628}\u{0642}\u{0627}.", 'This work email is already used.'),
+            'email_personal.unique' => $this->txt("\u{0627}\u{0644}\u{0628}\u{0631}\u{064A}\u{062F} \u{0627}\u{0644}\u{0625}\u{0644}\u{0643}\u{062A}\u{0631}\u{0648}\u{0646}\u{064A} \u{0627}\u{0644}\u{0634}\u{062E}\u{0635}\u{064A} \u{0645}\u{0633}\u{062A}\u{062E}\u{062F}\u{0645} \u{0645}\u{0633}\u{0628}\u{0642}\u{0627}.", 'This personal email is already used.'),
+            'emergency_contact_relation.in' => $this->txt("\u{064A}\u{0631}\u{062C}\u{0649} \u{0627}\u{062E}\u{062A}\u{064A}\u{0627}\u{0631} \u{0639}\u{0644}\u{0627}\u{0642}\u{0629} \u{0635}\u{062D}\u{064A}\u{062D}\u{0629} \u{0645}\u{0646} \u{0627}\u{0644}\u{0642}\u{0627}\u{0626}\u{0645}\u{0629}.", 'Please select a valid relation from the list.'),
 
             'max' => [
                 'numeric' => $this->txt('يجب أن لا يزيد :attribute عن :max.', 'The :attribute may not be greater than :max.'),
@@ -642,6 +709,12 @@ if (! empty($allowed)) {
     protected function rulesTab1(): array
     {
         $tripleNameRegex = '/^(\s*\S+\s+){2,}\S+\s*$/u';
+        $nationalityValues = $this->nationalityValues();
+        $nationalityRules = ['required', 'string', 'max:100'];
+
+        if (! empty($nationalityValues)) {
+            $nationalityRules[] = Rule::in($nationalityValues);
+        }
 
         return [
             'name_ar' => [
@@ -659,7 +732,7 @@ if (! empty($allowed)) {
             'national_id_type' => ['required', Rule::in(['national_id','iqama','passport','other'])],
             'national_id' => ['required', 'string', 'max:50'],
             'national_id_expiry' => ['required', 'date'],
-            'nationality' => ['required', 'string', 'max:100'],
+            'nationality' => $nationalityRules,
             'gender' => ['required', Rule::in(['male', 'female'])],
             'social_status' => ['required', Rule::in(['single', 'married', 'divorced', 'widowed'])],
             'birth_place' => ['required', 'string', 'max:255'],
@@ -796,20 +869,9 @@ if (! empty($allowed)) {
         ];
     }
 
-    public function nextTab(): void
+    protected function rulesForTab(int $tab): array
     {
-        if ($this->tab === 1) {
-            if (!$this->hasAtLeastThreeNameParts($this->name_ar)) {
-                $this->addError('name_ar', $this->txt('يجب إدخال الاسم الثلاثي على الأقل.', 'At least a triple name is required.'));
-                return;
-            }
-            if ($this->name_en && !$this->hasAtLeastThreeNameParts($this->name_en)) {
-                $this->addError('name_en', $this->txt('يجب إدخال الاسم الثلاثي على الأقل.', 'At least a triple name is required.'));
-                return;
-            }
-        }
-
-        $rules = match ($this->tab) {
+        return match ($tab) {
             1 => $this->rulesTab1(),
             2 => $this->rulesTab2(),
             3 => $this->canManageContracts() ? $this->rulesTab3() : [],
@@ -817,9 +879,63 @@ if (! empty($allowed)) {
             5 => $this->canManageDocuments() ? $this->rulesTab5() : [],
             default => [],
         };
+    }
 
-        if (!empty($rules)) {
-            $this->validate($rules);
+    private function validateTabForNavigation(int $tab): bool
+    {
+        if ($tab === 1) {
+            if (!$this->hasAtLeastThreeNameParts($this->name_ar)) {
+                $this->addError('name_ar', $this->txt("\u{064A}\u{062C}\u{0628} \u{0625}\u{062F}\u{062E}\u{0627}\u{0644} \u{0627}\u{0644}\u{0627}\u{0633}\u{0645} \u{0627}\u{0644}\u{062B}\u{0644}\u{0627}\u{062B}\u{064A} \u{0639}\u{0644}\u{0649} \u{0627}\u{0644}\u{0623}\u{0642}\u{0644}.", 'At least a triple name is required.'));
+                return false;
+            }
+            if ($this->name_en && !$this->hasAtLeastThreeNameParts($this->name_en)) {
+                $this->addError('name_en', $this->txt("\u{064A}\u{062C}\u{0628} \u{0625}\u{062F}\u{062E}\u{0627}\u{0644} \u{0627}\u{0644}\u{0627}\u{0633}\u{0645} \u{0627}\u{0644}\u{062B}\u{0644}\u{0627}\u{062B}\u{064A} \u{0639}\u{0644}\u{0649} \u{0627}\u{0644}\u{0623}\u{0642}\u{0644}.", 'At least a triple name is required.'));
+                return false;
+            }
+        }
+
+        $rules = $this->rulesForTab($tab);
+
+        if (! empty($rules)) {
+            $this->validate($rules, $this->messages());
+        }
+
+        return true;
+    }
+
+    public function goToTab(int $target): void
+    {
+        $target = max(1, min(5, $target));
+        $editableTabs = $this->editableTabs();
+
+        if (! in_array($target, $editableTabs, true)) {
+            return;
+        }
+
+        if ($target < $this->tab) {
+            $this->tab = $target;
+            return;
+        }
+
+        foreach ($editableTabs as $tab) {
+            if ($tab < $this->tab || $tab >= $target) {
+                continue;
+            }
+
+            $this->tab = $tab;
+
+            if (! $this->validateTabForNavigation($tab)) {
+                return;
+            }
+        }
+
+        $this->tab = $target;
+    }
+
+    public function nextTab(): void
+    {
+        if (! $this->validateTabForNavigation($this->tab)) {
+            return;
         }
 
         $this->tab = $this->nextEditableTab();

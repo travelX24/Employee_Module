@@ -2,6 +2,15 @@
     $locale = app()->getLocale();
     $isRtl  = in_array(substr($locale, 0, 2), ['ar','fa','ur','he']);
     $dir    = $isRtl ? 'rtl' : 'ltr';
+    $generalManagerLabel = $isRtl ? "\u{062A}\u{0639}\u{064A}\u{064A}\u{0646} \u{0627}\u{0644}\u{0645}\u{062F}\u{064A}\u{0631} \u{0627}\u{0644}\u{0639}\u{0627}\u{0645}" : 'Set General Manager';
+    $generalManagerSubtitle = $isRtl ? "\u{062A}\u{062D}\u{062F}\u{064A}\u{062F} \u{0623}\u{0639}\u{0644}\u{0649} \u{0634}\u{062E}\u{0635} \u{0641}\u{064A} \u{0627}\u{0644}\u{0634}\u{062C}\u{0631}\u{0629} \u{0627}\u{0644}\u{0648}\u{0638}\u{064A}\u{0641}\u{064A}\u{0629}" : 'Define the top person in the reporting hierarchy';
+    $currentGeneralManagerText = $isRtl ? "\u{0627}\u{0644}\u{0645}\u{062F}\u{064A}\u{0631} \u{0627}\u{0644}\u{0639}\u{0627}\u{0645} \u{0627}\u{0644}\u{062D}\u{0627}\u{0644}\u{064A}" : 'Current general manager';
+    $noGeneralManagerText = $isRtl ? "\u{0644}\u{0645} \u{064A}\u{062A}\u{0645} \u{062A}\u{0639}\u{064A}\u{064A}\u{0646} \u{0645}\u{062F}\u{064A}\u{0631} \u{0639}\u{0627}\u{0645} \u{0628}\u{0639}\u{062F}" : 'No general manager has been assigned yet';
+    $selectGeneralManagerText = $isRtl ? "\u{0627}\u{062E}\u{062A}\u{0631} \u{0627}\u{0644}\u{0645}\u{062F}\u{064A}\u{0631} \u{0627}\u{0644}\u{0639}\u{0627}\u{0645}" : 'Select general manager';
+    $selectEmployeeText = $isRtl ? "\u{062D}\u{062F}\u{062F} \u{0627}\u{0644}\u{0645}\u{0648}\u{0638}\u{0641}..." : 'Select employee...';
+    $generalManagerSaveNote = $isRtl
+        ? "\u{0639}\u{0646}\u{062F} \u{0627}\u{0644}\u{062D}\u{0641}\u{0638} \u{0633}\u{064A}\u{062A}\u{0645} \u{062A}\u{0635}\u{0641}\u{064A}\u{0631} \u{0627}\u{0644}\u{0645}\u{062F}\u{064A}\u{0631} \u{0627}\u{0644}\u{0645}\u{0628}\u{0627}\u{0634}\u{0631} \u{0644}\u{0644}\u{0645}\u{0648}\u{0638}\u{0641} \u{0627}\u{0644}\u{0645}\u{062E}\u{062A}\u{0627}\u{0631}\u{060C} \u{0648}\u{0633}\u{064A}\u{062A}\u{0645} \u{0642}\u{0641}\u{0644} \u{062D}\u{0642}\u{0644} \u{0627}\u{0644}\u{0645}\u{062F}\u{064A}\u{0631} \u{0627}\u{0644}\u{0645}\u{0628}\u{0627}\u{0634}\u{0631} \u{0644}\u{0647} \u{0641}\u{064A} \u{0646}\u{0627}\u{0641}\u{0630}\u{0629} \u{0627}\u{0644}\u{062A}\u{0639}\u{062F}\u{064A}\u{0644}. \u{0627}\u{0644}\u{0645}\u{0648}\u{0638}\u{0641} \u{0627}\u{0644}\u{0633}\u{0627}\u{0628}\u{0642} \u{0633}\u{064A}\u{062A}\u{0645} \u{0641}\u{062A}\u{062D} \u{0627}\u{0644}\u{062D}\u{0642}\u{0644} \u{0644}\u{0647} \u{062A}\u{0644}\u{0642}\u{0627}\u{0626}\u{064A}\u{0627}."
+        : 'On save, the selected employee direct manager will be cleared and their manager field will be locked in edit mode. The previous general manager will become editable again.';
 @endphp
 
 @section('topbar-left-content')
@@ -47,6 +56,18 @@
                         >
                             <i class="fas fa-file-import"></i>
                             <span class="ms-2">{{ tr('Import Employees') }}</span>
+                        </x-ui.secondary-button>
+                        @endcan
+
+
+                        @can('employees.edit')
+                        <x-ui.secondary-button
+                            wire:click="openGeneralManagerModal"
+                            :fullWidth="false"
+                            class="!border-[color:var(--accent-orange)]/25 !bg-white !text-[color:var(--accent-orange)] hover:!bg-[color:var(--accent-orange)]/5"
+                        >
+                            <i class="fas fa-sitemap"></i>
+                            <span class="ms-2">{{ $generalManagerLabel }}</span>
                         </x-ui.secondary-button>
                         @endcan
 
@@ -663,6 +684,68 @@
         @endif
 
 
+
+    {{-- General Manager Modal --}}
+    <x-ui.modal wire:model="showGeneralManagerModal" maxWidth="2xl">
+        <x-slot name="title">
+            <h3 class="text-xl font-bold text-gray-900">{{ $generalManagerLabel }}</h3>
+            <p class="text-sm text-gray-500 mt-0.5 font-normal">{{ $generalManagerSubtitle }}</p>
+        </x-slot>
+
+        <x-slot name="icon">
+            <i class="fas fa-sitemap text-white text-xl"></i>
+        </x-slot>
+
+        @php
+            $currentGeneralManagerOption = collect($managersOptions)->firstWhere('value', (string) ($generalManagerEmployeeId ?? ''));
+            $currentGeneralManagerLabel = $currentGeneralManagerOption['label'] ?? null;
+        @endphp
+
+        <div class="space-y-5">
+            <div class="rounded-2xl border border-[color:var(--accent-orange)]/20 bg-[color:var(--accent-orange)]/5 p-4">
+                <div class="flex items-start gap-3">
+                    <span class="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white text-[color:var(--accent-orange)] shadow-sm">
+                        <i class="fas fa-user-tie"></i>
+                    </span>
+                    <div class="min-w-0">
+                        <div class="text-sm font-bold text-gray-900">{{ $currentGeneralManagerText }}</div>
+                        <div class="mt-1 text-sm text-gray-600">
+                            {{ $currentGeneralManagerLabel ?: $noGeneralManagerText }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <x-ui.select
+                :label="$selectGeneralManagerText"
+                model="selectedGeneralManagerId"
+                error="selectedGeneralManagerId"
+                :required="true"
+            >
+                <option value="">{{ $selectEmployeeText }}</option>
+                @foreach($managersOptions as $option)
+                    <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
+                @endforeach
+            </x-ui.select>
+
+            <div class="rounded-xl border border-gray-100 bg-gray-50 p-4 text-xs leading-6 text-gray-600">
+                {{ $generalManagerSaveNote }}
+            </div>
+        </div>
+
+        <x-slot name="footer">
+            <x-ui.secondary-button wire:click="closeGeneralManagerModal" :fullWidth="false">
+                {{ tr('Cancel') }}
+            </x-ui.secondary-button>
+
+            <x-ui.primary-button wire:click="saveGeneralManager" wire:loading.attr="disabled" :fullWidth="false">
+                <i class="fas fa-save me-2"></i>
+                <span wire:loading.remove wire:target="saveGeneralManager">{{ tr('Save') }}</span>
+                <span wire:loading wire:target="saveGeneralManager">{{ tr('Saving...') }}</span>
+            </x-ui.primary-button>
+        </x-slot>
+    </x-ui.modal>
+
     {{-- Deactivate User Modal --}}
     <x-ui.modal wire:model="showDeactivateModal" maxWidth="3xl">
         <x-slot name="title">
@@ -1032,7 +1115,7 @@
                     @error('importFile')
                         <p class="mt-3 text-xs font-medium text-[color:var(--error)] bg-[color:var(--error)]/10 border border-[color:var(--error)]/20 rounded-lg px-3 py-2 flex items-center gap-2">
                             <i class="fas fa-exclamation-circle"></i>
-                            {{ $message }}
+                            {{ \Athka\AuthKit\Support\UiMsg::toText($message) ?? $message }}
                         </p>
                     @enderror
                 </div>

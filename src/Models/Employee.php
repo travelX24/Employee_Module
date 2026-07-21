@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Athka\Saas\Models\Branch;
+use Athka\Saas\Models\SaasCompanyOtherinfo;
 use Athka\Employees\Observers\EmployeeCacheObserver;
 
 class Employee extends Model
@@ -21,6 +22,28 @@ class Employee extends Model
     protected static function booted()
     {
         static::observe(EmployeeCacheObserver::class);
+
+        static::saving(function ($employee) {
+            if (! $employee->exists || ! $employee->id || ! $employee->saas_company_id) {
+                return;
+            }
+
+            try {
+                if (! Schema::hasTable('saas_company_otherinfo') || ! Schema::hasColumn('saas_company_otherinfo', 'general_manager_employee_id')) {
+                    return;
+                }
+
+                $generalManagerId = SaasCompanyOtherinfo::query()
+                    ->where('company_id', $employee->saas_company_id)
+                    ->value('general_manager_employee_id');
+
+                if ($generalManagerId && (int) $generalManagerId === (int) $employee->id) {
+                    $employee->manager_id = null;
+                }
+            } catch (\Throwable $e) {
+                // Keep employee saves working if the setting table is unavailable during migrations.
+            }
+        });
 
         static::creating(function ($employee) {
             if (!$employee->employee_no) {

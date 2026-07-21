@@ -1,3 +1,14 @@
+@php
+    $isRtl = in_array(substr(app()->getLocale(), 0, 2), ['ar', 'fa', 'ur', 'he']);
+    $isGeneralManagerEmployee = method_exists($this, 'isGeneralManagerEmployee') && $this->isGeneralManagerEmployee();
+    $generalManagerLockedPlaceholder = $isRtl
+        ? "\u{0627}\u{0644}\u{0645}\u{062F}\u{064A}\u{0631} \u{0627}\u{0644}\u{0639}\u{0627}\u{0645} \u{0644}\u{0627} \u{064A}\u{062D}\u{062A}\u{0627}\u{062C} \u{0645}\u{062F}\u{064A}\u{0631} \u{0645}\u{0628}\u{0627}\u{0634}\u{0631}"
+        : 'General manager has no direct manager';
+    $generalManagerLockedNote = $isRtl
+        ? "\u{0647}\u{0630}\u{0627} \u{0627}\u{0644}\u{0645}\u{0648}\u{0638}\u{0641} \u{0645}\u{062D}\u{062F}\u{062F} \u{0643}\u{0645}\u{062F}\u{064A}\u{0631} \u{0639}\u{0627}\u{0645}\u{060C} \u{0644}\u{0630}\u{0644}\u{0643} \u{0644}\u{0627} \u{064A}\u{0645}\u{0643}\u{0646} \u{062A}\u{0639}\u{064A}\u{064A}\u{0646} \u{0645}\u{062F}\u{064A}\u{0631} \u{0645}\u{0628}\u{0627}\u{0634}\u{0631} \u{0644}\u{0647}."
+        : 'This employee is the general manager, so no direct manager can be assigned.';
+@endphp
+
 <div class="space-y-4 sm:space-y-5">
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
     <x-ui.select
@@ -80,7 +91,8 @@
                 search: '',
                 value: @entangle('manager_id').live,
                 options: @js($this->managers),
-                placeholder: '{{ tr('Select Manager') }}',
+                placeholder: @js($isGeneralManagerEmployee ? $generalManagerLockedPlaceholder : tr('Select Manager')),
+                locked: @js($isGeneralManagerEmployee),
 
                 init() {
                     this.$watch('open', val => {
@@ -101,6 +113,7 @@
                 },
 
                 choose(opt) {
+                    if (this.locked) return;
                     this.value = opt.id;
                     this.open = false;
                     this.search = '';
@@ -115,18 +128,19 @@
             <div class="relative">
                 <button
                     type="button"
-                    @click="open = !open"
+                    @click="if (!locked) open = !open"
+                    :disabled="locked"
                     class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm
                            focus:outline-none focus:ring-2 focus:ring-[color:var(--accent-orange)]/20 focus:border-[color:var(--accent-orange)]
                            transition flex items-center justify-between"
-                    :class="open ? 'ring-2 ring-[color:var(--accent-orange)]/20 border-[color:var(--accent-orange)]' : ''"
+                    :class="locked ? 'bg-gray-50 text-gray-500 cursor-not-allowed' : (open ? 'ring-2 ring-[color:var(--accent-orange)]/20 border-[color:var(--accent-orange)]' : '')"
                 >
                     <span class="truncate" :class="selectedLabel() ? 'text-gray-900' : 'text-gray-400'" x-text="selectedLabel() || placeholder"></span>
                     <i class="fas fa-chevron-down text-xs text-gray-400 transition" :class="open ? 'rotate-180' : ''"></i>
                 </button>
 
                 <div
-                    x-show="open"
+                    x-show="open && !locked"
                     x-transition:enter="transition ease-out duration-200"
                     x-transition:enter-start="opacity-0 translate-y-2"
                     x-transition:enter-end="opacity-100 translate-y-0"
@@ -177,14 +191,20 @@
 
                     {{-- Footer --}}
                     <div class="p-2 border-t border-gray-100 bg-gray-50 flex justify-between items-center">
-                        <button type="button" @click="value = null; open = false;" class="px-3 py-1 text-[10px] font-bold text-gray-500 hover:text-[color:var(--error)] transition">{{ tr('Clear Selection') }}</button>
+                        <button type="button" @click="if (!locked) { value = null; open = false; }" :disabled="locked" class="px-3 py-1 text-[10px] font-bold text-gray-500 hover:text-[color:var(--error)] transition disabled:opacity-50 disabled:cursor-not-allowed">{{ tr('Clear Selection') }}</button>
                         <button type="button" @click="open = false" class="px-3 py-1 text-[10px] font-bold text-gray-500 hover:text-gray-900 transition">{{ tr('Close') }}</button>
                     </div>
                 </div>
             </div>
             
+            @if($isGeneralManagerEmployee)
+                <div class="general-manager-lock-note text-xs font-semibold text-[color:var(--accent-orange)] bg-[color:var(--accent-orange)]/5 border border-[color:var(--accent-orange)]/15 rounded-lg px-3 py-2">
+                    {{ $generalManagerLockedNote }}
+                </div>
+            @endif
+
             @error('manager_id')
-                <div class="text-xs text-[color:var(--error)] font-semibold">{{ $message }}</div>
+                <div class="text-xs text-[color:var(--error)] font-semibold">{{ \Athka\AuthKit\Support\UiMsg::toText($message) ?? $message }}</div>
             @enderror
         </div>
 
