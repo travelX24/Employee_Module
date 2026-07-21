@@ -26,12 +26,12 @@
             @if($personalPhoto)
                 <div class="relative group overflow-hidden rounded-xl border border-gray-200">
                     <img
-                        src="{{ \Illuminate\Support\Facades\Storage::url($personalPhoto->file_path) }}"
+                        src="{{ route('company-admin.employees.documents.file', $personalPhoto) }}"
                         alt="{{ tr('Personal Photo') }}"
                         class="w-full h-48 object-cover"
                     >
                     <a
-                        href="{{ \Illuminate\Support\Facades\Storage::url($personalPhoto->file_path) }}"
+                        href="{{ route('company-admin.employees.documents.file', $personalPhoto) }}"
                         target="_blank"
                         class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
                     >
@@ -54,12 +54,12 @@
             @if($nationalIdPhoto)
                 <div class="relative group overflow-hidden rounded-xl border border-gray-200">
                     <img
-                        src="{{ \Illuminate\Support\Facades\Storage::url($nationalIdPhoto->file_path) }}"
+                        src="{{ route('company-admin.employees.documents.file', $nationalIdPhoto) }}"
                         alt="{{ tr('National ID Photo') }}"
                         class="w-full h-48 object-cover"
                     >
                     <a
-                        href="{{ \Illuminate\Support\Facades\Storage::url($nationalIdPhoto->file_path) }}"
+                        href="{{ route('company-admin.employees.documents.file', $nationalIdPhoto) }}"
                         target="_blank"
                         class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
                     >
@@ -84,7 +84,7 @@
 
             @if($qualification)
                 <a
-                    href="{{ \Illuminate\Support\Facades\Storage::url($qualification->file_path) }}"
+                    href="{{ route('company-admin.employees.documents.file', $qualification) }}"
                     target="_blank"
                     title="{{ $qualificationName }}"
                     class="flex items-center gap-3 px-4 py-3 bg-[color:var(--accent-orange)]/10 rounded-xl border border-[color:var(--accent-orange)]/25 text-[color:var(--accent-orange)] hover:bg-[color:var(--accent-orange)]/15 transition-colors overflow-hidden"
@@ -115,7 +115,7 @@
                         @endphp
 
                         <a
-                            href="{{ \Illuminate\Support\Facades\Storage::url($cert->file_path) }}"
+                            href="{{ route('company-admin.employees.documents.file', $cert) }}"
                             target="_blank"
                             title="{{ $certName }}"
                             class="flex items-center gap-3 px-4 py-2.5 bg-[color:var(--success)]/10 rounded-xl border border-[color:var(--success)]/30 text-[color:var(--success)] hover:bg-[color:var(--success)]/15 transition-colors text-sm overflow-hidden"
@@ -148,7 +148,7 @@
                         @endphp
 
                         <a
-                            href="{{ \Illuminate\Support\Facades\Storage::url($doc->file_path) }}"
+                            href="{{ route('company-admin.employees.documents.file', $doc) }}"
                             target="_blank"
                             title="{{ $familyDocName }}"
                             class="flex items-center gap-3 px-4 py-2.5 bg-[color:var(--app-soft-bg)] rounded-xl border border-[color:var(--border-soft)] text-[color:var(--accent-orange)] hover:bg-[color:var(--accent-orange)]/10 hover:border-[color:var(--accent-orange)]/25 transition-colors text-sm overflow-hidden"
@@ -182,7 +182,7 @@
                     @endphp
 
                     <a
-                        href="{{ \Illuminate\Support\Facades\Storage::url($doc->file_path) }}"
+                        href="{{ route('company-admin.employees.documents.file', $doc) }}"
                         target="_blank"
                         title="{{ $otherDocName }}"
                         class="flex items-center gap-3 px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-100 transition-colors text-sm overflow-hidden"

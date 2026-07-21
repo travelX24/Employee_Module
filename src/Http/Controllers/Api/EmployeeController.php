@@ -2669,8 +2669,23 @@ class EmployeeController extends Controller
                 'message' => "Table [$table] not found.",
             ], 500);
         }
+        $cols = Schema::getColumnListing($table);
+        $companyId = (int) ($user->saas_company_id ?? $user->company_id ?? 0);
+        $employeeId = (int) ($user->employee_id ?? 0);
 
-        $mission = DB::table($table)->where('id', $id)->first();
+        $missionQuery = DB::table($table)->where('id', $id);
+
+        if (in_array('employee_id', $cols, true)) {
+            $missionQuery->where('employee_id', $employeeId);
+        }
+
+        if (in_array('company_id', $cols, true)) {
+            $missionQuery->where('company_id', $companyId);
+        } elseif (in_array('saas_company_id', $cols, true)) {
+            $missionQuery->where('saas_company_id', $companyId);
+        }
+
+        $mission = $missionQuery->first();
 
         if (!$mission) {
             return response()->json([
@@ -2687,8 +2702,19 @@ class EmployeeController extends Controller
                 'message' => 'Cannot delete a request that is not pending.',
             ], 400);
         }
+        $deleteQuery = DB::table($table)->where('id', $id);
 
-        DB::table($table)->where('id', $id)->delete();
+        if (in_array('employee_id', $cols, true)) {
+            $deleteQuery->where('employee_id', $employeeId);
+        }
+
+        if (in_array('company_id', $cols, true)) {
+            $deleteQuery->where('company_id', $companyId);
+        } elseif (in_array('saas_company_id', $cols, true)) {
+            $deleteQuery->where('saas_company_id', $companyId);
+        }
+
+        $deleteQuery->delete();
 
         // Cleanup tasks
         try {

@@ -173,7 +173,7 @@
                                             <span class="text-[10px] text-gray-500 font-medium">{{ $adj->performer?->name ?? tr('System') }}</span>
                                         </div>
                                         @if($adj->file_path)
-                                            <a href="{{ \Illuminate\Support\Facades\Storage::url($adj->file_path) }}" target="_blank" class="text-[10px] font-bold text-[color:var(--accent-orange)] hover:brightness-90 flex items-center gap-1 bg-[color:var(--accent-orange)]/5 group-hover:bg-[color:var(--accent-orange)]/10 px-2.5 py-1 rounded-lg transition-colors">
+                                            <a href="{{ route('company-admin.employees.leave-adjustments.file', $adj) }}" target="_blank" class="text-[10px] font-bold text-[color:var(--accent-orange)] hover:brightness-90 flex items-center gap-1 bg-[color:var(--accent-orange)]/5 group-hover:bg-[color:var(--accent-orange)]/10 px-2.5 py-1 rounded-lg transition-colors">
                                                 <i class="fas fa-file-download text-[11px]"></i>
                                                 {{ tr('View File') }}
                                             </a>

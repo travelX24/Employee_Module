@@ -364,7 +364,7 @@ if (! empty($allowed)) {
             ->map(fn($d) => [
                 'id' => $d->id,
                 'original_name' => $d->title ?? basename($d->file_path),
-                'url' => \Illuminate\Support\Facades\Storage::url($d->file_path),
+                'url' => route('company-admin.employees.documents.file', $d),
                 'size' => 0 
             ])->values()->toArray();
 
@@ -372,7 +372,7 @@ if (! empty($allowed)) {
             ->map(fn($d) => [
                 'id' => $d->id,
                 'original_name' => $d->title ?? basename($d->file_path),
-                'url' => \Illuminate\Support\Facades\Storage::url($d->file_path),
+                'url' => route('company-admin.employees.documents.file', $d),
                 'size' => 0
             ])->values()->toArray();
 
@@ -380,7 +380,7 @@ if (! empty($allowed)) {
             ->map(fn($d) => [
                 'id' => $d->id,
                 'original_name' => $d->title ?? basename($d->file_path),
-                'url' => \Illuminate\Support\Facades\Storage::url($d->file_path),
+                'url' => route('company-admin.employees.documents.file', $d),
                 'size' => 0
             ])->values()->toArray();
 
