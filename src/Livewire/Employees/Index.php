@@ -131,7 +131,7 @@ class Index extends Component
      * صفحة الشركات تعتمد عملياً على pagination داخل x-ui.table (client-side).
      * لذلك هنا نرفع عدد النتائج في الصفحة الأولى حتى يعمل نفس الإحساس.
      */
-    public int $perPage = 200;
+    public int $perPage = 100;
 
     public function placeholder()
     {
@@ -856,9 +856,15 @@ public function setViewMode(string $mode): void
                     $q->whereDate('hired_at', '<=', $this->hiringDateEnd);
                 }
             })
-            ->with(['department', 'jobTitle', 'documents'])
+            ->with([
+                'department:id,name',
+                'jobTitle:id,name',
+                'documents' => fn ($q) => $q
+                    ->select('id', 'employee_id', 'type', 'file_path', 'title')
+                    ->where('type', 'personal_photo'),
+            ])
             ->orderByDesc('id')
-            ->paginate($this->perPage);
+            ->paginate($this->employeesPerPage($companyId));
             $branchesMap = $this->loadBranchesMap($employees, $companyId);
 
        return view('employees::livewire.employees.index', [
@@ -1886,6 +1892,14 @@ public function setViewMode(string $mode): void
     }
 
 
+    private function employeesPerPage(int $companyId): int
+    {
+        $totalEmployees = Employee::withoutGlobalScope('active_only')
+            ->forCompany($companyId)
+            ->count();
+
+        return max(1, $totalEmployees);
+    }
     private function branchModelClass(): ?string
     {
         $candidates = [

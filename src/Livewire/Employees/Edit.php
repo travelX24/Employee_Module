@@ -551,7 +551,7 @@ if (! empty($allowed)) {
         $amount = ($this->adjustmentType === 'add') ? (float)$this->adjustmentAmount : -(float)$this->adjustmentAmount;
 
         // 1. Upload File
-        $path = $this->adjustmentFile->store("employees/{$this->employee->id}/leave_adjustments", 'public');
+        $path = $this->adjustmentFile->store("employees/{$this->employee->id}/leave_adjustments", 'local');
         $fileName = $this->adjustmentFile->getClientOriginalName();
 
         // 2. Create History Record
@@ -1175,12 +1175,14 @@ if (! empty($allowed)) {
         // ✅ 1. حذف الملف القديم والسجل المرتبط به لتجنب التكرار
         $oldDocument = $employee->documents()->where('type', $type)->first();
         if ($oldDocument) {
-            \Illuminate\Support\Facades\Storage::disk('public')->delete($oldDocument->file_path);
+            foreach (['local', 'public'] as $disk) {
+                \Illuminate\Support\Facades\Storage::disk($disk)->delete($oldDocument->file_path);
+            }
             $oldDocument->delete();
         }
 
         // ✅ 2. حفظ الملف الجديد
-        $path = $this->$property->store("employees/{$employee->id}/documents", 'public');
+        $path = $this->$property->store("employees/{$employee->id}/documents", 'local');
 
         $newDoc = $employee->documents()->create([
             'type' => $type,
@@ -1208,7 +1210,7 @@ if (! empty($allowed)) {
                 continue;
             }
 
-            $path = $file->store("employees/{$employee->id}/documents", 'public');
+            $path = $file->store("employees/{$employee->id}/documents", 'local');
 
             $employee->documents()->create([
                 'type' => $type,
@@ -1380,7 +1382,9 @@ if (! empty($allowed)) {
                 if (isset($docData['id'])) {
                     $document = \Athka\Employees\Models\EmployeeDocument::find($docData['id']);
                     if ($document) {
-                        \Illuminate\Support\Facades\Storage::disk('public')->delete($document->file_path);
+                        foreach (['local', 'public'] as $disk) {
+                            \Illuminate\Support\Facades\Storage::disk($disk)->delete($document->file_path);
+                        }
                         $document->delete();
                     }
                 }
@@ -1401,7 +1405,9 @@ if (! empty($allowed)) {
             }
 
             if ($document) {
-                \Illuminate\Support\Facades\Storage::disk('public')->delete($document->file_path);
+                foreach (['local', 'public'] as $disk) {
+                    \Illuminate\Support\Facades\Storage::disk($disk)->delete($document->file_path);
+                }
                 $document->delete();
             }
             

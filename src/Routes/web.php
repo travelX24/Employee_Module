@@ -5,6 +5,33 @@ use Athka\Employees\Livewire\Employees\Index;
 use Athka\Employees\Livewire\Employees\Create;
 use Athka\Employees\Livewire\Employees\Edit;
 
+if (! function_exists('athkaEmployeesPrivateFileResponse')) {
+function athkaEmployeesPrivateFileResponse(?string $relativePath)
+{
+    $requestedPath = str_replace(['\\', '//'], '/', ltrim((string) $relativePath, '/\\'));
+
+    foreach (['app/private', 'app/public'] as $storageRoot) {
+        $basePath = realpath(storage_path($storageRoot));
+        $fullPath = $basePath ? realpath($basePath.DIRECTORY_SEPARATOR.$requestedPath) : false;
+
+        if (! $basePath || ! $fullPath || ! is_file($fullPath)) {
+            continue;
+        }
+
+        $basePrefix = rtrim($basePath, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
+        if (! str_starts_with($fullPath, $basePrefix)) {
+            abort(404);
+        }
+
+        return response()->file($fullPath, [
+            'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+            'Content-Security-Policy' => "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+        ]);
+    }
+    abort(404);
+}
+}
+
 Route::get('/documents/{document}/file', function (\Athka\Employees\Models\EmployeeDocument $document) {
     $user = request()->user();
     abort_unless($user, 403);
@@ -31,21 +58,9 @@ Route::get('/documents/{document}/file', function (\Athka\Employees\Models\Emplo
         403
     );
 
-    $basePath = realpath(storage_path('app/public'));
-    $requestedPath = str_replace(['\\', '//'], '/', ltrim((string) $document->file_path, '/\\'));
-    $fullPath = $basePath ? realpath($basePath.DIRECTORY_SEPARATOR.$requestedPath) : false;
-
-    if (! $basePath || ! $fullPath || ! is_file($fullPath)) {
-        abort(404);
-    }
-
-    $basePrefix = rtrim($basePath, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
-    if (! str_starts_with($fullPath, $basePrefix)) {
-        abort(404);
-    }
-
-    return response()->file($fullPath);
+    return athkaEmployeesPrivateFileResponse($document->file_path);
 })->name('documents.file');
+
 Route::get('/leave-adjustments/{adjustment}/file', function (\Athka\Employees\Models\EmployeeLeaveAdjustment $adjustment) {
     $user = request()->user();
     abort_unless($user, 403);
@@ -66,25 +81,9 @@ Route::get('/leave-adjustments/{adjustment}/file', function (\Athka\Employees\Mo
         403
     );
 
-    $basePath = realpath(storage_path('app/public'));
-    $requestedPath = str_replace(['\\', '//'], '/', ltrim((string) $adjustment->file_path, '/\\'));
-    $fullPath = $basePath ? realpath($basePath.DIRECTORY_SEPARATOR.$requestedPath) : false;
-
-    if (! $basePath || ! $fullPath || ! is_file($fullPath)) {
-        abort(404);
-    }
-
-    $basePrefix = rtrim($basePath, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
-    if (! str_starts_with($fullPath, $basePrefix)) {
-        abort(404);
-    }
-
-    return response()->file($fullPath);
+    return athkaEmployeesPrivateFileResponse($adjustment->file_path);
 })->name('leave-adjustments.file');
+
 Route::get('/', Index::class)->name('index');
 Route::get('/create', Create::class)->name('create');
 Route::get('/{employeeId}/edit', Edit::class)->name('edit');
-
-
-
-

@@ -931,7 +931,7 @@ class Create extends Component
             return;
         }
 
-        $path = $this->$property->store("employees/{$employee->id}/documents", 'public');
+        $path = $this->$property->store("employees/{$employee->id}/documents", 'local');
 
         $employee->documents()->create([
             'type' => $type,
@@ -947,7 +947,7 @@ class Create extends Component
         }
 
         foreach ($this->$property as $file) {
-            $path = $file->store("employees/{$employee->id}/documents", 'public');
+            $path = $file->store("employees/{$employee->id}/documents", 'local');
 
             $employee->documents()->create([
                 'type' => $type,

@@ -118,32 +118,42 @@
     <form wire:submit.prevent="save" novalidate>
         <div class="space-y-4">
             {{-- Tab 1: Basic Information --}}
-            <div x-show="tab === 1" x-transition class="edit-tab-panel">
-                @include('employees::livewire.employees.partials.tab-basic')
-            </div>
+            @if($tab === 1)
+                <div class="edit-tab-panel">
+                    @include('employees::livewire.employees.partials.tab-basic')
+                </div>
+            @endif
 
             {{-- Tab 2: Job Information --}}
-            <div x-show="tab === 2" x-transition class="edit-tab-panel">
-                @include('employees::livewire.employees.partials.tab-job')
-            </div>
+            @if($tab === 2)
+                <div class="edit-tab-panel">
+                    @include('employees::livewire.employees.partials.tab-job')
+                </div>
+            @endif
 
             {{-- Tab 3: Financial Information --}}
             @can('employees.contracts.manage')
-            <div x-show="tab === 3" x-transition class="edit-tab-panel">
-                @include('employees::livewire.employees.partials.tab-financial')
-            </div>
+                @if($tab === 3)
+                    <div class="edit-tab-panel">
+                        @include('employees::livewire.employees.partials.tab-financial')
+                    </div>
+                @endif
             @endcan
 
             {{-- Tab 4: Personal Information --}}
-            <div x-show="tab === 4" x-transition class="edit-tab-panel">
-                @include('employees::livewire.employees.partials.tab-personal')
-            </div>
+            @if($tab === 4)
+                <div class="edit-tab-panel">
+                    @include('employees::livewire.employees.partials.tab-personal')
+                </div>
+            @endif
 
             {{-- Tab 5: Documents --}}
             @can('employees.documents.manage')
-            <div x-show="tab === {{ $lastEditableTab }}" x-transition class="edit-tab-panel">
-                @include('employees::livewire.employees.partials.tab-documents-edit')
-            </div>
+                @if($tab === 5)
+                    <div class="edit-tab-panel">
+                        @include('employees::livewire.employees.partials.tab-documents-edit')
+                    </div>
+                @endif
             @endcan
 
 

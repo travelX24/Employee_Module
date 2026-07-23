@@ -282,6 +282,21 @@
 
             @if($viewMode === 'list')
                 {{-- List View --}}
+                @php
+                    $employeesListTableKey = 'employees-list-table-' . md5(json_encode([
+                        'search' => $search ?? '',
+                        'departmentId' => $departmentId ?? 'all',
+                        'jobTitleId' => $jobTitleId ?? 'all',
+                        'status' => $status ?? 'ACTIVE',
+                        'branchFilterId' => $branchFilterId ?? 'all',
+                        'contractType' => $contractType ?? 'all',
+                        'managerId' => $managerId ?? 'all',
+                        'hiringDateType' => $hiringDateType ?? 'all',
+                        'hiringDateStart' => $hiringDateStart ?? null,
+                        'hiringDateEnd' => $hiringDateEnd ?? null,
+                    ], JSON_UNESCAPED_UNICODE));
+                @endphp
+                <div wire:key="{{ $employeesListTableKey }}">
                 <x-ui.card>
                     <x-ui.table
                        :headers="[
@@ -484,6 +499,7 @@
                         @endforeach
                     </x-ui.table>
                 </x-ui.card>
+                </div>
 
             @else
                 {{-- Cards View --}}
