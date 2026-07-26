@@ -705,6 +705,63 @@ if (! empty($allowed)) {
         ];
     }
 
+    protected function validationAttributes(): array
+    {
+        return [
+            'name_ar' => tr('Arabic Name'),
+            'name_en' => tr('English Name'),
+            'national_id_type' => tr('ID Type'),
+            'national_id_type_note' => tr('ID Type Description'),
+            'national_id' => tr('National ID'),
+            'national_id_expiry' => tr('National ID Expiry'),
+            'nationality' => tr('Nationality'),
+            'gender' => tr('Gender'),
+            'social_status' => tr('Social Status'),
+            'birth_place' => tr('Birth Place'),
+            'birth_date' => tr('Birth Date'),
+            'children_count' => tr('Children Count'),
+
+            'sector' => tr('Sector'),
+            'branch_id' => tr('Branch'),
+            'department_id' => tr('Main Department'),
+            'sub_department_id' => tr('Sub Department'),
+            'job_title_id' => tr('Job Title'),
+            'grade' => tr('Grade'),
+            'manager_id' => tr('Manager'),
+            'hired_at' => tr('Hire Date'),
+            'contract_type' => tr('Contract Type'),
+            'contract_duration_months' => tr('Contract Duration'),
+            'procedures_start_at' => tr('Procedures Start Date'),
+
+            'basic_salary' => tr('Basic Salary'),
+            'allowance' => tr('Allowance'),
+            'annual_leave_days' => tr('Annual Leave Days'),
+            'adjustmentAmount' => tr('Number of days'),
+            'adjustmentReason' => tr('Adjustment Reason'),
+            'adjustmentFile' => tr('Attachment'),
+
+            'mobile' => tr('Mobile'),
+            'mobile_alt' => tr('Alternative Mobile'),
+            'email_work' => tr('Work Email'),
+            'email_personal' => tr('Personal Email'),
+            'city' => tr('City'),
+            'district' => tr('District'),
+            'address' => tr('Address'),
+            'emergency_contact_phone' => tr('Emergency Phone'),
+            'emergency_contact_name' => tr('Emergency Name'),
+            'emergency_contact_relation' => tr('Relation'),
+
+            'photo' => tr('Personal Photo'),
+            'national_id_photo' => tr('National ID Photo'),
+            'qualification' => tr('Qualification'),
+            'certificates' => tr('Certificates'),
+            'certificates.*' => tr('Certificates'),
+            'family_documents' => tr('Family Documents'),
+            'family_documents.*' => tr('Family Documents'),
+            'other_documents' => tr('Other Documents'),
+            'other_documents.*' => tr('Other Documents'),
+        ];
+    }
     // Validation rules for each tab
     protected function rulesTab1(): array
     {
@@ -897,7 +954,7 @@ if (! empty($allowed)) {
         $rules = $this->rulesForTab($tab);
 
         if (! empty($rules)) {
-            $this->validate($rules, $this->messages());
+            $this->validate($rules, $this->messages(), $this->validationAttributes());
         }
 
         return true;
@@ -1006,7 +1063,8 @@ if (! empty($allowed)) {
                 $validator = \Illuminate\Support\Facades\Validator::make(
                     $this->all(),
                     $rules,
-                    $this->messages()
+                    $this->messages(),
+                    $this->validationAttributes()
                 );
 
                 if ($validator->fails()) {
