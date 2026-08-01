@@ -1096,8 +1096,13 @@ class Create extends Component
 
     private function getAllowedBranchIds(): ?array
     {
+        /** @var \App\Models\User|null $user */
         $user = Auth::user();
         if (! $user) return null;
+
+        if (method_exists($user, 'accessibleBranchIds')) {
+            return $user->accessibleBranchIds();
+        }
 
         $companyId = (int) ($user->saas_company_id ?? 0);
         if (! $companyId) return null;
