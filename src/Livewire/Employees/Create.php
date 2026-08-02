@@ -146,6 +146,7 @@ class Create extends Component
 
         return $previous;
     }
+
     public function mount(): void
     {
         $this->authorize('employees.create');
@@ -214,13 +215,16 @@ class Create extends Component
 
     private function loadBranches(): void
     {
-        if (! $this->companyId) {
-            $this->branchOptions = [];
+        $this->branchOptions = $this->resolveBranchOptions();
+    }
 
-            return;
+    private function resolveBranchOptions(): array
+    {
+        if (! $this->companyId) {
+            return [];
         }
 
-        $this->branchOptions = Branch::query()
+        return Branch::query()
             ->where('saas_company_id', $this->companyId)
             ->when(is_array($allowed = $this->getAllowedBranchIds()), fn ($q) => $q->whereIn('id', $allowed))
             ->where('is_active', true)
@@ -636,6 +640,7 @@ class Create extends Component
             'children_count' => ['nullable', 'integer', 'min:0'],
         ];
     }
+
     private function rulesTab2(): array
     {
         return [
@@ -1091,23 +1096,39 @@ class Create extends Component
 
     public function getBranchesProperty(): array
     {
-        return $this->branchOptions;
+        return $this->resolveBranchOptions();
     }
 
     private function getAllowedBranchIds(): ?array
     {
         /** @var \App\Models\User|null $user */
         $user = Auth::user();
-        if (! $user) return null;
+        if (! $user) return [];
 
-        if (method_exists($user, 'accessibleBranchIds')) {
-            return $user->accessibleBranchIds();
+        if (method_exists($user, 'restrictedBranchIds')) {
+            return $user->restrictedBranchIds();
+        }
+
+        if (method_exists($user, 'hasAnyRole') && $user->hasAnyRole(['saas-admin', 'super-admin', 'company-admin', 'system-admin'])) {
+            return null;
         }
 
         $companyId = (int) ($user->saas_company_id ?? 0);
         if (! $companyId) return null;
 
-        $ids = DB::table('branch_user_access')
+        $scope = $user->access_scope ?? 'all_branches';
+
+        if ($scope === 'all_branches') {
+            return null;
+        }
+
+        if ($scope === 'my_branch') {
+            $branchId = (int) ($user->employee?->branch_id ?? $user->branch_id ?? 0);
+
+            return $branchId > 0 ? [$branchId] : [];
+        }
+
+        return DB::table('branch_user_access')
             ->where('user_id', $user->id)
             ->where('saas_company_id', $companyId)
             ->pluck('branch_id')
@@ -1115,10 +1136,6 @@ class Create extends Component
             ->unique()
             ->values()
             ->all();
-
-        if (! empty($ids)) return $ids;
-
-        return null;
     }
 
     public function removeUploadItem(string $field, int $index): void

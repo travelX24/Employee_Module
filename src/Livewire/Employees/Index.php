@@ -388,18 +388,11 @@ public function setViewMode(string $mode): void
 
         $companyId = auth()->user()->saas_company_id;
         
-        $allowed = DB::table('branch_user_access')
-            ->where('user_id', Auth::id())
-            ->where('saas_company_id', $companyId)
-            ->pluck('branch_id')
-            ->map(fn ($v) => (int) $v)
-            ->unique()
-            ->values()
-            ->all();
+        $allowed = $this->getAllowedBranchIds();
 
         $query = Employee::withoutGlobalScope('active_only')
             ->where('saas_company_id', $companyId)
-            ->when(! empty($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
+            ->when(is_array($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
             // ✅ NEW: Scoping based on permission
             ->when(!Auth::user()->can('employees.view.all'), function ($q) {
                 $user = Auth::user();
@@ -731,18 +724,11 @@ public function setViewMode(string $mode): void
         $Branch = $this->branchModelClass();
 
         if ($Branch) {
-            $allowedBranchIds = DB::table('branch_user_access')
-                ->where('user_id', Auth::id())
-                ->where('saas_company_id', $companyId)
-                ->pluck('branch_id')
-                ->map(fn ($v) => (int) $v)
-                ->unique()
-                ->values()
-                ->all();
+            $allowedBranchIds = $this->getAllowedBranchIds();
 
             $qBr = $Branch::query()->orderBy('id');
 
-            if (!empty($allowedBranchIds)) {
+            if (is_array($allowedBranchIds)) {
                 $qBr->whereIn('id', $allowedBranchIds);
             }
 
@@ -753,6 +739,10 @@ public function setViewMode(string $mode): void
                     $qBr->where('saas_company_id', $companyId);
                 } elseif (Schema::hasColumn($table, 'company_id')) {
                     $qBr->where('company_id', $companyId);
+                }
+
+                if (Schema::hasColumn($table, 'is_active')) {
+                    $qBr->where('is_active', true);
                 }
             } catch (\Throwable $e) {}
 
@@ -784,18 +774,11 @@ public function setViewMode(string $mode): void
         $this->generalManagerEmployeeId = $this->getGeneralManagerEmployeeId($companyId);
 
         // Query الموظفين
-        $allowed = DB::table('branch_user_access')
-            ->where('user_id', Auth::id())
-            ->where('saas_company_id', $companyId)
-            ->pluck('branch_id')
-            ->map(fn ($v) => (int) $v)
-            ->unique()
-            ->values()
-            ->all();
+        $allowed = $this->getAllowedBranchIds();
 
         $employees = Employee::withoutGlobalScope('active_only')
             ->forCompany($companyId)
-            ->when(! empty($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
+            ->when(is_array($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
             // ✅ NEW: Scoping based on permission
             ->when(!Auth::user()->can('employees.view.all'), function ($q) {
                 $user = Auth::user();
@@ -887,18 +870,11 @@ public function setViewMode(string $mode): void
 
     $companyId = $this->getCompanyId();
 
-    $allowed = DB::table('branch_user_access')
-        ->where('user_id', Auth::id())
-        ->where('saas_company_id', $companyId)
-        ->pluck('branch_id')
-        ->map(fn ($v) => (int) $v)
-        ->unique()
-        ->values()
-        ->all();
+    $allowed = $this->getAllowedBranchIds();
 
     $this->selectedEmployee = Employee::withoutGlobalScope('active_only')
         ->where('saas_company_id', $companyId)
-        ->when(! empty($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
+        ->when(is_array($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
         ->when(!Auth::user()->can('employees.view.all'), function ($q) {
             $user = Auth::user();
             $q->where(function ($qq) use ($user) {
@@ -979,18 +955,11 @@ public function setViewMode(string $mode): void
 
     $companyId = $this->getCompanyId();
 
-    $allowed = DB::table('branch_user_access')
-        ->where('user_id', Auth::id())
-        ->where('saas_company_id', $companyId)
-        ->pluck('branch_id')
-        ->map(fn ($v) => (int) $v)
-        ->unique()
-        ->values()
-        ->all();
+    $allowed = $this->getAllowedBranchIds();
 
     $employee = Employee::withoutGlobalScope('active_only')
         ->where('saas_company_id', $companyId)
-        ->when(! empty($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
+        ->when(is_array($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
         ->when(!Auth::user()->can('employees.view.all'), function ($q) {
             $user = Auth::user();
             $q->where(function ($qq) use ($user) {
@@ -1035,23 +1004,7 @@ public function setViewMode(string $mode): void
 
     $companyId = $this->getCompanyId();
 
-    $user = Auth::user();
-    $allowed = null;
-
-    if ($user && method_exists($user, 'restrictedBranchIds')) {
-        $allowed = $user->restrictedBranchIds();
-    } else {
-        $tmp = DB::table('branch_user_access')
-            ->where('user_id', Auth::id())
-            ->where('saas_company_id', $companyId)
-            ->pluck('branch_id')
-            ->map(fn ($v) => (int) $v)
-            ->unique()
-            ->values()
-            ->all();
-
-        $allowed = ! empty($tmp) ? $tmp : null;
-    }
+    $allowed = $this->getAllowedBranchIds();
 
     if (is_array($allowed) && empty($allowed)) {
         abort(404);
@@ -1900,6 +1853,46 @@ public function setViewMode(string $mode): void
 
         return max(1, $totalEmployees);
     }
+
+    private function getAllowedBranchIds(): ?array
+    {
+        /** @var \App\Models\User|null $user */
+        $user = Auth::user();
+
+        if (! $user) {
+            return [];
+        }
+
+        if (method_exists($user, 'restrictedBranchIds')) {
+            return $user->restrictedBranchIds();
+        }
+
+        if (method_exists($user, 'hasAnyRole') && $user->hasAnyRole(['saas-admin', 'super-admin', 'company-admin', 'system-admin'])) {
+            return null;
+        }
+
+        $scope = $user->access_scope ?? 'all_branches';
+
+        if ($scope === 'all_branches') {
+            return null;
+        }
+
+        if (in_array($scope, ['my_branch', 'branch'], true)) {
+            $branchId = (int) ($user->employee?->branch_id ?? $user->branch_id ?? 0);
+
+            return $branchId > 0 ? [$branchId] : [];
+        }
+
+        return DB::table('branch_user_access')
+            ->where('user_id', $user->id)
+            ->where('saas_company_id', $this->getCompanyId())
+            ->pluck('branch_id')
+            ->map(fn ($value) => (int) $value)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
     private function branchModelClass(): ?string
     {
         $candidates = [

@@ -236,41 +236,11 @@ class Edit extends Component
 
     $scopedBranchId = $this->getScopedBranchId();
 
-        $user = Auth::user();
+        $allowed = $this->getAllowedBranchIds();
 
-        $allowed = null;
-
-if ($user && method_exists($user, 'restrictedBranchIds')) {
-    $restricted = $user->restrictedBranchIds();
-
-    if ($restricted instanceof \Illuminate\Support\Collection) {
-        $restricted = $restricted->all();
-    }
-
-    $allowed = is_array($restricted)
-        ? collect($restricted)
-            ->map(fn ($v) => (int) $v)
-            ->filter()
-            ->unique()
-            ->values()
-            ->all()
-        : null;
-} else {
-    $tmp = DB::table('branch_user_access')
-        ->where('user_id', Auth::id())
-        ->where('saas_company_id', $this->companyId)
-        ->pluck('branch_id')
-        ->map(fn ($v) => (int) $v)
-        ->unique()
-        ->values()
-        ->all();
-
-    $allowed = ! empty($tmp) ? $tmp : null;
-}
-
-if (! empty($allowed)) {
-    abort_unless(in_array((int) $this->employee->branch_id, $allowed, true), 404);
-}
+        if (is_array($allowed)) {
+            abort_unless(in_array((int) $this->employee->branch_id, $allowed, true), 404);
+        }
 
         // ✅ لو المستخدم مقيد بفرع واحد: ما يسمح يفتح موظف من فرع ثاني
         if ($scopedBranchId) {
@@ -1105,16 +1075,9 @@ if (! empty($allowed)) {
                 $finalBranchId = $scopedBranchId;
             }
 
-            $allowed = DB::table('branch_user_access')
-                ->where('user_id', Auth::id())
-                ->where('saas_company_id', $this->companyId)
-                ->pluck('branch_id')
-                ->map(fn ($v) => (int) $v)
-                ->unique()
-                ->values()
-                ->all();
+            $allowed = $this->getAllowedBranchIds();
 
-            if (! empty($allowed)) {
+            if (is_array($allowed)) {
                 abort_unless($finalBranchId && in_array((int) $finalBranchId, $allowed, true), 403);
             }
 
@@ -1327,6 +1290,45 @@ if (! empty($allowed)) {
 
     }
 
+    private function getAllowedBranchIds(): ?array
+    {
+        /** @var \App\Models\User|null $user */
+        $user = Auth::user();
+
+        if (! $user) {
+            return [];
+        }
+
+        if (method_exists($user, 'restrictedBranchIds')) {
+            return $user->restrictedBranchIds();
+        }
+
+        if (method_exists($user, 'hasAnyRole') && $user->hasAnyRole(['saas-admin', 'super-admin', 'company-admin', 'system-admin'])) {
+            return null;
+        }
+
+        $scope = $user->access_scope ?? 'all_branches';
+
+        if ($scope === 'all_branches') {
+            return null;
+        }
+
+        if (in_array($scope, ['my_branch', 'branch'], true)) {
+            $branchId = (int) ($user->employee?->branch_id ?? $user->branch_id ?? 0);
+
+            return $branchId > 0 ? [$branchId] : [];
+        }
+
+        return DB::table('branch_user_access')
+            ->where('user_id', $user->id)
+            ->where('saas_company_id', $this->companyId)
+            ->pluck('branch_id')
+            ->map(fn ($value) => (int) $value)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
     private function clearFieldErrorsByPrefix(string $field): void
     {
         $bag = $this->getErrorBag();
@@ -1486,16 +1488,9 @@ if (! empty($allowed)) {
 
         $query = $Branch::query()->orderBy('id');
 
-        $allowed = DB::table('branch_user_access')
-            ->where('user_id', Auth::id())
-            ->where('saas_company_id', $this->companyId)
-            ->pluck('branch_id')
-            ->map(fn ($v) => (int) $v)
-            ->unique()
-            ->values()
-            ->all();
+        $allowed = $this->getAllowedBranchIds();
 
-        if (! empty($allowed)) {
+        if (is_array($allowed)) {
             $query->whereIn('id', $allowed);
         }
         // ✅ فلترة حسب الشركة إذا الأعمدة موجودة
@@ -1506,6 +1501,17 @@ if (! empty($allowed)) {
                 $query->where('saas_company_id', $this->companyId);
             } elseif (Schema::hasColumn($table, 'company_id')) {
                 $query->where('company_id', $this->companyId);
+            }
+
+            if (Schema::hasColumn($table, 'is_active')) {
+                $currentBranchId = (int) ($this->branch_id ?? 0);
+                $query->where(function ($branchQuery) use ($currentBranchId) {
+                    $branchQuery->where('is_active', true);
+
+                    if ($currentBranchId > 0) {
+                        $branchQuery->orWhere('id', $currentBranchId);
+                    }
+                });
             }
 
             // نختار الاسم حسب المتوفر
