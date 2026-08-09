@@ -163,11 +163,19 @@
                 <button
                     type="button"
                     wire:click="previousTab"
+                    wire:loading.attr="disabled"
+                    wire:target="previousTab"
                     x-show="tab > 1"
-                    class="px-5 py-2.5 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 hover:shadow-md active:scale-[0.97] transition-all duration-200 shadow-sm"
+                    class="px-5 py-2.5 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 hover:shadow-md active:scale-[0.97] transition-all duration-200 shadow-sm disabled:opacity-50 disabled:cursor-wait"
                 >
-                    <i class="fas fa-arrow-right me-2"></i>
-                    {{ tr('Previous') }}
+                    <span wire:loading.remove wire:target="previousTab">
+                        <i class="fas fa-arrow-right me-2"></i>
+                        {{ tr('Previous') }}
+                    </span>
+                    <span wire:loading wire:target="previousTab" class="inline-flex items-center gap-2">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        {{ tr('Loading...') }}
+                    </span>
                 </button>
 
                 <div class="flex-1"></div>
@@ -175,11 +183,19 @@
                 <button
                     type="button"
                     wire:click="nextTab"
+                    wire:loading.attr="disabled"
+                    wire:target="nextTab"
                     x-show="tab < {{ $lastEditableTab }}"
-                    class="px-5 py-2.5 text-sm font-semibold text-white bg-[color:var(--accent-orange)] rounded-xl hover:shadow-lg hover:brightness-95 active:scale-[0.97] transition-all duration-200 shadow-sm"
+                    class="px-5 py-2.5 text-sm font-semibold text-white bg-[color:var(--accent-orange)] rounded-xl hover:shadow-lg hover:brightness-95 active:scale-[0.97] transition-all duration-200 shadow-sm disabled:opacity-50 disabled:cursor-wait"
                 >
-                    {{ tr('Next') }}
-                    <i class="fas fa-arrow-left ms-2"></i>
+                    <span wire:loading.remove wire:target="nextTab">
+                        {{ tr('Next') }}
+                        <i class="fas fa-arrow-left ms-2"></i>
+                    </span>
+                    <span wire:loading wire:target="nextTab" class="inline-flex items-center gap-2">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        {{ tr('Loading...') }}
+                    </span>
                 </button>
 
                 <button

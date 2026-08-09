@@ -74,10 +74,11 @@ class DetailModal extends Component
         $this->readonly = $readonly;
         $this->show = true;
         $this->dispatch('open-view-employee-' . $id);
+        $this->dispatch('employee-detail-opened', employeeId: $id);
     }
 
     #[On('employee-updated')]
-    public function refreshEmployee($employeeId = null): void
+    public function refreshEmployee($employeeId = null, $tab = null): void
     {
         if (!$this->employee) return;
 

@@ -1177,7 +1177,7 @@ class Edit extends Component
         }
 
         $this->dispatch('toast', type: 'success', title: tr('Saved'), message: tr('Employee updated successfully'));
-        $this->dispatch('employee-updated', employeeId: $this->employee->id);
+        $this->dispatch('employee-updated', employeeId: $this->employee->id, tab: $this->tab);
         // REMOVED logic that reopens the modal automatically
         // Instead, the view-employee-modal will handle closing on employee-updated via Alpine
     }

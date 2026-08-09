@@ -50,17 +50,19 @@
                 window.dispatchEvent(new CustomEvent('employee-edit-cancelled'));
             },
 
-            reopenAfterSave() {
+            reopenAfterSave(tab = null) {
+                const nextTab = parseInt(tab ?? this.activeTab ?? 1, 10);
                 this.editMode = false;
-                this.activeTab = 1;
+                this.activeTab = Number.isFinite(nextTab) ? Math.max(1, Math.min(6, nextTab)) : 1;
             }
         }"
         x-on:open-view-employee-{{ $employee->id }}.window="show()"
         x-on:employee-updated.window="
             const updatedId = $event.detail?.employeeId ?? $event.detail?.[0]?.employeeId ?? $event.detail?.[0] ?? null;
             if (updatedId != employeeId) return;
+            const updatedTab = $event.detail?.tab ?? $event.detail?.[0]?.tab ?? null;
             editMode = false;
-            reopenAfterSave();
+            reopenAfterSave(updatedTab);
         "
     >
         <x-ui.modal wire:model="show" maxWidth="5xl">

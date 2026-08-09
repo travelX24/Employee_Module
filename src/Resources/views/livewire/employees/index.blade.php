@@ -23,7 +23,6 @@
 @endsection
 
 <div class="space-y-4 sm:space-y-6" dir="{{ $dir }}">
-
     {{-- Search and Filters (مثل Companies) --}}
         <x-ui.card>
             <div class="space-y-4">
@@ -314,6 +313,7 @@
 
                         :rtl="$isRtl"
                         :perPage="10"
+                        :pagination-key="$employeesListTableKey"
                     >
                         @foreach($employees as $emp)
                            @php
