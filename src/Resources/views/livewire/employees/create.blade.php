@@ -16,6 +16,7 @@
 @section('topbar-actions')
     <x-ui.secondary-button
         href="{{ route('company-admin.employees.index') }}"
+        wire:navigate
         :arrow="false"
         :fullWidth="false"
         class="!px-4 !py-2 !text-sm !rounded-xl !gap-2"

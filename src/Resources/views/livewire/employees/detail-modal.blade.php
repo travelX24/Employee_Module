@@ -202,7 +202,9 @@
 
             {{-- Edit Mode --}}
             <div x-show="editMode" x-transition class="w-full">
-                @livewire('employees.edit', ['employeeId' => $employee->id], key('edit-employee-'.$employee->id))
+                @if($showEditComponent)
+                    @livewire('employees.edit', ['employeeId' => $employee->id], key('edit-employee-'.$employee->id))
+                @endif
             </div>
         </div>
         <div class="sticky bottom-0 px-6 py-4 border-t border-gray-200 bg-white shadow-[0_-8px_20px_rgba(0,0,0,0.06)] z-20 rounded-b-2xl">
@@ -214,11 +216,14 @@
                         x-show="!editMode"
                         x-transition
                         x-cloak
-                        @click="enableEdit()"
+                        @click="$wire.loadEditComponent().then(() => enableEdit())"
+                        wire:loading.attr="disabled"
+                        wire:target="loadEditComponent"
                         :fullWidth="false"
                     >
                         <i class="fas fa-edit me-2"></i>
-                        {{ tr('Edit') }}
+                        <span wire:loading.remove wire:target="loadEditComponent">{{ tr('Edit') }}</span>
+                        <span wire:loading wire:target="loadEditComponent">{{ tr('Loading...') }}</span>
                     </x-ui.primary-button>
                     @endcan
                 @endif

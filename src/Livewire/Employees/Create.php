@@ -23,7 +23,11 @@ class Create extends Component
     public ?int $branch_id = null;
 
     public array $branchOptions = [];
+    public array $departmentOptions = [];
+    public array $jobTitleOptions = [];
+    public array $managerOptions = [];
     public array $nationalityOptions = [];
+    public bool $jobOptionsLoaded = false;
 
     public int $tab = 1;
 
@@ -216,6 +220,34 @@ class Create extends Component
     private function loadBranches(): void
     {
         $this->branchOptions = $this->resolveBranchOptions();
+    }
+
+    private function ensureJobOptionsLoaded(): void
+    {
+        if ($this->jobOptionsLoaded) {
+            return;
+        }
+
+        $this->loadDepartments();
+        $this->loadJobTitles();
+        $this->loadManagers();
+
+        $this->jobOptionsLoaded = true;
+    }
+
+    private function loadDepartments(): void
+    {
+        $this->departmentOptions = $this->resolveDepartmentOptions();
+    }
+
+    private function loadJobTitles(): void
+    {
+        $this->jobTitleOptions = $this->resolveJobTitleOptions();
+    }
+
+    private function loadManagers(): void
+    {
+        $this->managerOptions = $this->resolveManagerOptions();
     }
 
     private function resolveBranchOptions(): array
@@ -757,6 +789,7 @@ class Create extends Component
 
         if ($target < $this->tab) {
             $this->tab = $target;
+            $this->prepareTab($this->tab);
             return;
         }
 
@@ -784,6 +817,7 @@ class Create extends Component
         }
 
         $this->tab = $target;
+        $this->prepareTab($this->tab);
     }
 
     public function nextTab(): void
@@ -806,11 +840,20 @@ class Create extends Component
         );
 
         $this->tab = $this->nextEditableTab();
+        $this->prepareTab($this->tab);
     }
 
     public function prevTab(): void
     {
         $this->tab = $this->previousEditableTab();
+        $this->prepareTab($this->tab);
+    }
+
+    private function prepareTab(int $tab): void
+    {
+        if ($tab === 2) {
+            $this->ensureJobOptionsLoaded();
+        }
     }
 
     public function store()
@@ -964,6 +1007,13 @@ class Create extends Component
 
     public function getDepartmentsProperty()
     {
+        $this->ensureJobOptionsLoaded();
+
+        return $this->departmentOptions;
+    }
+
+    private function resolveDepartmentOptions(): array
+    {
         if (! $this->companyId) {
             return [];
         }
@@ -1024,6 +1074,13 @@ class Create extends Component
 
     public function getJobTitlesProperty()
     {
+        $this->ensureJobOptionsLoaded();
+
+        return $this->jobTitleOptions;
+    }
+
+    private function resolveJobTitleOptions(): array
+    {
         if (! $this->companyId) {
             return [];
         }
@@ -1040,12 +1097,18 @@ class Create extends Component
 
     public function getManagersProperty()
     {
+        $this->ensureJobOptionsLoaded();
+
+        return $this->managerOptions;
+    }
+
+    private function resolveManagerOptions(): array
+    {
         if (! $this->companyId) {
             return [];
         }
 
         return Employee::where('saas_company_id', $this->companyId)
-            ->where('id', '!=', $this->employee_id ?? 0)
             ->when(! Auth::user()->can('employees.view.all'), function ($q) {
                 $user = Auth::user();
                 $q->where(function ($qq) use ($user) {
@@ -1096,7 +1159,7 @@ class Create extends Component
 
     public function getBranchesProperty(): array
     {
-        return $this->resolveBranchOptions();
+        return $this->branchOptions;
     }
 
     private function getAllowedBranchIds(): ?array

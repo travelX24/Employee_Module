@@ -73,6 +73,7 @@
                         @can('employees.create')
                         <x-ui.primary-button
                             href="{{ route('company-admin.employees.create') }}"
+                            wire:navigate
                             :arrow="false"
                             :fullWidth="false"
                         >
@@ -314,6 +315,7 @@
                         :rtl="$isRtl"
                         :perPage="10"
                         :pagination-key="$employeesListTableKey"
+                        :enable-pagination="false"
                     >
                         @foreach($employees as $emp)
                            @php
@@ -675,6 +677,12 @@
                             </div>
                         </x-ui.card>
                     @endforeach
+                </div>
+            @endif
+
+            @if(method_exists($employees, 'links') && $employees->hasPages())
+                <div class="mt-4">
+                    {{ $employees->links('employees::pagination.compact-tailwind') }}
                 </div>
             @endif
 

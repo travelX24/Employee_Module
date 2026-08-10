@@ -5,6 +5,7 @@ namespace Athka\Employees\Livewire\Employees;
 use Livewire\Component;
 use Livewire\WithPagination;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 use App\Services\ExcelExportService;
@@ -131,7 +132,10 @@ class Index extends Component
      * صفحة الشركات تعتمد عملياً على pagination داخل x-ui.table (client-side).
      * لذلك هنا نرفع عدد النتائج في الصفحة الأولى حتى يعمل نفس الإحساس.
      */
-    public int $perPage = 100;
+    public int $perPage = 10;
+
+    private static array $schemaTableCache = [];
+    private static array $schemaColumnCache = [];
 
     public function placeholder()
     {
@@ -187,8 +191,8 @@ private function hasGeneralManagerColumn(): bool
 {
     try {
         return class_exists(SaasCompanyOtherinfo::class)
-            && Schema::hasTable('saas_company_otherinfo')
-            && Schema::hasColumn('saas_company_otherinfo', 'general_manager_employee_id');
+            && $this->hasTableCached('saas_company_otherinfo')
+            && $this->hasColumnCached('saas_company_otherinfo', 'general_manager_employee_id');
     } catch (\Throwable $e) {
         return false;
     }
@@ -698,33 +702,46 @@ public function setViewMode(string $mode): void
     public function render()
     {
         $companyId = $this->getCompanyId();
-        $branchId = $this->getBranchId();
+        $userId = (int) Auth::id();
+        $locale = (string) app()->getLocale();
+        $isAr = substr($locale, 0, 2) === 'ar';
+        $allowed = $this->getAllowedBranchIds();
+        $allowedHash = is_array($allowed) ? md5(json_encode($allowed)) : 'all';
+        $cacheVersion = (int) Cache::get("employees:cache-version:{$companyId}", 1);
 
         $Department = $this->departmentModelClass();
         $JobTitle   = $this->jobTitleModelClass();
 
         //   خيارات الفلاتر بصيغة value/label مثل Companies
-        $departmentsOptions = $Department::query()
-            ->where('saas_company_id', $companyId)
-            ->where('is_active', true) // Active only
-            ->orderBy('name')
-            ->get(['id', 'name'])
-            ->map(fn ($d) => ['value' => (string) $d->id, 'label' => $d->name])
-            ->toArray();
+        $departmentsOptions = Cache::remember(
+            "employees:index:departments:{$companyId}:{$userId}:{$locale}",
+            now()->addMinutes(2),
+            fn () => $Department::query()
+                ->where('saas_company_id', $companyId)
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn ($d) => ['value' => (string) $d->id, 'label' => $d->name])
+                ->toArray()
+        );
 
-        $jobTitlesOptions = $JobTitle::query()
-            ->where('saas_company_id', $companyId)
-            ->where('is_active', true) // Active only
-            ->orderBy('name')
-            ->get(['id', 'name'])
-            ->map(fn ($j) => ['value' => (string) $j->id, 'label' => $j->name])
-            ->toArray();
+        $jobTitlesOptions = Cache::remember(
+            "employees:index:job-titles:{$companyId}:{$userId}:{$locale}",
+            now()->addMinutes(2),
+            fn () => $JobTitle::query()
+                ->where('saas_company_id', $companyId)
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn ($j) => ['value' => (string) $j->id, 'label' => $j->name])
+                ->toArray()
+        );
 
         $branchesOptions = [];
         $Branch = $this->branchModelClass();
 
         if ($Branch) {
-            $allowedBranchIds = $this->getAllowedBranchIds();
+            $allowedBranchIds = $allowed;
 
             $qBr = $Branch::query()->orderBy('id');
 
@@ -735,18 +752,16 @@ public function setViewMode(string $mode): void
             // فلترة حسب الشركة لو الأعمدة موجودة
             try {
                 $table = (new $Branch)->getTable();
-                if (Schema::hasColumn($table, 'saas_company_id')) {
+                if ($this->hasColumnCached($table, 'saas_company_id')) {
                     $qBr->where('saas_company_id', $companyId);
-                } elseif (Schema::hasColumn($table, 'company_id')) {
+                } elseif ($this->hasColumnCached($table, 'company_id')) {
                     $qBr->where('company_id', $companyId);
                 }
 
-                if (Schema::hasColumn($table, 'is_active')) {
+                if ($this->hasColumnCached($table, 'is_active')) {
                     $qBr->where('is_active', true);
                 }
             } catch (\Throwable $e) {}
-
-            $isAr = substr((string) app()->getLocale(), 0, 2) === 'ar';
 
             $branchesOptions = $qBr->get()->map(function ($b) use ($isAr) {
                 $label = $isAr
@@ -760,22 +775,24 @@ public function setViewMode(string $mode): void
             })->toArray();
         }
 
-        $isAr = substr((string) app()->getLocale(), 0, 2) === 'ar';
-        $managersOptions = Employee::withoutGlobalScope('active_only')
-            ->forCompany($companyId)
-            ->where('status', 'ACTIVE')
-            ->orderBy('name_ar')
-            ->get(['id', 'name_ar', 'name_en'])
-            ->map(function ($m) use ($isAr) {
-                return ['value' => (string) $m->id, 'label' => $isAr ? ($m->name_ar ?? $m->name_en) : ($m->name_en ?? $m->name_ar)];
-            })
-            ->toArray();
+        $managersOptions = Cache::remember(
+            "employees:index:managers:{$companyId}:{$userId}:{$locale}:{$allowedHash}:v{$cacheVersion}",
+            now()->addMinutes(2),
+            fn () => Employee::withoutGlobalScope('active_only')
+                ->forCompany($companyId)
+                ->where('status', 'ACTIVE')
+                ->when(is_array($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
+                ->orderBy('name_ar')
+                ->get(['id', 'name_ar', 'name_en'])
+                ->map(function ($m) use ($isAr) {
+                    return ['value' => (string) $m->id, 'label' => $isAr ? ($m->name_ar ?? $m->name_en) : ($m->name_en ?? $m->name_ar)];
+                })
+                ->toArray()
+        );
 
         $this->generalManagerEmployeeId = $this->getGeneralManagerEmployeeId($companyId);
 
         // Query الموظفين
-        $allowed = $this->getAllowedBranchIds();
-
         $employees = Employee::withoutGlobalScope('active_only')
             ->forCompany($companyId)
             ->when(is_array($allowed), fn ($q) => $q->whereIn('branch_id', $allowed))
@@ -1847,11 +1864,7 @@ public function setViewMode(string $mode): void
 
     private function employeesPerPage(int $companyId): int
     {
-        $totalEmployees = Employee::withoutGlobalScope('active_only')
-            ->forCompany($companyId)
-            ->count();
-
-        return max(1, $totalEmployees);
+        return max(10, min(100, (int) $this->perPage));
     }
 
     private function getAllowedBranchIds(): ?array
@@ -1910,6 +1923,26 @@ public function setViewMode(string $mode): void
         return null;
     }
 
+    private function hasTableCached(string $table): bool
+    {
+        if (! array_key_exists($table, self::$schemaTableCache)) {
+            self::$schemaTableCache[$table] = Schema::hasTable($table);
+        }
+
+        return self::$schemaTableCache[$table];
+    }
+
+    private function hasColumnCached(string $table, string $column): bool
+    {
+        $key = "{$table}.{$column}";
+
+        if (! array_key_exists($key, self::$schemaColumnCache)) {
+            self::$schemaColumnCache[$key] = Schema::hasColumn($table, $column);
+        }
+
+        return self::$schemaColumnCache[$key];
+    }
+
     private function loadBranchesMap($employees, int $companyId): array
     {
         $Branch = $this->branchModelClass();
@@ -1933,15 +1966,15 @@ public function setViewMode(string $mode): void
         try {
             $table = (new $Branch)->getTable();
 
-            if (Schema::hasColumn($table, 'saas_company_id')) {
+            if ($this->hasColumnCached($table, 'saas_company_id')) {
                 $query->where('saas_company_id', $companyId);
-            } elseif (Schema::hasColumn($table, 'company_id')) {
+            } elseif ($this->hasColumnCached($table, 'company_id')) {
                 $query->where('company_id', $companyId);
             }
 
             $cols = ['id'];
             foreach (['name', 'name_ar', 'name_en', 'code'] as $c) {
-                if (Schema::hasColumn($table, $c)) {
+                if ($this->hasColumnCached($table, $c)) {
                     $cols[] = $c;
                 }
             }

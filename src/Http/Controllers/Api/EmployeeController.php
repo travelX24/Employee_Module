@@ -280,13 +280,13 @@ class EmployeeController extends Controller
                 'days_per_year' => (float)$t->days_per_year,
                 'requires_attachment' => (bool)$t->requires_attachment,
                 'duration_unit' => $settings['duration_unit'] ?? 'full_day',
-                'allow_retroactive' => isset($settings['allow_retroactive']) && (bool)$settings['allow_retroactive'],
+                'allow_retroactive' => (bool) data_get($settings, 'allow_retroactive', data_get($settings, 'notice.allow_retroactive', false)),
                 'note_required' => isset($settings['note_required']) && (bool)$settings['note_required'],
                 'note_text' => (string)($settings['note_text'] ?? ''),
                 'note_ack_required' => isset($settings['note_ack_required']) && (bool)$settings['note_ack_required'],
                 'deduction_policy' => (string)($settings['deduction_policy'] ?? 'balance_only'),
-                'notice_min_days' => (int)($settings['notice_min_days'] ?? 0),
-                'notice_max_advance_days' => (int)($settings['notice_max_advance_days'] ?? 0),
+                'notice_min_days' => (int) data_get($settings, 'notice_min_days', data_get($settings, 'notice.min_days', 0)),
+                'notice_max_advance_days' => (int) data_get($settings, 'notice_max_advance_days', data_get($settings, 'notice.max_advance_days', 0)),
                 'attachment_types' => (array)($settings['attachment_types'] ?? ['pdf', 'jpg', 'png']),
             ];
         })
@@ -1122,7 +1122,7 @@ class EmployeeController extends Controller
                 $pSettings = is_array($pSettings) ? $pSettings : [];
 
                 // Check Backdating
-                $allowRetro = (bool)($pSettings['allow_retroactive'] ?? false);
+                $allowRetro = $this->leavePolicyAllowsRetroactiveRequests($pSettings);
                 if (!$allowRetro) {
                     $startDate = Carbon::parse($validated['start_date'])->startOfDay();
                     $today = now()->startOfDay();
@@ -1301,6 +1301,8 @@ class EmployeeController extends Controller
                     $msg = function_exists('tr') ? tr('You are not authorized to apply for this leave type as per current approval policies.') : 'أنت غير مخول للتقديم على هذا النوع من الإجازات حسب سياسات الموافقات الحالية.';
                     if ($workflowReason === 'missing_direct_manager') {
                         $msg = function_exists('tr') ? tr('Cannot submit request: Your direct manager is not assigned in the system.') : 'لا يمكن تقديم الطلب: لم يتم تعيين مدير مباشر لك في النظام.';
+                    } elseif ($workflowReason === 'no_matching_policy') {
+                        $msg = function_exists('tr') ? tr('Cannot submit request: No approval policy matches this employee. Please contact administration to review approval settings.') : 'No approval policy matches this employee. Please contact administration to review approval settings.';
                     }
                     return response()->json([
                         'ok'      => false,
@@ -1488,6 +1490,11 @@ class EmployeeController extends Controller
             }
         }
 
+        $workWindow = $this->validateMobilePermissionWithinWorkWindow($user, $dateVal, $validated['from_time'], $validated['to_time']);
+        if (!$workWindow['ok']) {
+            return response()->json($workWindow, 422);
+        }
+
         $cols = Schema::getColumnListing($table);
 
         $key = in_array('employee_id', $cols, true) ? 'employee_id' : (in_array('user_id', $cols, true) ? 'user_id' : null);
@@ -1605,6 +1612,8 @@ class EmployeeController extends Controller
                     $msg = function_exists('tr') ? tr('You are not authorized to apply for this permission as per current approval policies.') : 'أنت غير مخول للتقديم على هذا النوع من الأذونات حسب سياسات الموافقات الحالية.';
                     if ($workflowReason === 'missing_direct_manager') {
                         $msg = function_exists('tr') ? tr('Cannot submit request: Your direct manager is not assigned in the system.') : 'لا يمكن تقديم الطلب: لم يتم تعيين مدير مباشر لك في النظام.';
+                    } elseif ($workflowReason === 'no_matching_policy') {
+                        $msg = function_exists('tr') ? tr('Cannot submit request: No approval policy matches this employee. Please contact administration to review approval settings.') : 'No approval policy matches this employee. Please contact administration to review approval settings.';
                     }
                     return response()->json([
                         'ok'      => false,
@@ -1889,6 +1898,128 @@ class EmployeeController extends Controller
         return ['ok' => true, 'period' => $period];
     }
 
+    protected function validateMobilePermissionWithinWorkWindow($user, string $dateVal, string $fromTime, string $toTime): array
+    {
+        if (!class_exists(\Athka\SystemSettings\Services\WorkScheduleService::class) || !class_exists(\Athka\Employees\Models\Employee::class)) {
+            return ['ok' => true];
+        }
+
+        $companyId = (int) ($user->saas_company_id ?? 0);
+        $employeeId = (int) ($user->employee_id ?? 0);
+        if ($companyId <= 0 || $employeeId <= 0) {
+            return [
+                'ok' => false,
+                'error' => 'missing_employee_id',
+                'message' => function_exists('tr') ? tr('Employee ID is missing for this account.') : 'Employee ID is missing for this account.',
+            ];
+        }
+
+        $employee = \Athka\Employees\Models\Employee::find($employeeId);
+        if (!$employee) {
+            return [
+                'ok' => false,
+                'error' => 'employee_not_found',
+                'message' => function_exists('tr') ? tr('Employee not found.') : 'Employee not found.',
+            ];
+        }
+
+        $date = Carbon::parse($dateVal)->startOfDay();
+        $dateString = $date->toDateString();
+        $service = app(\Athka\SystemSettings\Services\WorkScheduleService::class);
+        $schedule = $service->getEffectiveSchedule($companyId, $employee, $dateString);
+        $holidays = $service->getHolidays($companyId, $dateString, $dateString);
+        $metrics = $service->getMetricsForDate($dateString, $schedule, $holidays, $employee, [
+            'leaves' => collect(),
+            'missions' => collect(),
+            'permissions' => collect(),
+        ]);
+
+        $periods = collect($metrics['periods'] ?? [])
+            ->map(fn ($period) => [
+                'start_time' => substr((string) ($period['start_time'] ?? ''), 0, 5),
+                'end_time' => substr((string) ($period['end_time'] ?? ''), 0, 5),
+                'is_night_shift' => (bool) ($period['is_night_shift'] ?? false),
+            ])
+            ->filter(fn ($period) => $period['start_time'] !== '' && $period['end_time'] !== '')
+            ->values()
+            ->all();
+
+        if (!($metrics['is_workday'] ?? false) || empty($periods)) {
+            return [
+                'ok' => false,
+                'error' => 'not_working_day',
+                'message' => function_exists('tr') ? tr('Selected date is not a working day.') : 'Selected date is not a working day.',
+            ];
+        }
+
+        if (!$this->mobilePermissionTimeFitsAnyPeriod($date, $fromTime, $toTime, $periods)) {
+            $window = $this->mobilePermissionWorkWindowFromPeriods($periods);
+            $range = $window ? ' (' . $window[0] . ' - ' . $window[1] . ')' : '';
+
+            return [
+                'ok' => false,
+                'error' => 'time_outside_working_hours',
+                'message' => (function_exists('tr') ? tr('Time must be within working hours') : 'Time must be within working hours') . $range,
+            ];
+        }
+
+        return ['ok' => true];
+    }
+
+    protected function mobilePermissionTimeFitsAnyPeriod(Carbon $date, string $fromTime, string $toTime, array $periods): bool
+    {
+        $fromAt = Carbon::parse($date->toDateString() . ' ' . substr($fromTime, 0, 5));
+        $toAt = Carbon::parse($date->toDateString() . ' ' . substr($toTime, 0, 5));
+
+        if ($toAt->lte($fromAt)) {
+            return false;
+        }
+
+        foreach ($periods as $period) {
+            $start = (string) ($period['start_time'] ?? '');
+            $end = (string) ($period['end_time'] ?? '');
+            if ($start === '' || $end === '') {
+                continue;
+            }
+
+            $startAt = Carbon::parse($date->toDateString() . ' ' . $start);
+            $endAt = Carbon::parse($date->toDateString() . ' ' . $end);
+            if (!empty($period['is_night_shift']) || $endAt->lte($startAt)) {
+                $endAt->addDay();
+            }
+
+            if ($fromAt->gte($startAt) && $toAt->lte($endAt)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function mobilePermissionWorkWindowFromPeriods(array $periods): ?array
+    {
+        $starts = [];
+        $ends = [];
+        $hasNight = false;
+
+        foreach ($periods as $period) {
+            $start = substr((string) ($period['start_time'] ?? ''), 0, 5);
+            $end = substr((string) ($period['end_time'] ?? ''), 0, 5);
+            if ($start !== '') $starts[] = $start;
+            if ($end !== '') $ends[] = $end;
+            if (!empty($period['is_night_shift'])) $hasNight = true;
+        }
+
+        if (empty($starts) || empty($ends)) {
+            return null;
+        }
+
+        sort($starts);
+        sort($ends);
+
+        return [$starts[0], $hasNight ? '23:59' : $ends[count($ends) - 1]];
+    }
+
     protected function mobilePeriodMinutes(Carbon $date, string $start, string $end, bool $isNight): int
     {
         if ($start === '' || $end === '') {
@@ -2088,6 +2219,20 @@ class EmployeeController extends Controller
             ], 404);
         }
 
+        $policySettings = is_string($policy->settings) ? json_decode($policy->settings, true) : ($policy->settings ?? []);
+        $policySettings = is_array($policySettings) ? $policySettings : [];
+        if (!$this->leavePolicyAllowsRetroactiveRequests($policySettings)) {
+            $startDate = Carbon::parse($validated['start_date'])->startOfDay();
+            $today = now()->startOfDay();
+            if ($startDate->lt($today)) {
+                return response()->json([
+                    'ok'      => false,
+                    'error'   => 'backdating_not_allowed',
+                    'message' => function_exists('tr') ? tr('Backdated leave requests are not allowed.') : 'Backdated leave requests are not allowed.',
+                ], 422);
+            }
+        }
+
         if (isset($validated['leave_policy_id'])) {
             if (in_array('leave_policy_id', $cols, true)) $data['leave_policy_id'] = $policy->id;
             if (in_array('policy_year_id', $cols, true)) $data['policy_year_id'] = $policy->policy_year_id;
@@ -2223,6 +2368,11 @@ class EmployeeController extends Controller
                 'error'   => 'invalid_time_range',
                 'message' => 'to_time must be after from_time.',
             ], 422);
+        }
+
+        $workWindow = $this->validateMobilePermissionWithinWorkWindow($user, $dateVal, $validated['from_time'], $validated['to_time']);
+        if (!$workWindow['ok']) {
+            return response()->json($workWindow, 422);
         }
 
         $data = [];
@@ -2457,6 +2607,8 @@ class EmployeeController extends Controller
                     $msg = function_exists('tr') ? tr('You are not authorized to apply for this mission as per current approval policies.') : 'أنت غير مخول للتقديم على المهام حسب سياسات الموافقات الحالية.';
                     if ($workflowReason === 'missing_direct_manager') {
                         $msg = function_exists('tr') ? tr('Cannot submit request: Your direct manager is not assigned in the system.') : 'لا يمكن تقديم الطلب: لم يتم تعيين مدير مباشر لك في النظام.';
+                    } elseif ($workflowReason === 'no_matching_policy') {
+                        $msg = function_exists('tr') ? tr('Cannot submit request: No approval policy matches this employee. Please contact administration to review approval settings.') : 'No approval policy matches this employee. Please contact administration to review approval settings.';
                     }
                     return response()->json([
                         'ok'      => false,
@@ -2750,6 +2902,15 @@ class EmployeeController extends Controller
         }
 
         return [6, 0, 1, 2, 3]; // Default fallback
+    }
+
+    protected function leavePolicyAllowsRetroactiveRequests(array $settings): bool
+    {
+        return (bool) data_get(
+            $settings,
+            'allow_retroactive',
+            data_get($settings, 'notice.allow_retroactive', false)
+        );
     }
 
     protected function normalizeRequestItem($item, string $table, string $locale = 'ar')

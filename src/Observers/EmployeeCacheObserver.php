@@ -16,6 +16,7 @@ class EmployeeCacheObserver
         $companyId = $employee->saas_company_id;
 
         Cache::forget("managers_options_{$companyId}");
+        Cache::increment("employees:cache-version:{$companyId}");
     }
 
     public function saved(Employee $employee): void

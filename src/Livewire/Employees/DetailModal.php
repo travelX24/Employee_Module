@@ -14,6 +14,7 @@ class DetailModal extends Component
     public ?Employee $employee = null;
     public bool $show = false;
     public bool $readonly = true;
+    public bool $showEditComponent = false;
 
     #[On('open-employee-detail')]
     public function open($id, $readonly = true)
@@ -68,13 +69,21 @@ class DetailModal extends Component
                     }
                 });
             })
-            ->with(['department', 'jobTitle', 'documents', 'manager'])
+            ->with(['department', 'subDepartment', 'jobTitle', 'documents', 'manager', 'branch'])
             ->findOrFail($id);
 
         $this->readonly = $readonly;
+        $this->showEditComponent = false;
         $this->show = true;
         $this->dispatch('open-view-employee-' . $id);
         $this->dispatch('employee-detail-opened', employeeId: $id);
+    }
+
+    public function loadEditComponent(): void
+    {
+        abort_unless(Auth::user()?->can('employees.edit'), 403);
+
+        $this->showEditComponent = true;
     }
 
     #[On('employee-updated')]
@@ -89,8 +98,10 @@ class DetailModal extends Component
 
         $this->employee = Employee::withoutGlobalScope('active_only')
             ->where('id', $this->employee->id)
-            ->with(['department', 'jobTitle', 'documents', 'manager', 'statusLogs.performer'])
+            ->with(['department', 'subDepartment', 'jobTitle', 'documents', 'manager', 'branch', 'statusLogs.performer'])
             ->first();
+
+        $this->showEditComponent = false;
     }
 
     public function render()
