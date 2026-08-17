@@ -20,7 +20,6 @@ class DetailModal extends Component
     public function open($id, $readonly = true)
     {
         $companyId = (int) (Auth::user()?->saas_company_id ?? 0);
-        app(ContractExpiryService::class)->expireDueContracts($companyId);
 
        $user = Auth::user();
 
@@ -71,6 +70,8 @@ class DetailModal extends Component
             })
             ->with(['department', 'subDepartment', 'jobTitle', 'documents', 'manager', 'branch'])
             ->findOrFail($id);
+
+        app(ContractExpiryService::class)->expireEmployeeIfDue($this->employee);
 
         $this->readonly = $readonly;
         $this->showEditComponent = false;
