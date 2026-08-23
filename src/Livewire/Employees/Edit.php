@@ -1440,9 +1440,11 @@ class Edit extends Component
             if ($index !== null && isset($value[$index])) {
                 $docData = $value[$index];
                 if (isset($docData['id'])) {
-                    $document = \Athka\Employees\Models\EmployeeDocument::find($docData['id']);
+                    $document = \Athka\Employees\Models\EmployeeDocument::where('employee_id', $this->employee->id)
+                        ->where('saas_company_id', (int) $this->getCompanyId())
+                        ->find($docData['id']);
                     if ($document) {
-                        foreach (['local', 'public'] as $disk) {
+                        foreach (['private', 'local', 'public'] as $disk) {
                             \Illuminate\Support\Facades\Storage::disk($disk)->delete($document->file_path);
                         }
                         $document->delete();
