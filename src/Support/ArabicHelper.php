@@ -9,19 +9,50 @@ class ArabicHelper
      */
     public static function prepareForPdf($text)
     {
-        if (empty($text)) return $text;
+        if ($text === null || $text === '') return '';
+        $text = (string) $text;
         
         // If no Arabic characters, return as is
         if (!preg_match('/[\x{0600}-\x{06FF}]/u', $text)) {
             return $text;
         }
 
-        return self::reshape($text);
+        // Handle multi-line strings
+        $lines = explode("\n", $text);
+        $reshapedLines = [];
+
+        foreach ($lines as $line) {
+            $reshapedLines[] = self::reshapeLine($line);
+        }
+
+        return implode("\n", $reshapedLines);
     }
 
-    private static function reshape($text)
+    private static function reshapeLine($line)
     {
-        // Simple Arabic Reshaper Implementation
+        if (!preg_match('/[\x{0600}-\x{06FF}]/u', $line)) {
+            return $line;
+        }
+
+        // Segment into Arabic words and non-Arabic tokens (numbers, Latin words, punctuation)
+        preg_match_all('/([\x{0600}-\x{06FF}]+|[^\x{0600}-\x{06FF}]+)/u', $line, $matches);
+        $segments = $matches[0] ?? [$line];
+
+        $shapedSegments = [];
+        foreach ($segments as $segment) {
+            if (preg_match('/[\x{0600}-\x{06FF}]/u', $segment)) {
+                $shapedSegments[] = self::reshapeArabicSegment($segment);
+            } else {
+                $shapedSegments[] = $segment;
+            }
+        }
+
+        // Reverse the segment order for RTL display
+        return implode('', array_reverse($shapedSegments));
+    }
+
+    private static function reshapeArabicSegment($text)
+    {
         $unshaped = self::utf8_to_array($text);
         $shaped = [];
         $count = count($unshaped);
@@ -34,7 +65,7 @@ class ArabicHelper
             $shaped[] = self::getGlyph($current, $prev, $next);
         }
 
-        // Reverse the string for RTL
+        // Reverse the characters for RTL
         return implode('', array_reverse($shaped));
     }
 
