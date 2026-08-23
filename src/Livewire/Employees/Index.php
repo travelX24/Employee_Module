@@ -427,6 +427,9 @@ public function setViewMode(string $mode): void
         if ($this->jobTitleId !== 'all') {
             $query->where('job_title_id', $this->jobTitleId);
         }
+        if ($this->branchFilterId !== 'all') {
+            $query->where('branch_id', (int) $this->branchFilterId);
+        }
         if ($this->status !== 'all') {
             $query->where('status', $this->status);
         }
@@ -714,7 +717,7 @@ public function setViewMode(string $mode): void
 
         //   خيارات الفلاتر بصيغة value/label مثل Companies
         $departmentsOptions = Cache::remember(
-            "employees:index:departments:{$companyId}:{$userId}:{$locale}",
+            \App\Support\TenantCacheHelper::key($companyId, "index_departments_{$userId}_{$locale}"),
             now()->addMinutes(2),
             fn () => $Department::query()
                 ->where('saas_company_id', $companyId)
@@ -726,7 +729,7 @@ public function setViewMode(string $mode): void
         );
 
         $jobTitlesOptions = Cache::remember(
-            "employees:index:job-titles:{$companyId}:{$userId}:{$locale}",
+            \App\Support\TenantCacheHelper::key($companyId, "index_job_titles_{$userId}_{$locale}"),
             now()->addMinutes(2),
             fn () => $JobTitle::query()
                 ->where('saas_company_id', $companyId)

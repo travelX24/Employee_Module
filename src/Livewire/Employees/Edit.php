@@ -55,6 +55,7 @@ class Edit extends Component
     public ?int $generalManagerEmployeeId = null;
     public string $hired_at = '';
     public ?string $procedures_start_at = null;
+    public ?string $loaded_updated_at = null;
 
     /* TAB 3: Financial */
     public string $contract_type = '';
@@ -233,6 +234,8 @@ class Edit extends Component
             });
         })
         ->firstOrFail();
+
+    $this->loaded_updated_at = (string) $this->employee->updated_at;
 
     $scopedBranchId = $this->getScopedBranchId();
 
@@ -976,6 +979,25 @@ class Edit extends Component
     public function save(): void
     {
         $this->authorize('employees.edit');
+
+        // ✅ Optimistic Locking: Prevent stale writes on employee profile & salary
+        if ($this->employee && $this->employee->id && $this->loaded_updated_at) {
+            $currentDbUpdatedAt = (string) Employee::withoutGlobalScope('active_only')
+                ->where('id', $this->employee->id)
+                ->value('updated_at');
+
+            if ($currentDbUpdatedAt !== '' && $currentDbUpdatedAt !== $this->loaded_updated_at) {
+                $this->dispatch('toast',
+                    type: 'error',
+                    title: $this->txt('تنبيه تعارض التعديل', 'Conflict Alert'),
+                    message: $this->txt(
+                        'تم تحديث بيانات أو راتب هذا الموظف مؤخراً بواسطة مستخدم آخر. يرجى إعادة تحميل الصفحة لرؤية البيانات الجديدة.',
+                        'Employee details or salary were recently updated by another user. Please reload the page to get the latest data.'
+                    )
+                );
+                return;
+            }
+        }
 
         // ✅ منع الحفظ إذا كانت هناك أخطاء في الرفع لم تُعالج
         $fileFields = ['photo', 'national_id_photo', 'qualification', 'certificates', 'family_documents', 'other_documents'];

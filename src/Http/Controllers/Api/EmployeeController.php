@@ -2581,12 +2581,24 @@ class EmployeeController extends Controller
         $validated = $request->validate([
             'type'            => ['required', 'in:full_day,partial'],
             'start_date'      => ['required', 'date'],
-            'end_date'        => ['nullable', 'date'],
-            'from_time'       => ['nullable', 'date_format:H:i'],
-            'to_time'         => ['nullable', 'date_format:H:i'],
+            'end_date'        => ['required_if:type,full_day', 'nullable', 'date', 'after_or_equal:start_date'],
+            'from_time'       => ['required_if:type,partial', 'nullable', 'date_format:H:i'],
+            'to_time'         => ['required_if:type,partial', 'nullable', 'date_format:H:i'],
             'destination'     => ['nullable', 'string', 'max:255'],
             'reason'          => ['nullable', 'string', 'max:2000'],
         ]);
+
+        if ($validated['type'] === 'partial' || (!empty($validated['from_time']) && !empty($validated['to_time']))) {
+            $from = Carbon::createFromFormat('H:i', $validated['from_time']);
+            $to   = Carbon::createFromFormat('H:i', $validated['to_time']);
+            if ($from->diffInMinutes($to, false) <= 0) {
+                return response()->json([
+                    'ok'      => false,
+                    'error'   => 'invalid_time_range',
+                    'message' => function_exists('tr') ? tr('End time must be after start time.') : 'End time must be after start time.',
+                ], 422);
+            }
+        }
 
         $employeeId = (int) ($user->employee_id ?? null);
         $companyId = (int) ($user->saas_company_id ?? 0);
@@ -2734,12 +2746,24 @@ class EmployeeController extends Controller
         $validated = $request->validate([
             'type'        => ['required', 'in:full_day,partial'],
             'start_date'  => ['required', 'date'],
-            'end_date'    => ['required_if:type,full_day', 'nullable', 'date'],
+            'end_date'    => ['required_if:type,full_day', 'nullable', 'date', 'after_or_equal:start_date'],
             'from_time'   => ['required_if:type,partial', 'nullable', 'date_format:H:i'],
             'to_time'     => ['required_if:type,partial', 'nullable', 'date_format:H:i'],
             'destination' => ['nullable', 'string', 'max:500'],
             'reason'      => ['nullable', 'string', 'max:2000'],
         ]);
+
+        if ($validated['type'] === 'partial' || (!empty($validated['from_time']) && !empty($validated['to_time']))) {
+            $from = Carbon::createFromFormat('H:i', $validated['from_time']);
+            $to   = Carbon::createFromFormat('H:i', $validated['to_time']);
+            if ($from->diffInMinutes($to, false) <= 0) {
+                return response()->json([
+                    'ok'      => false,
+                    'error'   => 'invalid_time_range',
+                    'message' => function_exists('tr') ? tr('End time must be after start time.') : 'End time must be after start time.',
+                ], 422);
+            }
+        }
 
         $data = [
             'type'          => $validated['type'],
