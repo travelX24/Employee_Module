@@ -59,20 +59,20 @@ class Create extends Component
     public $basic_salary = null;
     public ?int $contract_duration_months = null;
     public $allowance = null;
-    public ?int $annual_leave_days = null;
+    public $annual_leave_days = null;
     public $daily_wage = null;
     public $hourly_wage = null;
     public $minute_wage = null;
 
     public bool $is_transferred_employee = false;
     public $opening_leave_balance = null;
-    public int $leave_balance_adjustments = 0;
+    public $leave_balance_adjustments = 0;
     public $calculated_leave_balance = 0;
     
     // Leave Adjustment Modal
     public bool $showingAdjustmentModal = false;
     public string $adjustmentType = 'add';
-    public int $adjustmentAmount = 1;
+    public $adjustmentAmount = 1;
     public string $adjustmentReason = ''; 
     public $adjustmentFile = null; 
     public $adjustmentFile_name = null;
@@ -319,10 +319,10 @@ class Create extends Component
             'hired_at' => $this->hired_at,
             'is_transferred_employee' => (bool) $this->is_transferred_employee,
             'opening_leave_balance' => is_numeric($this->opening_leave_balance) ? $this->opening_leave_balance : 0,
-            'leave_balance_adjustments' => is_numeric($this->leave_balance_adjustments) ? (int) $this->leave_balance_adjustments : 0,
+            'leave_balance_adjustments' => is_numeric($this->leave_balance_adjustments) ? (float) $this->leave_balance_adjustments : 0,
         ]);
 
-        $this->calculated_leave_balance = (int) round((float) $tempEmployee->calculateLeaveBalance(), 0, PHP_ROUND_HALF_UP);
+        $this->calculated_leave_balance = (float) round((float) $tempEmployee->calculateLeaveBalance(), 2);
     }
 
     private function calculateAndUpdateWages()
@@ -703,7 +703,7 @@ class Create extends Component
         return [
             'basic_salary' => ['required', 'numeric', 'min:0'],
             'allowance' => ['nullable', 'numeric', 'min:0'],
-            'annual_leave_days' => ['nullable', 'integer', 'min:0'],
+            'annual_leave_days' => ['nullable', 'numeric', 'min:0'],
         ];
     }
 
@@ -1145,10 +1145,10 @@ class Create extends Component
         return number_format($bytes / pow(1024, $power), 2, '.', ',') . ' ' . $units[$power];
     }
 
-    private function getDefaultAnnualLeaveDays(): int
+    private function getDefaultAnnualLeaveDays(): float
     {
         $settings = \Athka\Saas\Models\SaasCompanyOtherinfo::where('company_id', $this->companyId)->first();
-        return $settings->default_annual_leave_days ?? 0;
+        return (float) ($settings->default_annual_leave_days ?? 0);
     }
 
     public function render()

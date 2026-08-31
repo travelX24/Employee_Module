@@ -62,7 +62,7 @@ class Edit extends Component
     public $basic_salary = null;
     public ?int $contract_duration_months = null;
     public $allowance = null;
-    public ?int $annual_leave_days = null;
+    public $annual_leave_days = null;
 
     // الأجور المشتقة (محسوبة - غير قابلة للتعديل)
     public $daily_wage = null;
@@ -72,7 +72,7 @@ class Edit extends Component
     // الإجازات السنوية
     public bool $is_transferred_employee = false;
     public $opening_leave_balance = null;
-    public int $leave_balance_adjustments = 0;
+    public $leave_balance_adjustments = 0;
     public $calculated_leave_balance = 0;
 
     // Leave Adjustment Modal
@@ -310,7 +310,7 @@ class Edit extends Component
         $this->is_transferred_employee = (bool) $this->employee->is_transferred_employee;
         $this->opening_leave_balance = $this->employee->opening_leave_balance;
         $this->leave_balance_adjustments = $this->employee->leave_balance_adjustments ?? 0;
-        $this->calculated_leave_balance = (int) round((float) $this->employee->calculateLeaveBalance(), 0, PHP_ROUND_HALF_UP);
+        $this->calculated_leave_balance = (float) round((float) $this->employee->calculateLeaveBalance(), 2);
 
         // Tab 4: Personal
         $this->mobile = $this->employee->mobile ?? '';
@@ -582,10 +582,10 @@ class Edit extends Component
         // تمرير البيانات للموديل لإجراء الحساب بأمان
         $this->employee->is_transferred_employee = $this->is_transferred_employee;
         $this->employee->opening_leave_balance = is_numeric($this->opening_leave_balance) ? $this->opening_leave_balance : 0;
-        $this->employee->leave_balance_adjustments = is_numeric($this->leave_balance_adjustments) ? (int)$this->leave_balance_adjustments : 0;
+        $this->employee->leave_balance_adjustments = is_numeric($this->leave_balance_adjustments) ? (float) $this->leave_balance_adjustments : 0;
         $this->employee->hired_at = $this->hired_at;
 
-        $this->calculated_leave_balance = (int) round((float) $this->employee->calculateLeaveBalance(), 0, PHP_ROUND_HALF_UP);
+        $this->calculated_leave_balance = (float) round((float) $this->employee->calculateLeaveBalance(), 2);
     }
 
     private function isAr(): bool
@@ -829,7 +829,7 @@ class Edit extends Component
         return [
              'basic_salary' => ['required', 'numeric', 'min:0'],
             'allowance' => ['nullable', 'numeric', 'min:0'],
-            'annual_leave_days' => ['nullable', 'integer', 'min:0'],
+            'annual_leave_days' => ['nullable', 'numeric', 'min:0'],
         ];
     }
 
@@ -1116,7 +1116,7 @@ class Edit extends Component
                 $this->annual_leave_days = $this->employee->annual_leave_days;
                 $this->is_transferred_employee = (bool) $this->employee->is_transferred_employee;
                 $this->opening_leave_balance = $this->employee->opening_leave_balance;
-                $this->leave_balance_adjustments = (int) ($this->employee->leave_balance_adjustments ?? 0);
+                $this->leave_balance_adjustments = (float) ($this->employee->leave_balance_adjustments ?? 0);
             }
 
             if (!$this->canManageDocuments()) {
@@ -1266,10 +1266,10 @@ class Edit extends Component
     /**
      * جلب عدد أيام الإجازة السنوية الافتراضية من إعدادات الشركة
      */
-    private function getDefaultAnnualLeaveDays(): int
+    private function getDefaultAnnualLeaveDays(): float
     {
         $settings = \Athka\Saas\Models\SaasCompanyOtherinfo::where('company_id', $this->companyId)->first();
-        return $settings->default_annual_leave_days ?? 0;
+        return (float) ($settings->default_annual_leave_days ?? 0);
     }
 
     public function render()

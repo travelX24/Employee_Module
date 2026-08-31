@@ -98,6 +98,7 @@
                     <div>
                         <x-ui.input 
                             id="opening_balance_input"
+                            step="0.5"
                             type="number"
                             :label="tr('Opening Balance')" 
                             wire:model.live.debounce.500ms="opening_leave_balance" 
