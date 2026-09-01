@@ -47,8 +47,8 @@ class ArabicHelper
             }
         }
 
-        // Reverse the segment order for RTL display
-        return implode('', array_reverse($shapedSegments));
+        // Keep segment order for proper word sequence
+        return implode('', $shapedSegments);
     }
 
     private static function reshapeArabicSegment($text)

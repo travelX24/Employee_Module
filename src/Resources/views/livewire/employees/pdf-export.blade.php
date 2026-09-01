@@ -194,7 +194,7 @@
             <thead>
                 <tr>
                     @php 
-                        $displayFields = app()->getLocale() == 'ar' ? array_reverse($fields) : $fields; 
+                        $displayFields = $fields;
                     @endphp
                     @foreach($displayFields as $field)
                         <th>{{ \Athka\Employees\Support\ArabicHelper::prepareForPdf($availableFields[$field] ?? $field) }}</th>
