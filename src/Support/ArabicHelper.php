@@ -47,8 +47,9 @@ class ArabicHelper
             }
         }
 
-        // Keep segment order for proper word sequence
-        return implode('', $shapedSegments);
+        // QA 323: DomPDF reorders RTL segments after each Arabic word is visually reshaped.
+        // Reverse the visual segments too so multi-word Arabic labels keep their correct reading order.
+        return implode('', array_reverse($shapedSegments));
     }
 
     private static function reshapeArabicSegment($text)
@@ -128,7 +129,3 @@ class ArabicHelper
         return $map[$char]['isolated'];
     }
 }
-
-
-
-
