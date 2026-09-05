@@ -1289,12 +1289,13 @@ class EmployeeController extends Controller
         
         $employeeId = $value; // Current employee ID
 
+        $approvalType = !empty($data['is_exception']) ? 'leave_exceptions' : 'leaves';
         // ✅ Check Workflow existence
         if (class_exists(\Athka\SystemSettings\Services\Approvals\ApprovalService::class)) {
             $approvalService = app(\Athka\SystemSettings\Services\Approvals\ApprovalService::class);
             $workflowReason = null;
-            $hasWorkflow = $approvalService->hasApproversForEmployee('leaves', (int)$employeeId, $companyId, $workflowReason);
-            $hasPolicies = $approvalService->hasActivePolicies('leaves', $companyId);
+            $hasWorkflow = $approvalService->hasApproversForEmployee($approvalType, (int)$employeeId, $companyId, $workflowReason);
+            $hasPolicies = $approvalService->hasActivePolicies($approvalType, $companyId);
 
             if ($hasPolicies) {
                 if (!$hasWorkflow) {
@@ -1337,7 +1338,7 @@ class EmployeeController extends Controller
 
         $tasksCompanyId = (int) ($data['company_id'] ?? $user->saas_company_id ?? 1);
         try {
-            \App\Jobs\GenerateApprovalTasksJob::dispatch('leaves', $id, $tasksCompanyId);
+            \App\Jobs\GenerateApprovalTasksJob::dispatch($approvalType, $id, $tasksCompanyId);
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::error('Dispatch approval job failed for leave request', [
                 'type' => 'leaves',
